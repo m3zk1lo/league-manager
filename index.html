@@ -1,0 +1,1455 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>League Manager</title>
+<meta name="description" content="League Manager: lega carriera allenatore su FC 27 tra manager. Mercato, aste, distinte e classifica.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: pitch-striped scoreboard band on top, tabbed league office below; tables are the core. */
+:root{
+  --bg:#edf1ee; --surface:#ffffff; --surface-2:#f5f8f6; --ink:#0f1d17; --muted:#56675e; --line:#d3dcd6;
+  --accent:#1c4fd6; --accent-soft:#e3eafc; --on-accent:#ffffff;
+  --gold:#a77a07; --good:#1d7a45; --good-soft:#dff2e6; --bad:#bf3328; --bad-soft:#fbe4e1; --warn:#a96200; --warn-soft:#fbefd9;
+  --pitch:#1d6a44; --pitch-2:#196040; --on-pitch:#f2f8f4; --on-pitch-muted:#b9d8c6;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0b1310; --surface:#121e19; --surface-2:#16251e; --ink:#e5eee8; --muted:#90a398; --line:#22342b;
+  --accent:#7097ff; --accent-soft:#1b2b52; --on-accent:#0b1310;
+  --gold:#e2b84d; --good:#52c682; --good-soft:#143323; --bad:#ff6d62; --bad-soft:#3a1714; --warn:#f2a73c; --warn-soft:#3a2810;
+  --pitch:#0f3a27; --pitch-2:#0c3322; --on-pitch:#eaf5ee; --on-pitch-muted:#8fbca2; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0b1310; --surface:#121e19; --surface-2:#16251e; --ink:#e5eee8; --muted:#90a398; --line:#22342b;
+  --accent:#7097ff; --accent-soft:#1b2b52; --on-accent:#0b1310;
+  --gold:#e2b84d; --good:#52c682; --good-soft:#143323; --bad:#ff6d62; --bad-soft:#3a1714; --warn:#f2a73c; --warn-soft:#3a2810;
+  --pitch:#0f3a27; --pitch-2:#0c3322; --on-pitch:#eaf5ee; --on-pitch-muted:#8fbca2; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--pitch)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0;line-height:1.05}
+h2{font-size:1.45rem;text-transform:uppercase}
+h3{font-size:1.2rem;text-transform:uppercase}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,table{font-variant-numeric:tabular-nums}
+
+/* band */
+.band{background:var(--pitch);background-image:repeating-linear-gradient(90deg,var(--pitch) 0 72px,var(--pitch-2) 72px 144px);color:var(--on-pitch);border-bottom:3px solid var(--on-pitch-muted)}
+.band-in{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;padding-block:22px 14px}
+.eyebrow{font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--on-pitch-muted);font-weight:600}
+.band h1{font-size:clamp(2rem,5vw,3.1rem);text-transform:uppercase}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tag{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--on-pitch) 35%,transparent);border-radius:999px;padding:3px 11px;font-size:.82rem;font-weight:600}
+.tag .dot{width:8px;height:8px;border-radius:50%;background:var(--on-pitch-muted)}
+.tag.open .dot{background:#7ee2a2}.tag.closed .dot{background:#ff8a7f}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs a{color:var(--on-pitch-muted);text-decoration:none;font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:1.02rem;padding:8px 12px 9px;border-radius:8px 8px 0 0;white-space:nowrap}
+.tabs a:hover{color:var(--on-pitch)}
+.tabs a[aria-current="page"]{background:var(--bg);color:var(--ink)}
+
+main{padding-block:22px 60px;display:grid;gap:20px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.stack{display:grid;gap:20px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.ph{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-bottom:12px}
+.sub{color:var(--muted);font-size:.88rem}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.muted{color:var(--muted)}
+.empty{padding:22px;border:1px dashed var(--line);border-radius:var(--r);color:var(--muted);text-align:left;display:grid;gap:10px;justify-items:start}
+.empty strong{color:var(--ink);font-family:var(--display);font-size:1.25rem;text-transform:uppercase}
+
+.btn{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 13px;font-weight:600;cursor:pointer;font-size:.9rem;line-height:1.2}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn.good{background:var(--good);color:var(--surface);border-color:var(--good)}
+.btn.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.btn.ghost{background:transparent}
+.btn.sm{padding:4px 9px;font-size:.82rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.tscroll{overflow-x:auto;margin-inline:-4px}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+.pos{width:34px;font-family:var(--display);font-size:1.1rem;font-weight:700;position:relative}
+tr.z-top .pos{color:var(--gold)}
+tr.z-bot .pos{color:var(--bad)}
+.pts{font-family:var(--display);font-size:1.15rem;font-weight:700}
+.clublink{display:inline-flex;gap:9px;align-items:center;background:none;border:0;padding:0;cursor:pointer;font-weight:600;text-align:left}
+.clublink:hover span.nm{text-decoration:underline}
+.mgr{display:block;font-size:.78rem;color:var(--muted);font-weight:500}
+.crest{flex:none;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50% 50% 46% 46%/40% 40% 60% 60%;background:var(--c);color:var(--ct);font-family:var(--display);font-weight:700;font-size:.78rem;letter-spacing:.02em;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--ct) 25%,transparent)}
+.crest.lg{width:58px;height:58px;font-size:1.25rem}
+.form{display:inline-flex;gap:3px}
+.form i{font-style:normal;width:19px;height:19px;border-radius:4px;display:inline-grid;place-items:center;font-size:.68rem;font-weight:700}
+.form .V{background:var(--good-soft);color:var(--good)}.form .N{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}.form .P{background:var(--bad-soft);color:var(--bad)}
+
+.fx{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.fx:last-child{border-bottom:0}
+.fx .h{justify-self:end;text-align:right}.fx .a{justify-self:start}
+.fx .side{display:flex;gap:8px;align-items:center;min-width:0;font-weight:600}
+.fx .h.side{flex-direction:row-reverse}
+.fx .side span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score{font-family:var(--display);font-weight:700;font-size:1.35rem;min-width:66px;text-align:center;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
+.score.tbd{font-size:.9rem;color:var(--muted);font-family:var(--body);font-weight:600;padding:5px 8px}
+.fxd{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;font-size:.82rem;color:var(--muted)}
+.fxd .r{text-align:right}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:.84rem;font-weight:600;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip.done{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}
+
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:.74rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.pill.good{background:var(--good-soft);color:var(--good)}.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.info{background:var(--accent-soft);color:var(--accent)}
+.pill.neutral{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.posb{display:inline-block;min-width:38px;text-align:center;border-radius:4px;padding:1px 4px;font-size:.74rem;font-weight:700}
+.posb.gk{background:var(--warn-soft);color:var(--warn)}.posb.def{background:var(--accent-soft);color:var(--accent)}
+.posb.mid{background:var(--good-soft);color:var(--good)}.posb.att{background:var(--bad-soft);color:var(--bad)}
+.ovr{font-family:var(--display);font-weight:700;font-size:1.05rem}
+.card-y,.card-r{display:inline-block;width:9px;height:12px;border-radius:2px;vertical-align:-1px}
+.card-y{background:#e8c22a}.card-r{background:#d8392f}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--surface-2);min-width:0}
+.kpi .l{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--display);font-weight:700;font-size:1.6rem;line-height:1.1}
+.kpi .v.neg{color:var(--bad)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--good)}
+.bar i.over{background:var(--bad)}
+.clubhead{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+.clubhead .who{display:flex;gap:14px;align-items:center;min-width:0}
+.clubhead h2{font-size:2rem}
+
+.list{display:grid}
+.li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li .main{min-width:0;flex:1 1 240px}
+.li .main b{font-weight:600}
+.amt{font-weight:700}.amt.pos{color:var(--good)}.amt.neg{color:var(--bad)}
+.rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
+.notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
+select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
+
+/* dialog */
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px)}
+dialog::backdrop{background:rgba(5,15,10,.55)}
+dialog form{display:grid;gap:14px;padding:20px}
+.mbody{display:grid;gap:12px}
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:520px){.fgrid{grid-template-columns:minmax(0,1fr)}}
+.f{display:grid;gap:4px;min-width:0}
+.f.full{grid-column:1/-1}
+.f label,.lbl{font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.f input,.f select,.f textarea,.evrow select{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.f textarea{min-height:110px;resize:vertical}
+.f .hint{font-size:.8rem;color:var(--muted)}
+.mact{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.merr{color:var(--bad);font-weight:600;margin:0}
+.scorebox{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:end}
+.scorebox input{font-family:var(--display);font-size:1.8rem;font-weight:700;text-align:center}
+.scorebox .dash{font-family:var(--display);font-size:1.8rem;padding-bottom:6px}
+.evcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:560px){.evcols{grid-template-columns:minmax(0,1fr)}}
+.evcol{display:grid;gap:8px;align-content:start;min-width:0}
+.evhead{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center}
+.evrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px}
+.evrow .assist{grid-column:2/3}
+.evrow select{padding:5px 7px;font-size:.85rem;background:var(--surface)}
+.lurow{align-items:center;margin-top:4px}
+.lugrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.lugrid select,.subrow select,.subrow input{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 9px;font-size:16px;width:100%;min-width:0}
+.subrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 76px auto;gap:6px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px}
+.subrow select,.subrow input{background:var(--surface)}
+@media (max-width:560px){.lugrid{grid-template-columns:minmax(0,1fr)}.subrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.lulist{display:grid;gap:6px;font-size:.9rem}
+.luline{display:grid;gap:6px;margin-bottom:10px}
+.luslot{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px;align-items:center}
+.luslot .posb{text-align:center}
+.subli{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ludet{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:10px 0}
+.ludet summary{cursor:pointer;font-weight:600}
+.evt{font-size:.72rem;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px}
+.evt.g{background:var(--good-soft);color:var(--good)}.evt.y{background:var(--warn-soft);color:var(--warn)}.evt.r{background:var(--bad-soft);color:var(--bad)}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px}
+button.tag{background:none;color:inherit;cursor:pointer;font:inherit;font-size:.82rem;font-weight:600}
+button.tag:hover{border-color:var(--on-pitch)}
+.badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--bad);color:var(--surface);font-size:.72rem;font-weight:700;font-family:var(--body);letter-spacing:0}
+.tabs a .badge{margin-left:5px;vertical-align:2px}
+.notif .li.unread .main b{color:var(--accent)}
+.notif .li.unread::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.filters{margin-bottom:12px}
+.cd{font-weight:700;color:var(--ink)}
+.cd.hot{color:var(--bad)}
+.search{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 11px;flex:1 1 220px;min-width:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:50;max-width:calc(100vw - 32px)}
+@media (prefers-reduced-motion:no-preference){.toast{animation:up .2s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}}}
+</style>
+
+<header class="band">
+  <div class="wrap band-in">
+    <div>
+      <div class="eyebrow">Lega carriera allenatore · FC 27</div>
+      <h1 id="lname">League Manager</h1>
+    </div>
+    <div class="meta" id="meta"></div>
+  </div>
+  <nav class="wrap tabs" id="tabs" aria-label="Sezioni">
+    <a href="#classifica">Classifica</a>
+    <a href="#calendario">Calendario</a>
+    <a href="#societa">Società</a>
+    <a href="#mercato">Mercato<span class="badge" id="mktbadge" hidden></span></a>
+    <a href="#svincolati">Svincolati<span class="badge" id="aucbadge" hidden></span></a>
+    <a href="#statistiche">Statistiche</a>
+    <a href="#lega">Lega</a>
+  </nav>
+</header>
+<main class="wrap" id="main">
+  <div class="panel"><div class="empty"><strong>Apertura della sede</strong><span>Sto caricando società, rose e calendario della lega…</span></div></div>
+</main>
+<dialog id="dlg"></dialog>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const M = 1e6, K = 1e3;
+const POS = ['POR','DC','TD','TS','CDC','CC','COC','ED','ES','AD','AS','ATT'];
+const GRP = {POR:'gk',DC:'def',TD:'def',TS:'def',CDC:'mid',CC:'mid',COC:'mid',ED:'mid',ES:'mid',AD:'att',AS:'att',ATT:'att'};
+const S = {settings:null, clubs:[], players:[], matches:[], offers:[], ledger:[], transfers:[], auctions:[], loaded:{}, lineups:[], me:null, comm:false,
+  route:'classifica', viewClub:null, round:null, statScope:'season', mktPos:'all', profiles:{}, state:'loading', seenAt:null, notifOpen:false, faQ:'', faPos:'all'};
+const BOOT = Date.now();
+let db = null, user = null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf = (n, d=2) => Number(n||0).toLocaleString('it-IT', {maximumFractionDigits:d});
+const fmtM = n => (n < 0 ? '−' : '') + '€' + nf(Math.abs(n)/M) + ' M';
+const fmtW = n => '€' + nf((n||0)/K, 0) + 'K/sett';
+const day = ts => ts ? new Date(ts).toLocaleDateString('it-IT', {day:'2-digit', month:'short'}) : '';
+const hexOk = c => /^#[0-9a-f]{6}$/i.test(c||'') ? c : '#5b6b63';
+function textOn(hex){ const h = hexOk(hex); const r=parseInt(h.slice(1,3),16), g=parseInt(h.slice(3,5),16), b=parseInt(h.slice(5,7),16); return (0.299*r+0.587*g+0.114*b) > 150 ? '#101a15' : '#ffffff'; }
+
+/* ---------- derived data ---------- */
+const club = id => S.clubs.find(c => c.id === id);
+const myClub = () => S.me ? S.clubs.find(c => c.managerId === S.me) : null;
+const season = () => S.settings?.season || 1;
+const seasonMatches = (s = season()) => S.matches.filter(m => m.season === s);
+const budget = c => (c?.budget0 || 0) + S.ledger.filter(l => l.clubId === c?.id).reduce((a, l) => a + (l.amount || 0), 0);
+const roster = cid => S.players.filter(p => p.clubId === cid).sort((a, b) => POS.indexOf(a.pos) - POS.indexOf(b.pos) || (b.ovr||0) - (a.ovr||0));
+const LOAN = {'transfer':'Acquisto a titolo definitivo', 'loan':'Prestito secco', 'loan-option':'Prestito con diritto di riscatto', 'loan-obligation':'Prestito con obbligo di riscatto'};
+const MODE = {'transfer':'Definitivo', 'loan':'Prestito', 'loan-option':'Prestito con diritto', 'loan-obligation':'Prestito con obbligo', 'redeem':'Riscatto', 'return':'Fine prestito', 'auction':'Asta svincolati'};
+/* free agents & auctions */
+const AUC_MIN = 15; /* every auction lasts 15 minutes, same for everyone */
+const AUC = () => ({mins: AUC_MIN, step: S.settings?.auctionStep ?? 0.5 * M});
+const freeAgents = () => S.players.filter(p => !p.clubId && !p.loan).sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const faFilter = list => { const q = norm(S.faQ.trim()), f = S.faPos;
+  return list.filter(p => (!q || norm(p.name).includes(q)) && (f === 'all' || (f.startsWith('g:') ? GRP[p.pos] === f.slice(2) : p.pos === f.slice(2)))); };
+function refreshFreeTable(){
+  const tmp = document.createElement('div'); tmp.innerHTML = viewFree();
+  const t = $('#fatable'), c = $('#facount');
+  if (t) t.innerHTML = tmp.querySelector('#fatable').innerHTML;
+  if (c) c.textContent = tmp.querySelector('#facount').textContent;
+}
+const openAuctions = () => S.auctions.filter(a => a.status === 'open');
+const auctionFor = pid => openAuctions().find(a => a.playerId === pid);
+const reserved = (cid, exceptId) => openAuctions().filter(a => a.id !== exceptId && a.highClubId === cid).reduce((s, a) => s + (a.highBid || 0), 0);
+const reservedWage = (cid, exceptId) => openAuctions().filter(a => a.id !== exceptId && a.highClubId === cid).reduce((s, a) => s + (S.players.find(p => p.id === a.playerId)?.wage || 0), 0);
+const SNIPE = 30000; /* Ultimate Team style: a bid in the last 30 s resets the clock to 30 s */
+const timeLeft = ms => { if (ms <= 0) return 'in chiusura';
+  if (ms < 120000){ const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+  const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.ceil(ms % 36e5 / 6e4);
+  return d ? `${d} g ${h} h` : h ? `${h} h ${m} min` : `${m} min`; };
+const isLoan = t => !!t && t !== 'transfer';
+const pctOf = p => p.loan ? (p.loan.wagePct ?? 100) : 100;
+const wageUsed = cid => S.players.reduce((a, p) => a + (p.clubId === cid ? (p.wage || 0) * pctOf(p) / 100 : 0)
+  + (p.loan && p.loan.ownerClubId === cid && p.clubId !== cid ? (p.wage || 0) * (100 - pctOf(p)) / 100 : 0), 0);
+const loanedOut = cid => S.players.filter(p => p.loan && p.loan.ownerClubId === cid && p.clubId !== cid);
+const squadValue = cid => [...roster(cid).filter(p => !p.loan), ...loanedOut(cid)].reduce((a, p) => a + (p.value || 0), 0);
+const loanNote = L => `fino a fine stagione ${L.untilSeason}${L.buyout ? ` · riscatto ${fmtM(L.buyout)}${L.type === 'loan-obligation' ? ' (obbligo)' : ''}` : ''}${(L.wagePct ?? 100) < 100 ? ` · ingaggio al ${L.wagePct}%` : ''}`;
+const ageOf = p => (p.age || 0) + (season() - (p.ageSeason || season()));
+const canManage = cid => S.comm || (!!S.me && club(cid)?.managerId === S.me);
+const window_ = () => !!S.settings?.windowOpen;
+const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : 'Panchina libera';
+
+function crest(c, lg){ if (!c) return '<span class="crest" style="--c:#8a9a91;--ct:#fff">?</span>';
+  const col = hexOk(c.color); return `<span class="crest${lg?' lg':''}" style="--c:${col};--ct:${textOn(col)}">${esc((c.short||c.name||'?').slice(0,3).toUpperCase())}</span>`; }
+function clubLink(c, withMgr){ if (!c) return '<span class="muted">Club rimosso</span>';
+  return `<button class="clublink" data-act="club" data-id="${c.id}">${crest(c)}<span><span class="nm">${esc(c.name)}</span>${withMgr?`<span class="mgr">${esc(mgrName(c))}</span>`:''}</span></button>`; }
+
+/* notifications: offers involving my club where the last move was made by the other side */
+const turnOf = o => o.by === 'buyer' ? o.sellerId : o.buyerId;
+const starterOf = o => o.by === 'buyer' ? o.buyerId : o.sellerId;
+const actorOf = o => o.actorClub !== undefined ? o.actorClub : (o.status === 'open' || o.status === 'withdrawn') ? starterOf(o) : o.status === 'expired' ? null : turnOf(o);
+function notifText(o, me){
+  const other = club(o.buyerId === me ? o.sellerId : o.buyerId)?.name || 'Un club', pn = o.playerName || 'un giocatore', fee = fmtM(o.fee);
+  const kind = isLoan(o.type) ? ` (${MODE[o.type].toLowerCase()})` : '';
+  switch (o.status){
+    case 'accepted': return o.buyerId === me ? `${other} ha accettato la tua offerta: ${pn} arriva${kind} per ${fee}` : `${other} ha accettato il tuo rilancio: ${pn} ceduto${kind} per ${fee}`;
+    case 'rejected': return `${other} ha rifiutato la trattativa per ${pn}`;
+    case 'withdrawn': return `${other} ha ritirato l’offerta per ${pn}`;
+    case 'expired': return `La trattativa per ${pn} è scaduta`;
+    default: return o.sellerId === me && o.by === 'buyer' ? `${other} offre ${fee} per ${pn}${kind}` : `${other} rilancia: ${fee} per ${pn}${kind}`;
+  }
+}
+const isMyNotif = (o, mid) => (o.buyerId === mid || o.sellerId === mid) && actorOf(o) !== mid;
+function notifs(){
+  const mc = myClub(); if (!mc) return [];
+  const items = [], cn = id => club(id)?.name || 'un club';
+  S.offers.filter(o => isMyNotif(o, mc.id)).forEach(o => items.push({key: `o:${o.id}:${o.ts}:${o.status}`, ts: o.ts || 0, text: notifText(o, mc.id)}));
+  S.auctions.forEach(a => {
+    const bids = a.bids || [], mine = bids.some(b => b.c === mc.id);
+    if (a.startedBy !== mc.id) items.push({key: `a:${a.id}:start`, ts: a.startTs || 0, text: `Nuova asta: ${a.playerName}, base ${fmtM(a.base ?? bids[0]?.amt ?? 0)} (${a.startedBy ? cn(a.startedBy) : 'dal commissario'}), termina tra ${timeLeft((a.endsAt || 0) - (a.startTs || 0))}`});
+    bids.forEach((b, i) => { if (i > 0 && bids[i - 1].c === mc.id && b.c !== mc.id) items.push({key: `a:${a.id}:b${i}`, ts: b.ts, text: `Sei stato superato all’asta per ${a.playerName}: ${cn(b.c)} offre ${fmtM(b.amt)}`}); });
+    if (a.status === 'closed' && mine) items.push({key: `a:${a.id}:end`, ts: a.closedTs || 0, text: a.highClubId === mc.id ? `Asta vinta: ${a.playerName} è tuo per ${fmtM(a.highBid)}` : `Asta persa: ${a.playerName} va al ${cn(a.highClubId)} per ${fmtM(a.highBid)}`});
+  });
+  return items.sort((x, y) => y.ts - x.ts).slice(0, 25).map(n => ({...n, unread: S.seenAt !== null && n.ts > S.seenAt}));
+}
+const toasted = new Set();
+function liveToasts(){ notifs().forEach(n => { if (n.ts > BOOT && !toasted.has(n.key)){ toasted.add(n.key); toast(n.text, 6000); } }); }
+async function markRead(){
+  if (!S.me || !db) return; S.seenAt = now();
+  try { await db.doc(`data/users/${S.me}/prefs`).set({seenAt: S.seenAt}); } catch {}
+  schedule();
+}
+
+function standings(s = season()){
+  const rows = {};
+  S.clubs.forEach(c => rows[c.id] = {c, g:0, v:0, n:0, p:0, gf:0, gs:0, pt:0, form:[]});
+  seasonMatches(s).filter(m => m.played).sort((a, b) => a.round - b.round).forEach(m => {
+    const h = rows[m.homeId], a = rows[m.awayId]; if (!h || !a) return;
+    h.g++; a.g++; h.gf += m.hg; h.gs += m.ag; a.gf += m.ag; a.gs += m.hg;
+    if (m.hg > m.ag){ h.v++; a.p++; h.pt += 3; h.form.push('V'); a.form.push('P'); }
+    else if (m.hg < m.ag){ a.v++; h.p++; a.pt += 3; a.form.push('V'); h.form.push('P'); }
+    else { h.n++; a.n++; h.pt++; a.pt++; h.form.push('N'); a.form.push('N'); }
+  });
+  return Object.values(rows).sort((x, y) => y.pt - x.pt || (y.gf - y.gs) - (x.gf - x.gs) || y.gf - x.gf || x.c.name.localeCompare(y.c.name));
+}
+function pstats(scope){
+  const st = {}, ms = scope === 'all' ? S.matches : seasonMatches();
+  const get = (id, n, c) => st[id] || (st[id] = {id, n, c, g:0, a:0, y:0, r:0});
+  ms.filter(m => m.played).forEach(m => (m.events || []).forEach(e => {
+    const o = get(e.p, e.n, e.c); o.n = e.n; o.c = e.c;
+    if (e.t === 'g'){ o.g++; if (e.a){ get(e.a, e.an, e.c).a++; } }
+    if (e.t === 'y') o.y++; if (e.t === 'r') o.r++;
+  }));
+  Object.values(st).forEach(o => { const p = S.players.find(x => x.id === o.id); if (p){ o.n = p.name; o.c = p.clubId; } });
+  return st;
+}
+function suspended(){
+  const out = new Set(), lim = S.settings?.yellowLimit || 3;
+  S.clubs.forEach(c => {
+    const ms = seasonMatches().filter(m => m.played && (m.homeId === c.id || m.awayId === c.id)).sort((a, b) => a.round - b.round);
+    const last = ms[ms.length - 1]; if (!last) return;
+    const ev = (last.events || []).filter(e => e.c === c.id);
+    ev.filter(e => e.t === 'r').forEach(e => out.add(e.p));
+    ev.filter(e => e.t === 'y').forEach(e => {
+      const tot = ms.reduce((a, m) => a + (m.events || []).filter(x => x.t === 'y' && x.p === e.p).length, 0);
+      if (tot % lim === 0) out.add(e.p);
+    });
+  });
+  return out;
+}
+function roundInfo(){
+  const ms = seasonMatches(); if (!ms.length) return {cur:null, total:0, played:0};
+  const total = Math.max(...ms.map(m => m.round)), un = ms.filter(m => !m.played);
+  const cur = un.length ? Math.min(...un.map(m => m.round)) : null;
+  const played = new Set(ms.filter(m => m.played).map(m => m.round)).size;
+  return {cur, total, played, done: !un.length};
+}
+
+/* ---------- render ---------- */
+let raf = 0;
+function schedule(){ if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); refreshProfiles(); liveToasts(); autoClose(); }); }
+async function refreshProfiles(){
+  if (!user) return;
+  const ids = [...new Set(S.clubs.map(c => c.managerId).filter(Boolean))];
+  if (!ids.length) return;
+  const ps = await user.profiles(ids);
+  if (ids.some(id => (ps[id]?.name || '') !== (S.profiles[id]?.name || ''))){ S.profiles = {...S.profiles, ...ps}; render(); }
+}
+function render(){
+  const r = (location.hash || '#classifica').slice(1);
+  S.route = ['classifica','calendario','societa','mercato','svincolati','statistiche','lega'].includes(r) ? r : 'classifica';
+  document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+  $('#lname').textContent = S.settings?.name || 'Lega Carriera';
+  const ri = roundInfo(), mc = myClub(), nl = notifs(), unread = nl.filter(n => n.unread).length;
+  $('#meta').innerHTML = !S.settings && sb ? `<button class="tag" data-act="account">${S.me ? esc(S.myName || 'Account') + ' · Esci' : 'Accedi'}</button>` : S.settings ? `
+    <span class="tag">Stagione ${season()}</span>
+    ${ri.total ? `<span class="tag">${ri.done ? 'Stagione conclusa' : `Giornata ${ri.cur} di ${ri.total}`}</span>` : ''}
+    <span class="tag ${window_() ? 'open' : 'closed'}"><span class="dot"></span>Mercato ${window_() ? 'aperto' : 'chiuso'}</span>
+    ${mc ? `<span class="tag">${crest(mc)} ${esc(mc.name)}</span>` : ''}
+    <button class="tag" data-act="account">${S.me ? esc(S.myName || 'Account') + ' · Esci' : 'Accedi'}</button>
+    ${mc ? `<button class="tag" data-act="bell" aria-expanded="${S.notifOpen}">Notifiche${unread ? ` <span class="badge">${unread}</span>` : ''}</button>` : ''}` : '';
+  const mb = $('#mktbadge'); mb.hidden = !unread; mb.textContent = unread;
+  document.title = (unread ? `(${unread}) ` : '') + 'League Manager';
+  const ab = $('#aucbadge'), na = openAuctions().length; ab.hidden = !na; ab.textContent = na;
+  if ((S.route === 'mercato' || S.route === 'svincolati') && unread) markRead();
+  const main = $('#main');
+  if (S.state === 'nodb'){ main.innerHTML = panelEmpty('Archivio non raggiungibile', 'Il database della lega non risponde. Controlla la connessione e ricarica la pagina.'); return; }
+  if (S.state === 'loading' && !S.loaded.league){ main.innerHTML = panelEmpty('Apertura della sede', S.slow ? 'I dati della lega non rispondono ancora. Controlla la connessione: la pagina si aggiorna da sola appena arrivano.' : 'Sto caricando società, rose e calendario della lega…'); return; }
+  if (!S.settings){ main.innerHTML = viewSetup(); return; }
+  const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
+  const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
+  restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
+  main.innerHTML = roBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
+  if (restoreFocus) restoreFocus();
+}
+let restoreFocus = null;
+function roBanner(){
+  if (S.comm || S.state === 'loading' || (S.who === 'member' && myClub())) return '';
+  const msg = S.who === 'member'
+    ? 'Sei dentro, ma non alleni ancora nessuna società: vai su Lega e premi Prendi la panchina su un club libero.'
+    : 'Stai guardando come ospite. Premi Accedi in alto per entrare con il tuo account, prendere una panchina e partecipare.';
+  return `<div class="notice" style="margin-bottom:14px">${msg}</div>`;
+}
+
+function viewFree(){
+  const mc = myClub(), all = freeAgents(), fa = faFilter(all), {mins, step} = AUC();
+  const au = openAuctions().sort((a, b) => a.endsAt - b.endsAt);
+  const done = S.auctions.filter(a => a.status !== 'open').sort((a, b) => (b.closedTs || 0) - (a.closedTs || 0)).slice(0, 12);
+  return `${window_() ? '' : '<div class="notice">Mercato chiuso: niente nuove aste né rilanci finché il commissario non lo riapre.</div>'}
+  <section class="grid2"><div class="stack">
+    <div class="panel"><div class="ph"><h2>Aste in corso</h2><span class="sub">Durata ${mins} minuti · rilancio minimo ${fmtM(step)}</span></div>
+      ${au.length ? `<div class="list">${au.map(a => auctionRow(a, mc)).join('')}</div>` : '<p class="muted">Nessuna asta aperta. Scegli uno svincolato qui sotto e avvia un’asta con la tua offerta di partenza.</p>'}</div>
+    <div class="panel"><div class="ph"><h3>Lista svincolati</h3>${S.comm ? `<div class="row"><button class="btn sm" data-act="fa-add">Aggiungi svincolato</button><button class="btn sm" data-act="fa-import">Importa svincolati</button></div>` : ''}</div>
+      <div class="row filters"><input type="search" class="search" id="faq" placeholder="Cerca per nome, es. Wirtz" aria-label="Cerca svincolato per nome" value="${esc(S.faQ)}" autocomplete="off">
+        <select class="inl" id="fapos" aria-label="Filtra per ruolo"><option value="all">Tutti i ruoli</option>
+          <optgroup label="Reparto">${[['gk','Portieri'],['def','Difensori'],['mid','Centrocampisti'],['att','Attaccanti']].map(([v, l]) => `<option value="g:${v}"${S.faPos === 'g:' + v ? ' selected' : ''}>${l}</option>`).join('')}</optgroup>
+          <optgroup label="Ruolo">${POS.map(r => `<option value="p:${r}"${S.faPos === 'p:' + r ? ' selected' : ''}>${r}</option>`).join('')}</optgroup></select>
+        <span class="sub" id="facount">${fa.length} di ${all.length} giocatori</span></div>
+      <div id="fatable">
+      ${fa.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th></th></tr></thead><tbody>
+        ${fa.map(p => { const a = auctionFor(p.id); return `<tr><td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b></td><td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td><td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td>
+          <td class="r">${a ? `<span class="pill info">In asta · ${fmtM(a.highBid)}</span>` : (mc || S.comm) && window_() ? `<button class="btn sm primary" data-act="auc-start" data-id="${p.id}">Avvia asta</button>` : ''}
+          ${S.comm ? ` <button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button>${a ? '' : ` <button class="btn sm bad" data-act="fa-del" data-id="${p.id}">Rimuovi</button>`}` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+        : all.length ? '<p class="muted">Nessuno svincolato corrisponde alla ricerca. Prova un altro nome o un altro ruolo.</p>' : `<div class="empty"><strong>Nessuno svincolato</strong><span>${S.comm ? 'Aggiungi i giocatori svincolati della tua carriera su FC 27, uno alla volta o incollando un elenco con “Importa svincolati”.' : 'Il commissario non ha ancora inserito giocatori svincolati.'}</span></div>`}</div></div>
+  </div>
+  <aside class="stack">
+    <div class="panel"><h3>Come funziona l’asta</h3><p class="sub" style="max-width:60ch">Un allenatore avvia l’asta su uno svincolato con la sua offerta di partenza. Gli altri rilanciano di almeno ${fmtM(step)}. Come su Ultimate Team, un rilancio negli ultimi 30 secondi riporta il timer a 30 secondi, così chi viene superato ha sempre il tempo di rispondere. Ogni asta dura ${mins} minuti, uguale per tutti. Il commissario può mettere un giocatore all’asta senza offrire. Alla scadenza chi è in testa paga l’offerta e il giocatore entra in rosa con l’ingaggio indicato. Mentre sei in testa, quella cifra resta bloccata sul tuo budget.</p></div>
+    <div class="panel"><div class="ph"><h3>Aste concluse</h3></div>
+      ${done.length ? `<div class="list">${done.map(a => `<div class="li"><div class="main"><b>${esc(a.playerName)}</b><br><span class="sub">${a.status === 'closed' ? `al ${esc(club(a.highClubId)?.name || '—')} · ${(a.bids || []).length} offerte` : esc(a.reason || 'Annullata')}</span></div>
+        ${a.status === 'closed' ? `<span class="num">${fmtM(a.highBid)}</span>` : '<span class="pill neutral">Annullata</span>'}</div>`).join('')}</div>` : '<p class="muted">Nessuna asta conclusa.</p>'}</div>
+  </aside></section>`;
+}
+function auctionRow(a, mc){
+  const p = S.players.find(x => x.id === a.playerId), ms = a.endsAt - now(), me = mc && a.highClubId === mc.id, bids = a.bids || [];
+  const was = mc && !me && bids.some(b => b.c === mc.id);
+  return `<div class="li"><div class="main"><b>${esc(a.playerName)}</b> ${p ? `<span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <span class="sub">OVR ${p.ovr || '—'} · ${fmtW(p.wage)}</span>` : ''}<br>
+    <span class="pts num">${fmtM(a.highBid)}</span> <span class="sub">${me ? 'sei in testa' : a.highClubId ? 'in testa: ' + esc(club(a.highClubId)?.name || '—') : 'base d’asta, nessuna offerta'} · ${bids.length} ${bids.length === 1 ? 'offerta' : 'offerte'} · ${ms > 0 ? `termina tra <b class="cd num${ms < SNIPE ? ' hot' : ''}" data-end="${a.endsAt}">${timeLeft(ms)}</b>` : 'in chiusura'}</span></div>
+    <div class="row">${me ? '<span class="pill good">In testa</span>' : was ? '<span class="pill bad">Superato</span>' : ''}
+    ${mc && !me && ms > 0 && window_() ? `<button class="btn sm primary" data-act="bid" data-id="${a.id}">${a.highClubId ? 'Rilancia' : 'Offri'}</button>` : ''}
+    ${S.comm ? `<button class="btn sm ghost" data-act="auc-cancel" data-id="${a.id}">Annulla asta</button>` : ''}</div></div>`;
+}
+function notifPanel(nl, unread){
+  return `<div class="panel notif"><div class="ph"><h3>Notifiche di mercato</h3><div class="row">
+    ${unread ? '<button class="btn sm" data-act="notif-read">Segna come lette</button>' : ''}<a class="btn sm" href="#mercato">Vai al mercato</a><button class="btn sm ghost" data-act="bell">Chiudi</button></div></div>
+    ${nl.length ? `<div class="list">${nl.map(n => `<div class="li${n.unread ? ' unread' : ''}"><div class="main"><b>${esc(n.text)}</b></div><span class="sub">${day(n.ts)}</span></div>`).join('')}</div>`
+      : '<p class="muted">Nessuna notifica. Qui compaiono offerte ricevute, rilanci, offerte accettate o rifiutate, nuove aste e rilanci che ti superano.</p>'}</div>`;
+}
+const panelEmpty = (t, msg, btn='') => `<div class="panel"><div class="empty"><strong>${esc(t)}</strong><span>${msg}</span>${btn}</div></div>`;
+
+function viewSetup(){
+  if (S.comm) return panelEmpty('Fonda la lega', 'Scegli il nome del torneo, i budget di partenza e il regolamento. Poi ogni partecipante crea la propria società e la gestisce come nella modalità carriera allenatore.', '<button class="btn primary" data-act="settings">Crea la lega</button>');
+  return panelEmpty('Lega non ancora creata', 'Il commissario (chi ha creato questa pagina) deve prima impostare la lega. Torna qui appena lo ha fatto.');
+}
+
+function viewTable(){
+  const ri = roundInfo(), rows = standings(), n = rows.length;
+  const tbl = !S.clubs.length ? `<div class="empty"><strong>Nessuna società</strong><span>Vai su Lega e crea la tua società per entrare nel torneo.</span><a class="btn primary" href="#lega">Vai a Lega</a></div>` : `
+    <div class="tscroll"><table>
+      <thead><tr><th>#</th><th>Società</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">GF</th><th class="r">GS</th><th class="r">DR</th><th class="r">Pt</th><th>Forma</th></tr></thead>
+      <tbody>${rows.map((x, i) => `<tr class="${i === 0 && x.g ? 'z-top' : ''}${i === n-1 && n > 2 && x.g ? 'z-bot' : ''}">
+        <td class="pos">${i+1}</td><td>${clubLink(x.c, true)}</td>
+        <td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td>
+        <td class="r">${x.gf}</td><td class="r">${x.gs}</td><td class="r">${x.gf-x.gs > 0 ? '+' : ''}${x.gf-x.gs}</td>
+        <td class="r pts">${x.pt}</td><td><span class="form">${x.form.slice(-5).map(f => `<i class="${f}">${f}</i>`).join('') || '<span class="muted">—</span>'}</span></td></tr>`).join('')}</tbody>
+    </table></div>`;
+  const next = ri.cur ? seasonMatches().filter(m => m.round === ri.cur) : [];
+  const tr = [...S.transfers].sort((a, b) => b.ts - a.ts).slice(0, 6);
+  return `<section class="grid2">
+    <div class="panel"><div class="ph"><h2>Classifica</h2><span class="sub">Stagione ${season()} · ${ri.played} giornate giocate · 3 punti a vittoria</span></div>${tbl}</div>
+    <aside class="stack">
+      <div class="panel"><div class="ph"><h3>${ri.cur ? `Giornata ${ri.cur}` : ri.total ? 'Stagione conclusa' : 'Calendario'}</h3><a class="sub" href="#calendario">Tutto il calendario</a></div>
+        ${next.length ? next.map(fixture).join('') : `<p class="muted">${ri.total ? 'Tutte le partite sono state giocate. Il commissario può chiudere la stagione da Lega.' : 'Il calendario non è ancora stato generato.'}</p>`}</div>
+      <div class="panel"><div class="ph"><h3>Ultimi trasferimenti</h3><a class="sub" href="#mercato">Mercato</a></div>
+        ${tr.length ? `<div class="list">${tr.map(transferRow).join('')}</div>` : '<p class="muted">Nessuna operazione di mercato registrata.</p>'}</div>
+    </aside></section>`;
+}
+function fixture(m){
+  const H = club(m.homeId), A = club(m.awayId), can = S.comm, canLu = canManage(m.homeId) || canManage(m.awayId);
+  const ev = side => (m.events || []).filter(e => e.c === side && e.t === 'g').map(e => esc(e.n)).join(', ');
+  return `<div class="fx">
+    <div class="side h">${crest(H)}<span>${esc(H?.name || '—')}</span></div>
+    ${m.played ? `<span class="score">${m.hg} – ${m.ag}</span>` : `<span class="score tbd">vs</span>`}
+    <div class="side a">${crest(A)}<span>${esc(A?.name || '—')}</span></div>
+    ${(m.played && (ev(m.homeId) || ev(m.awayId))) || can ? `<div class="fxd"><span>${m.played ? ev(m.homeId) : ''}</span>
+      ${can ? `<button class="btn sm ${m.played ? 'ghost' : 'primary'}" data-act="result" data-id="${m.id}">${m.played ? 'Modifica' : 'Inserisci risultato'}</button>` : ''}
+      <span class="r">${m.played ? ev(m.awayId) : ''}</span></div>` : ''}
+    ${!m.played ? `<div class="fxd lurow"><span class="row">${luStatus(m, m.homeId)}${luStatus(m, m.awayId)}</span><span class="row">${canLu ? `<button class="btn sm" data-act="lineup" data-id="${m.id}">${[m.homeId, m.awayId].filter(canManage).some(x => lineupOf(m.id, x)) ? 'Modifica distinta' : 'Inserisci distinta'}</button>` : ''}<button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Vedi distinte</button></span></div>`
+      : (luDone(m.id, m.homeId) || luDone(m.id, m.awayId)) ? `<div class="fxd lurow"><span></span><button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Distinte</button></div>` : ''}
+  </div>`;
+}
+function transferRow(t){
+  const m = t.mode && t.mode !== 'transfer' ? MODE[t.mode] : '';
+  return `<div class="li"><div class="main"><b>${esc(t.playerName)}</b> <span class="muted">${esc(t.fromLabel)} → ${esc(t.toLabel)}</span>${m ? ` <span class="pill info">${esc(m)}</span>` : ''}${t.buyout ? ` <span class="sub">riscatto ${fmtM(t.buyout)}</span>` : ''}</div><span class="num">${t.fee ? fmtM(t.fee) : t.mode === 'return' ? '—' : isLoan(t.mode) ? 'Gratuito' : 'Parametro zero'}</span><span class="sub">${day(t.ts)}</span></div>`;
+}
+
+function viewFixtures(){
+  const ri = roundInfo();
+  if (!ri.total) return panelEmpty('Calendario da generare', 'Quando tutte le società sono iscritte, il commissario genera il calendario di andata e ritorno da Lega.', S.comm ? '<a class="btn primary" href="#lega">Vai a Lega</a>' : '');
+  const r = S.round && S.round <= ri.total ? S.round : (ri.cur || ri.total);
+  const ms = seasonMatches().filter(m => m.round === r);
+  const half = ri.total / 2;
+  const chips = Array.from({length: ri.total}, (_, i) => i + 1).map(x => {
+    const done = seasonMatches().filter(m => m.round === x).every(m => m.played);
+    return `<button class="chip${done ? ' done' : ''}" aria-pressed="${x === r}" data-act="round" data-id="${x}">${x}</button>`; }).join('');
+  return `<div class="panel"><div class="ph"><h2>Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="sub">Stagione ${season()} · ${ri.total} giornate</span></div>
+    <div class="chips" role="group" aria-label="Scegli giornata">${chips}</div>
+    <div style="margin-top:12px">${ms.map(fixture).join('')}</div>
+    <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
+}
+
+function viewClub(){
+  if (!S.clubs.length) return panelEmpty('Nessuna società', 'Crea la tua società dalla sezione Lega.', '<a class="btn primary" href="#lega">Vai a Lega</a>');
+  const c = club(S.viewClub) || myClub() || S.clubs[0];
+  S.viewClub = c.id;
+  const can = S.comm, canMkt = canManage(c.id) && (S.comm || window_()), mine = myClub(), b = budget(c), wu = wageUsed(c.id), wb = c.wage0 || 0;
+  const pos = standings().findIndex(x => x.c.id === c.id) + 1;
+  const ps = pstats('season'), sus = suspended(), rs = roster(c.id);
+  const objs = (c.objectives || []).filter(o => (o.season || 1) === season());
+  const led = S.ledger.filter(l => l.clubId === c.id).sort((a, b2) => b2.ts - a.ts);
+  return `<div class="panel">
+    <div class="clubhead"><div class="who">${crest(c, true)}<div><h2>${esc(c.name)}</h2><span class="sub">${esc(mgrName(c))} · ${rs.length}/${S.settings.maxSquad || 30} giocatori</span></div></div>
+      <div class="row"><select class="inl" id="clubsel" data-act="clubsel" aria-label="Scegli società">${S.clubs.map(x => `<option value="${x.id}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+      ${S.comm ? `<button class="btn sm" data-act="adjust" data-id="${c.id}">Rettifica budget</button>` : ''}</div></div>
+    <div class="kpis" style="margin-top:16px">
+      <div class="kpi"><div class="l">Budget trasferimenti</div><div class="v num${b < 0 ? ' neg' : ''}">${fmtM(b)}</div></div>
+      <div class="kpi"><div class="l">Monte ingaggi</div><div class="v num">${fmtW(wu)}</div><div class="sub">limite ${fmtW(wb)}</div><div class="bar"><i class="${wu > wb ? 'over' : ''}" style="width:${Math.min(100, wb ? wu / wb * 100 : 0)}%"></i></div></div>
+      <div class="kpi"><div class="l">Valore rosa</div><div class="v num">${fmtM(squadValue(c.id))}</div></div>
+      <div class="kpi"><div class="l">Posizione</div><div class="v num">${pos ? pos + '°' : '—'}</div><div class="sub">su ${S.clubs.length} società</div></div>
+    </div></div>
+  <section class="grid2">
+    <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
+      ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
+      ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
+        <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b>${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
+        <td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td>
+        <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
+        <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
+        <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ' <span class="pill warn">Infortunato</span>' : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
+        <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm bad" data-act="sell" data-id="${p.id}">Cedi o presta</button>`
+            : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
+          : mine && window_() && !p.loan ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>` : ''}</td></tr>`; }).join('')}
+      </tbody></table></div>` : `<div class="empty"><strong>Rosa vuota</strong><span>${can ? 'Copia la rosa dalla tua carriera su FC 27: aggiungi i giocatori uno per uno oppure incolla l’elenco con “Importa rosa”.' : 'Il commissario non ha ancora caricato la rosa.'}</span></div>`}
+    </div>
+    <aside class="stack">
+      ${loanedOut(c.id).length ? `<div class="panel"><div class="ph"><h3>In prestito altrove</h3><span class="sub">${loanedOut(c.id).length} giocatori</span></div><div class="list">
+        ${loanedOut(c.id).map(p => `<div class="li"><div class="main"><b>${esc(p.name)}</b> <span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span><br><span class="sub">al ${esc(club(p.clubId)?.name || p.loan.borrowerLabel || 'club CPU')} · ${loanNote(p.loan)}</span></div><span class="pill info">${esc(MODE[p.loan.type] || 'Prestito')}</span></div>`).join('')}</div></div>` : ''}
+      <div class="panel"><div class="ph"><h3>Obiettivi della dirigenza</h3>${can ? `<button class="btn sm" data-act="obj-add" data-id="${c.id}">Aggiungi</button>` : ''}</div>
+        ${objs.length ? `<div class="list">${objs.map(o => `<div class="li"><div class="main"><span class="sub">${esc(o.kind)}</span><br><b>${esc(o.text)}</b><br><span class="sub">Premio ${fmtM(o.reward || 0)} · Penalità ${fmtM(o.penalty || 0)}</span></div>
+          <div class="row">${o.status === 'done' ? '<span class="pill good">Raggiunto</span>' : o.status === 'failed' ? '<span class="pill bad">Fallito</span>' : '<span class="pill info">In corso</span>'}
+          ${S.comm && o.status === 'open' ? `<button class="btn sm good" data-act="obj-done" data-id="${c.id}" data-o="${o.id}">Raggiunto</button><button class="btn sm bad" data-act="obj-fail" data-id="${c.id}" data-o="${o.id}">Fallito</button>` : ''}
+          ${S.comm ? `<button class="x" title="Elimina obiettivo" aria-label="Elimina obiettivo" data-act="obj-del" data-id="${c.id}" data-o="${o.id}">×</button>` : ''}</div></div>`).join('')}</div>`
+          : '<p class="muted">Nessun obiettivo per questa stagione. Come nella carriera, fissa obiettivi di piazzamento, sviluppo dei giovani e finanze: il commissario li valuta a fine stagione e assegna premio o penalità sul budget.</p>'}
+      </div>
+      <div class="panel"><div class="ph"><h3>Movimenti di cassa</h3><span class="sub">Budget iniziale ${fmtM(c.budget0 || 0)}</span></div>
+        ${led.length ? `<div class="list">${led.slice(0, 12).map(l => `<div class="li"><div class="main">${esc(l.reason)}<br><span class="sub">${day(l.ts)} · stagione ${l.season || 1}</span></div><span class="amt num ${l.amount >= 0 ? 'pos' : 'neg'}">${l.amount >= 0 ? '+' : ''}${fmtM(l.amount)}</span></div>`).join('')}</div>` : '<p class="muted">Nessun movimento.</p>'}
+      </div>
+    </aside></section>`;
+}
+
+function offerRow(o, mineId){
+  const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId), Se = club(o.sellerId);
+  const turn = o.by === 'buyer' ? o.sellerId : o.buyerId;
+  const myTurn = o.status === 'open' && (S.comm || turn === mineId) && canManage(turn);
+  const iWait = o.status === 'open' && !myTurn && canManage(o.by === 'buyer' ? o.buyerId : o.sellerId);
+  const st = {open: o.by === 'buyer' ? 'Offerta' : 'Controproposta', accepted:'Accettata', rejected:'Rifiutata', withdrawn:'Ritirata', expired:'Scaduta'}[o.status];
+  const cls = {open:'info', accepted:'good', rejected:'bad', withdrawn:'neutral', expired:'neutral'}[o.status];
+  return `<div class="li"><div class="main"><b>${esc(p?.name || o.playerName)}</b> <span class="muted">${esc(Se?.name || '—')} → ${esc(B?.name || '—')}</span><br>
+    <span class="pill info">${esc(MODE[o.type || 'transfer'])}</span> <span class="num">${fmtM(o.fee)}</span> · <span class="num">${fmtW(o.wage)}</span>${isLoan(o.type) ? ` · <span class="sub">fino a fine stagione ${season() + (o.dur || 1) - 1}${o.buyout ? `, riscatto ${fmtM(o.buyout)}` : ''}${(o.wagePct ?? 100) < 100 ? `, ingaggio al ${o.wagePct}%` : ''}</span>` : ''}${o.note ? ` · <span class="muted">${esc(o.note)}</span>` : ''}</div>
+    <div class="row"><span class="pill ${cls}">${st}</span>
+    ${myTurn ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
+    ${iWait ? `<span class="sub">in attesa di risposta</span><button class="btn sm ghost" data-act="offer-withdraw" data-id="${o.id}">Ritira</button>` : ''}</div></div>`;
+}
+function viewMarket(){
+  const mc = myClub(), mid = mc?.id;
+  const open = S.offers.filter(o => o.status === 'open').sort((a, b) => b.ts - a.ts);
+  const mineOpen = open.filter(o => o.buyerId === mid || o.sellerId === mid);
+  const others = open.filter(o => !mineOpen.includes(o));
+  const closed = S.offers.filter(o => o.status !== 'open').sort((a, b) => b.ts - a.ts).slice(0, 10);
+  const pool = S.players.filter(p => p.clubId && p.clubId !== mid && !p.loan && (S.mktPos === 'all' || GRP[p.pos] === S.mktPos)).sort((a, b) => (b.ovr||0) - (a.ovr||0)).slice(0, 40);
+  const tr = [...S.transfers].sort((a, b) => b.ts - a.ts);
+  return `${window_() ? '' : '<div class="notice">Sessione di mercato chiusa: le trattative ripartono quando il commissario riapre la finestra.</div>'}
+  <section class="grid2">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h3>Le tue trattative</h3><span class="sub">${mc ? esc(mc.name) : 'Non alleni nessuna società'}</span></div>
+        ${mineOpen.length ? `<div class="list">${mineOpen.map(o => offerRow(o, mid)).join('')}</div>` : `<p class="muted">${mc ? 'Nessuna trattativa aperta. Apri una società rivale o usa la lista qui sotto per fare un’offerta.' : 'Crea o prendi una società da Lega per trattare.'}</p>`}
+        ${S.comm && others.length ? `<h3 style="margin-top:14px">Altre trattative aperte</h3><div class="list">${others.map(o => offerRow(o, mid)).join('')}</div>` : ''}
+      </div>
+      <div class="panel"><div class="ph"><h3>Osservatori</h3>
+        <select class="inl" id="mktpos" data-act="mktpos" aria-label="Filtra per reparto">${[['all','Tutti i ruoli'],['gk','Portieri'],['def','Difensori'],['mid','Centrocampisti'],['att','Attaccanti']].map(([v, l]) => `<option value="${v}"${S.mktPos === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        ${pool.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th>Società</th><th class="r">OVR</th><th class="r">Età</th><th class="r">Valore</th><th></th></tr></thead><tbody>
+        ${pool.map(p => `<tr><td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b></td><td>${clubLink(club(p.clubId))}</td><td class="r ovr">${p.ovr || '—'}</td><td class="r">${ageOf(p) || '—'}</td><td class="r">${fmtM(p.value || 0)}</td>
+          <td class="r">${mc && window_() ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Offerta</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : '<p class="muted">Nessun giocatore delle altre società da mostrare.</p>'}
+      </div>
+    </div>
+    <aside class="stack">
+      <div class="panel"><div class="ph"><h3>Registro trasferimenti</h3><span class="sub">${tr.length} operazioni</span></div>
+        ${tr.length ? `<div class="list">${tr.slice(0, 25).map(transferRow).join('')}</div>` : '<p class="muted">Ancora nessuna operazione.</p>'}</div>
+      <div class="panel"><div class="ph"><h3>Trattative chiuse</h3></div>
+        ${closed.length ? `<div class="list">${closed.map(o => offerRow(o, mid)).join('')}</div>` : '<p class="muted">Nessuna.</p>'}</div>
+    </aside></section>`;
+}
+
+function viewStats(){
+  const st = Object.values(pstats(S.statScope));
+  const tbl = (title, key, label) => { const rows = st.filter(o => o[key] > 0).sort((a, b) => b[key] - a[key] || a.n.localeCompare(b.n)).slice(0, 15);
+    return `<div class="panel"><div class="ph"><h3>${title}</h3></div>${rows.length ? `<div class="tscroll"><table><thead><tr><th>#</th><th>Giocatore</th><th>Società</th><th class="r">${label}</th></tr></thead><tbody>
+      ${rows.map((o, i) => `<tr><td class="pos">${i+1}</td><td><b>${esc(o.n)}</b></td><td>${clubLink(club(o.c))}</td><td class="r pts">${o[key]}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun dato ancora.</p>'}</div>`; };
+  const cards = st.filter(o => o.y || o.r).sort((a, b) => (b.r*3 + b.y) - (a.r*3 + a.y)).slice(0, 15);
+  return `<div class="row"><span class="lbl">Periodo</span><select class="inl" id="statscope" data-act="statscope" aria-label="Periodo statistiche"><option value="season"${S.statScope === 'season' ? ' selected' : ''}>Stagione ${season()}</option><option value="all"${S.statScope === 'all' ? ' selected' : ''}>Tutte le stagioni</option></select></div>
+  <section class="grid2"><div class="stack">${tbl('Classifica marcatori', 'g', 'Gol')}${tbl('Classifica assist', 'a', 'Assist')}</div>
+  <aside class="stack"><div class="panel"><div class="ph"><h3>Disciplina</h3></div>${cards.length ? `<div class="tscroll"><table><thead><tr><th>Giocatore</th><th>Società</th><th class="r"><span class="card-y"></span></th><th class="r"><span class="card-r"></span></th></tr></thead><tbody>
+    ${cards.map(o => `<tr><td><b>${esc(o.n)}</b></td><td>${clubLink(club(o.c))}</td><td class="r">${o.y}</td><td class="r">${o.r}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun cartellino.</p>'}</div></aside></section>`;
+}
+
+function viewLeague(){
+  const s = S.settings, mc = myClub(), ri = roundInfo();
+  const anyPlayed = seasonMatches().some(m => m.played);
+  const prizes = (s.prizes || []).map((p, i) => `${i+1}° ${fmtM(p)}`).join(' · ');
+  return `<section class="grid2">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
+        ${S.clubs.length ? `<div class="list">${S.clubs.map(c => `<div class="li"><div class="main">${clubLink(c, true)}</div>
+          <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
+          <div class="row">${!c.managerId && !mc ? `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>` : ''}
+          ${S.comm ? `<button class="btn sm ghost" data-act="club-edit" data-id="${c.id}">Modifica</button>` : ''}
+          ${c.managerId && S.comm ? `<button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">${c.managerId === S.me ? 'Lascia' : 'Libera panchina'}</button>` : ''}
+          ${S.comm ? `<button class="btn sm bad" data-act="club-del" data-id="${c.id}">Elimina</button>` : ''}</div></div>`).join('')}</div>`
+          : `<div class="empty"><strong>Ancora nessuna società</strong><span>${S.comm ? 'Crea le società della lega: poi ogni partecipante prende la sua panchina.' : 'Il commissario non ha ancora creato le società.'}</span></div>`}
+      </div>
+      <div class="panel"><div class="ph"><h3>Regolamento</h3>${S.comm ? '<button class="btn sm" data-act="settings">Modifica impostazioni</button>' : ''}</div>
+        <p class="rules">${esc(s.rules || 'Nessun regolamento scritto.')}</p></div>
+    </div>
+    <aside class="stack">
+      <div class="panel"><div class="ph"><h3>Stagione ${season()}</h3></div>
+        <div class="list">
+          <div class="li"><span>Giornate</span><b class="num">${ri.total ? `${ri.played}/${ri.total}` : 'calendario da generare'}</b></div>
+          <div class="li"><span>Budget standard</span><b class="num">${fmtM(s.startBudget)}</b></div>
+          <div class="li"><span>Monte ingaggi standard</span><b class="num">${fmtW(s.startWage)}</b></div>
+          <div class="li"><span>Rosa massima</span><b class="num">${s.maxSquad} giocatori</b></div>
+          <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · max ${maxSubs()} cambi</b></div>
+          <div class="li"><span>Squalifica</span><b>rosso o ${s.yellowLimit}° giallo</b></div>
+          <div class="li"><span>Aste svincolati</span><b class="num">${AUC().mins} min · rilancio ${fmtM(AUC().step)}</b></div>
+          <div class="li"><div class="main"><span>Premi piazzamento</span><br><span class="sub num">${prizes || 'nessuno'}</span></div></div>
+        </div>
+        ${S.comm ? `<div class="row" style="margin-top:14px">
+          <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
+          <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
+          <button class="btn sm primary" data-act="close-season" ${ri.done ? '' : 'disabled'}>Chiudi stagione</button></div>
+          <p class="sub">${anyPlayed ? 'Il calendario non si può rigenerare dopo la prima partita giocata.' : S.clubs.length < 2 ? 'Servono almeno 2 società per il calendario.' : 'Il calendario mescola le società e crea andata e ritorno.'} La stagione si chiude quando tutte le partite sono giocate: premi di piazzamento sul budget, età +1, nuovo calendario.</p>` : '<p class="sub">Calendario, mercato e chiusura stagione li gestisce il commissario.</p>'}
+      </div>
+      <div class="panel"><h3>Come funziona</h3>
+        <p class="sub" style="max-width:60ch">Ognuno gioca la propria carriera allenatore su FC 27 e riporta qui rosa, risultati e mercato. Acquisti e prestiti tra partecipanti passano da offerte e rilanci. I giocatori svincolati si prendono all’asta: chi offre di più alla scadenza se li aggiudica. Le cessioni ai club della CPU si registrano con la cifra vista in gioco. Il budget scende e sale da solo con ogni operazione.</p></div>
+    </aside></section>`;
+}
+
+/* ---------- modal ---------- */
+const dlg = $('#dlg');
+function openModal(title, body, onSubmit, label = 'Salva', danger){
+  dlg.innerHTML = `<form id="mform" novalidate><h3>${esc(title)}</h3><div class="mbody">${body}</div><p class="merr" id="merr" hidden></p>
+    <div class="mact"><button type="button" class="btn ghost" id="mcancel">Annulla</button><button class="btn ${danger ? 'bad' : 'primary'}" type="submit" id="mok">${esc(label)}</button></div></form>`;
+  const f = $('#mform');
+  $('#mcancel').onclick = () => dlg.close();
+  f.onsubmit = async e => { e.preventDefault(); const ok = $('#mok'); ok.disabled = true; $('#merr').hidden = true;
+    try { await onSubmit(new FormData(f), f); dlg.close(); } catch (err){ $('#merr').textContent = err.message || 'Operazione non riuscita. Riprova.'; $('#merr').hidden = false; } finally { ok.disabled = false; } };
+  dlg.showModal(); return f;
+}
+const fld = (id, label, attrs = '', hint = '', full) => `<div class="f${full ? ' full' : ''}"><label for="${id}">${label}</label><input id="${id}" name="${id}" ${attrs}>${hint ? `<span class="hint">${hint}</span>` : ''}</div>`;
+const sel = (id, label, opts, val, full) => `<div class="f${full ? ' full' : ''}"><label for="${id}">${label}</label><select id="${id}" name="${id}">${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(val) ? ' selected' : ''}>${esc(l)}</option>`; }).join('')}</select></div>`;
+const num = (fd, k) => { const v = parseFloat(String(fd.get(k) ?? '').replace(',', '.')); return isNaN(v) ? 0 : v; };
+const fail = msg => { throw new Error(msg); };
+function toast(msg, ms = 2600){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
+function confirmBox(title, msg, label, fn){ openModal(title, `<p>${msg}</p>`, fn, label, true); }
+
+/* ---------- writes ---------- */
+const now = () => Date.now();
+const ledger = (clubId, amount, reason) => db.collection('ledger').add({clubId, amount, reason, ts: now(), season: season()});
+const logTransfer = t => db.collection('transfers').add({ts: now(), season: season(), ...t});
+
+function settingsModal(){
+  const s = S.settings || {name:'', startBudget:50*M, startWage:800*K, maxSquad:30, yellowLimit:3, prizes:[30,20,15,10,8,6,4,2].map(x => x*M),
+    rules:'1. Ogni partecipante gioca la carriera allenatore su FC 27 con la propria società.\n2. Si gioca andata e ritorno; vittoria 3 punti, pareggio 1.\n3. Il risultato va inserito entro 48 ore dalla partita.\n4. I nuovi giocatori arrivano solo da trattative tra partecipanti (acquisto o prestito) o dalle aste degli svincolati. Le cessioni ai club CPU vanno registrate con la cifra incassata in gioco.\n5. Il monte ingaggi non può superare il limite della società.\n6. Rosso o 3 gialli = una giornata di squalifica.\n\nCOME FUNZIONA IL MONTE INGAGGI\nIl monte ingaggi è il tetto massimo che ogni società può spendere ogni settimana in stipendi, come il budget salari della carriera su FC 27. È separato dal budget trasferimenti.\n- La somma degli ingaggi di tutti i giocatori in rosa non può superare il limite della propria società.\n- Ogni acquisto, prestito o asta vinta viene bloccato se l’ingaggio del nuovo giocatore fa sforare il limite.\n- Nei prestiti conta solo la parte di ingaggio a carico di ciascun club, secondo la percentuale concordata.\n- Nelle aste, mentre sei in testa, l’ingaggio del giocatore è già considerato nel tuo monte ingaggi.\n- Gli stipendi non vengono scalati dal budget trasferimenti: il monte ingaggi è solo un limite.\n\nCOME FUNZIONANO LE ASTE DEGLI SVINCOLATI\n- Ogni allenatore può avviare un’asta su un giocatore svincolato con un’offerta di partenza.\n- La base d’asta è il valore di mercato del giocatore: non si può offrire di meno.\n- Ogni asta dura 15 minuti, uguale per tutti.\n- Gli altri rilanciano di almeno il rilancio minimo indicato nella scheda Svincolati.\n- Come su Ultimate Team, un rilancio negli ultimi 30 secondi riporta il timer a 30 secondi.\n- Alla scadenza chi è in testa paga la sua offerta e il giocatore entra in rosa con l’ingaggio indicato.'};
+  openModal(S.settings ? 'Impostazioni della lega' : 'Crea la lega', `<div class="fgrid">
+    ${fld('name', 'Nome del torneo', `required maxlength="40" value="${esc(s.name)}" placeholder="Es. Lega degli Amici"`, '', true)}
+    ${fld('startBudget', 'Budget trasferimenti standard (milioni €)', `type="number" min="0" step="0.5" value="${s.startBudget / M}"`)}
+    ${fld('startWage', 'Monte ingaggi standard (migliaia €/settimana)', `type="number" min="0" step="10" value="${s.startWage / K}"`)}
+    ${fld('maxSquad', 'Rosa massima', `type="number" min="11" max="52" value="${s.maxSquad}"`)}
+    ${fld('yellowLimit', 'Gialli per la squalifica', `type="number" min="1" max="10" value="${s.yellowLimit}"`)}
+    ${fld('maxSubs', 'Cambi massimi in distinta', `type="number" min="0" max="11" value="${s.maxSubs ?? 5}"`)}
+    <div class="f"><span class="lbl">Distinta di gara</span><label><input type="checkbox" name="lureq" ${s.lineupRequired !== false ? 'checked' : ''}> Obbligatoria prima di inserire il risultato</label></div>
+    ${fld('auctionStep', 'Rilancio minimo alle aste (milioni €)', `type="number" min="0" step="0.1" value="${(s.auctionStep ?? 0.5 * M) / M}"`)}
+    ${fld('prizes', 'Premi piazzamento (milioni €, dal 1° in giù)', `value="${esc((s.prizes || []).map(p => p / M).join(', '))}"`, 'Separati da virgola. Vengono accreditati alla chiusura della stagione.', true)}
+    <div class="f full"><label for="rules">Regolamento</label><textarea id="rules" name="rules" maxlength="4000">${esc(s.rules)}</textarea></div></div>`,
+    async fd => {
+      const name = String(fd.get('name')).trim() || fail('Dai un nome al torneo.');
+      const data = {name, startBudget: num(fd, 'startBudget') * M, startWage: num(fd, 'startWage') * K, maxSquad: Math.round(num(fd, 'maxSquad')) || 30,
+        yellowLimit: Math.max(1, Math.round(num(fd, 'yellowLimit')) || 3),
+        maxSubs: Math.max(0, Math.min(11, Math.round(num(fd, 'maxSubs')))), lineupRequired: fd.get('lureq') === 'on',
+        auctionStep: Math.max(0, num(fd, 'auctionStep')) * M,
+        prizes: String(fd.get('prizes')).split(/[,;]/).map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
+        rules: String(fd.get('rules')).slice(0, 4000)};
+      if (S.settings) await db.doc('league/settings').update(data);
+      else await db.doc('league/settings').set({...data, season: 1, windowOpen: true, createdAt: now()});
+      toast('Impostazioni salvate');
+    }, S.settings ? 'Salva' : 'Crea la lega');
+}
+
+function clubModal(c){
+  const s = S.settings, isNew = !c;
+  c = c || {name:'', short:'', color:'#1c4fd6', budget0: s.startBudget, wage0: s.startWage};
+  openModal(isNew ? 'Nuova società' : 'Modifica società', `<div class="fgrid">
+    ${fld('cname', 'Nome della società', `required maxlength="32" value="${esc(c.name)}" placeholder="Es. AC Milan"`, '', true)}
+    ${fld('cshort', 'Sigla (3 lettere)', `required maxlength="3" value="${esc(c.short)}" placeholder="MIL"`)}
+    ${fld('ccolor', 'Colore sociale', `type="color" value="${hexOk(c.color)}"`)}
+    ${fld('cbudget', 'Budget trasferimenti iniziale (milioni €)', `type="number" min="0" step="0.5" value="${c.budget0 / M}"`, 'Usa quello che FC 27 assegna al tuo club, o lo standard della lega.')}
+    ${fld('cwage', 'Monte ingaggi (migliaia €/settimana)', `type="number" min="0" step="10" value="${c.wage0 / K}"`)}
+    ${isNew && S.comm && myClub() ? '' : isNew && S.comm ? `<div class="f full"><label><input type="checkbox" id="cmine" name="cmine" checked> Alleno io questa società</label></div>` : ''}</div>`,
+    async fd => {
+      const name = String(fd.get('cname')).trim() || fail('Scrivi il nome della società.');
+      const short = (String(fd.get('cshort')).trim() || name.slice(0, 3)).toUpperCase();
+      if (S.clubs.some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail('Esiste già una società con questo nome.');
+      const data = {name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K};
+      if (isNew){
+        const manage = S.comm ? (!myClub() && fd.get('cmine') === 'on') : true;
+        if (manage && !S.me) fail('Serve un account con accesso per allenare una società.');
+        await db.collection('clubs').add({...data, managerId: manage ? S.me : null, objectives: [], createdAt: now()});
+        toast(`${name} è iscritta alla lega`);
+      } else { await db.doc('clubs/' + c.id).update(data); toast('Società aggiornata'); }
+    }, isNew ? 'Iscrivi società' : 'Salva');
+}
+
+function playerFields(p = {}){
+  return `<div class="fgrid">
+    ${fld('pname', 'Nome', `required maxlength="40" value="${esc(p.name || '')}"`, '', true)}
+    ${sel('ppos', 'Ruolo', POS, p.pos || 'CC')}
+    ${fld('page', 'Età', `type="number" min="15" max="45" value="${p.age ? ageOf(p) : ''}"`)}
+    ${fld('povr', 'Valutazione (OVR)', `type="number" min="40" max="99" value="${p.ovr || ''}"`)}
+    ${fld('ppot', 'Potenziale (POT)', `type="number" min="40" max="99" value="${p.pot || ''}"`)}
+    ${fld('pvalue', 'Valore di mercato (milioni €)', `type="number" min="0" step="0.1" value="${p.value ? p.value / M : ''}"`)}
+    ${fld('pwage', 'Ingaggio (migliaia €/settimana)', `type="number" min="0" step="0.5" value="${p.wage ? p.wage / K : ''}"`)}</div>`;
+}
+const readPlayer = fd => ({name: String(fd.get('pname')).trim() || fail('Scrivi il nome del giocatore.'), pos: String(fd.get('ppos')),
+  age: Math.round(num(fd, 'page')), ageSeason: season(), ovr: Math.round(num(fd, 'povr')), pot: Math.round(num(fd, 'ppot')), value: num(fd, 'pvalue') * M, wage: num(fd, 'pwage') * K});
+function squadRoom(cid, add = 1){ if (roster(cid).length + add > (S.settings.maxSquad || 30)) fail(`Rosa piena: il limite è ${S.settings.maxSquad} giocatori.`); }
+
+function addPlayer(cid){ openModal(cid ? 'Aggiungi giocatore' : 'Aggiungi svincolato', playerFields() + `<p class="sub">${cid ? 'Per i giocatori già in rosa all’inizio della carriera. I nuovi arrivi passano dalle trattative o dalle aste degli svincolati, così il budget si aggiorna.' : 'Il giocatore entra nella lista svincolati: ogni allenatore potrà avviare un’asta.'}</p>`,
+  async fd => { if (cid) squadRoom(cid); await db.collection('players').add({...readPlayer(fd), clubId: cid, injured: false}); toast('Giocatore aggiunto'); }, 'Aggiungi'); }
+function editPlayer(p){ openModal('Modifica giocatore', playerFields(p) + `<div class="f"><label><input type="checkbox" id="pinj" name="pinj" ${p.injured ? 'checked' : ''}> Infortunato</label></div>`,
+  async fd => { await db.doc('players/' + p.id).update({...readPlayer(fd), injured: fd.get('pinj') === 'on'}); toast('Giocatore aggiornato'); }); }
+function importPlayers(cid){
+  openModal(cid ? 'Importa rosa' : 'Importa svincolati', `<div class="f full"><label for="bulk">Un giocatore per riga</label><textarea id="bulk" name="bulk" style="min-height:200px" placeholder="Mike Maignan; POR; 87; 87; 31; 38; 140&#10;Rafael Leão; AS; 86; 88; 27; 75; 175"></textarea>
+    <span class="hint">Ordine: Nome; Ruolo; OVR; POT; Età; Valore (milioni €); Ingaggio (migliaia €/sett). Separatore punto e virgola o tabulazione, così puoi incollare da un foglio di calcolo. Ruoli: ${POS.join(' ')}.</span></div>`,
+    async fd => {
+      const lines = String(fd.get('bulk')).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!lines.length) fail('Incolla almeno una riga.');
+      const rows = lines.map((l, i) => { const c = l.split(/\t|;/).map(x => x.trim()); const pos = (c[1] || '').toUpperCase();
+        if (!c[0]) fail(`Riga ${i+1}: manca il nome.`); if (!POS.includes(pos)) fail(`Riga ${i+1}: ruolo “${c[1] || ''}” non valido.`);
+        const n = x => parseFloat(String(x || '').replace(',', '.')) || 0;
+        return {name: c[0], pos, ovr: Math.round(n(c[2])), pot: Math.round(n(c[3])), age: Math.round(n(c[4])), ageSeason: season(), value: n(c[5]) * M, wage: n(c[6]) * K, clubId: cid, injured: false}; });
+      if (cid) squadRoom(cid, rows.length);
+      for (let i = 0; i < rows.length; i += 8) await Promise.all(rows.slice(i, i + 8).map(r => db.collection('players').add(r)));
+      toast(`${rows.length} giocatori importati`);
+    }, 'Importa');
+}
+/* transfer type fields: definitivo / prestito secco / con diritto / con obbligo */
+function loanFields(o = {}, allowed = Object.keys(LOAN)){
+  return `<div class="fgrid">${sel('ltype', 'Tipo di operazione', Object.entries(LOAN).filter(([k]) => allowed.includes(k)), o.type || allowed[0], true)}
+    <div class="f" data-show="loan"><label for="ldur">Durata</label><select id="ldur" name="ldur"><option value="1">Fino a fine stagione ${season()}</option><option value="2"${o.dur === 2 ? ' selected' : ''}>Fino a fine stagione ${season() + 1}</option></select></div>
+    <div class="f" data-show="loan"><label for="lpct">Ingaggio pagato da chi riceve (%)</label><input id="lpct" name="lpct" type="number" min="0" max="100" step="5" value="${o.wagePct ?? 100}"></div>
+    <div class="f full" data-show="buyout"><label for="lbuy">Prezzo di riscatto (milioni €)</label><input id="lbuy" name="lbuy" type="number" min="0" step="0.1" value="${(o.buyout || 0) / M}">
+      <span class="hint">Con il diritto, chi riceve il giocatore può riscattarlo quando vuole a mercato aperto. Con l’obbligo, il riscatto scatta da solo alla fine del prestito.</span></div></div>`;
+}
+function wireLoan(f, feeLoan, feeDef){
+  const s = f.querySelector('#ltype'), fl = f.querySelector('label[for="fee"]');
+  const upd = () => { const t = s.value;
+    f.querySelectorAll('[data-show="loan"]').forEach(e => e.hidden = !isLoan(t));
+    f.querySelectorAll('[data-show="buyout"]').forEach(e => e.hidden = !(t === 'loan-option' || t === 'loan-obligation'));
+    if (fl) fl.textContent = isLoan(t) ? feeLoan : feeDef; };
+  s.onchange = upd; upd();
+}
+function readLoan(fd){
+  const type = String(fd.get('ltype') || 'transfer');
+  if (!isLoan(type)) return {type};
+  return {type, dur: Math.round(num(fd, 'ldur')) === 2 ? 2 : 1, wagePct: Math.max(0, Math.min(100, Math.round(num(fd, 'lpct')))), buyout: type === 'loan' ? 0 : num(fd, 'lbuy') * M};
+}
+const loanDoc = (L, ownerClubId, ownerLabel, extra = {}) => ({type: L.type, untilSeason: season() + (L.dur || 1) - 1, buyout: L.buyout || 0, wagePct: L.wagePct ?? 100, ownerClubId, ownerLabel, ...extra});
+
+function cpuBuy(cid){
+  const c = club(cid);
+  const f = openModal('Operazione con club CPU', loanFields() + playerFields() + `<div class="fgrid">${fld('from', 'Club di provenienza', 'required maxlength="40" placeholder="Es. Benfica"')}${fld('fee', 'Prezzo pagato (milioni €)', 'type="number" min="0" step="0.1" value="0"')}</div>
+    <p class="sub">Budget disponibile: <b class="num">${fmtM(budget(c))}</b> · monte ingaggi libero: <b class="num">${fmtW((c.wage0 || 0) - wageUsed(cid))}</b></p>`,
+    async fd => {
+      if (!window_()) fail('Il mercato è chiuso.');
+      const p = readPlayer(fd), L = readLoan(fd), fee = num(fd, 'fee') * M, from = String(fd.get('from')).trim() || fail('Indica il club di provenienza.');
+      if (fee > budget(c)) fail('Budget insufficiente per questa operazione.');
+      if (wageUsed(cid) + p.wage * (isLoan(L.type) ? L.wagePct : 100) / 100 > (c.wage0 || 0)) fail('L’ingaggio supera il monte ingaggi disponibile.');
+      squadRoom(cid);
+      const loan = isLoan(L.type) ? loanDoc(L, null, from) : null;
+      const ref = await db.collection('players').add({...p, clubId: cid, injured: false, ...(loan ? {loan} : {})});
+      await Promise.all([fee ? ledger(cid, -fee, `${loan ? 'Prestito' : 'Acquisto'} ${p.name} da ${from}`) : null,
+        logTransfer({playerId: ref.id, playerName: p.name, fromLabel: from, toLabel: c.name, fromClubId: null, toClubId: cid, fee, kind: 'cpu-in', mode: L.type, buyout: loan?.buyout || 0})]);
+      toast(loan ? `${p.name} arriva in prestito al ${c.name}` : `${p.name} è un nuovo giocatore del ${c.name}`);
+    }, 'Registra operazione');
+  wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo pagato (milioni €)');
+}
+function sellPlayer(p){
+  const c = club(p.clubId);
+  const f = openModal(`Cedi o presta ${p.name}`, loanFields() + `<div class="fgrid">${fld('to', 'Club di destinazione (CPU)', 'maxlength="40" placeholder="Es. Al-Hilal"', 'Vuoto = svincolo: il giocatore finisce nella lista svincolati e va all’asta.')}${fld('fee', 'Incasso (milioni €)', `type="number" min="0" step="0.1" value="0"`)}</div>
+    <p class="sub">Per cedere o prestare a un altro partecipante, è lui a fare un’offerta dal Mercato. Qui registri le operazioni con i club della CPU. In prestito, la percentuale indica quanto ingaggio paga il club che riceve: il resto resta a tuo carico.</p>`,
+    async fd => {
+      const to = String(fd.get('to')).trim(), fee = num(fd, 'fee') * M, L = readLoan(fd);
+      if (to && !window_()) fail('Il mercato è chiuso: puoi solo svincolare.');
+      if (isLoan(L.type)){
+        if (!to) fail('Indica il club che riceve il giocatore in prestito.');
+        await db.doc('players/' + p.id).update({clubId: null, loan: loanDoc(L, c.id, c.name, {borrowerLabel: to})});
+        await Promise.all([fee ? ledger(c.id, fee, `Prestito ${p.name} a ${to}`) : null,
+          logTransfer({playerId: p.id, playerName: p.name, fromLabel: c.name, toLabel: to, fromClubId: c.id, toClubId: null, fee, kind: 'cpu-out', mode: L.type, buyout: L.buyout || 0}),
+          ...S.offers.filter(o => o.playerId === p.id && o.status === 'open').map(o => db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null}))]);
+        return toast(`${p.name} va in prestito a ${to}`);
+      }
+      if (to) await db.doc('players/' + p.id).delete();
+      else await db.doc('players/' + p.id).update({clubId: null, injured: false});
+      await Promise.all([fee ? ledger(c.id, fee, `Cessione ${p.name}${to ? ' a ' + to : ''}`) : null,
+        logTransfer({playerId: p.id, playerName: p.name, fromLabel: c.name, toLabel: to || 'Svincolato', fromClubId: c.id, toClubId: null, fee, kind: 'cpu-out'}),
+        ...S.offers.filter(o => o.playerId === p.id && o.status === 'open').map(o => db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null}))]);
+      toast(to ? `${p.name} ceduto a ${to}` : `${p.name} svincolato`);
+    }, 'Conferma', true);
+  wireLoan(f, 'Incasso dal prestito (milioni €)', 'Incasso (milioni €)');
+}
+function makeOffer(p){
+  const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
+  const seller = club(p.clubId);
+  const f = openModal(`Offerta per ${p.name}`, `<p class="sub">${esc(seller.name)} · ${esc(p.pos)} · OVR ${p.ovr || '—'} · valore ${fmtM(p.value || 0)} · ingaggio attuale ${fmtW(p.wage)}</p>
+    ${loanFields()}
+    <div class="fgrid">${fld('fee', 'Prezzo offerto (milioni €)', `type="number" min="0" step="0.1" value="${(p.value || 0) / M}" required`)}${fld('wage', 'Ingaggio proposto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(p.wage || 0) / K}"`)}
+    ${fld('note', 'Messaggio (facoltativo)', 'maxlength="120" placeholder="Es. pago subito, niente rilanci"', '', true)}</div>
+    <p class="sub">Il tuo budget: <b class="num">${fmtM(budget(mc))}</b> · monte ingaggi libero: <b class="num">${fmtW((mc.wage0 || 0) - wageUsed(mc.id))}</b></p>`,
+    async fd => {
+      if (!window_()) fail('Il mercato è chiuso.');
+      const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd);
+      if (fee > budget(mc)) fail('Non hai budget sufficiente per questa offerta.');
+      if (S.offers.some(o => o.status === 'open' && o.playerId === p.id && o.buyerId === mc.id)) fail('Hai già una trattativa aperta per questo giocatore.');
+      await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
+      toast('Offerta inviata');
+    }, 'Invia offerta');
+  wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo offerto (milioni €)');
+}
+function counterOffer(o){
+  const f = openModal('Rilancio', loanFields(o) + `<div class="fgrid">${fld('fee', 'Nuovo prezzo (milioni €)', `type="number" min="0" step="0.1" value="${o.fee / M}" required`)}${fld('wage', 'Ingaggio (migliaia €/sett)', `type="number" min="0" step="0.5" value="${o.wage / K}"`)}
+    ${fld('note', 'Messaggio', 'maxlength="120"', '', true)}</div>`,
+    async fd => { const L = readLoan(fd);
+      await db.doc('offers/' + o.id).update({fee: num(fd, 'fee') * M, wage: num(fd, 'wage') * K, type: L.type, dur: L.dur || 1, wagePct: L.wagePct ?? 100, buyout: L.buyout || 0,
+        note: String(fd.get('note')).trim(), by: o.by === 'buyer' ? 'seller' : 'buyer', ts: now(), actorClub: turnOf(o)}); toast('Rilancio inviato'); }, 'Invia rilancio');
+  wireLoan(f, 'Costo del prestito (milioni €)', 'Nuovo prezzo (milioni €)');
+}
+function redeem(p){
+  const c = club(p.clubId), L = p.loan, owner = club(L.ownerClubId);
+  confirmBox(`Riscatta ${p.name}`, `${esc(c.name)} paga ${fmtM(L.buyout)} ${owner ? 'al ' + esc(owner.name) : 'a ' + esc(L.ownerLabel || 'club CPU')} e ${esc(p.name)} diventa un giocatore a titolo definitivo. Budget attuale: ${fmtM(budget(c))}.`, 'Riscatta', async () => {
+    if (!window_()) fail('Il mercato è chiuso.');
+    if (L.buyout > budget(c)) fail('Budget insufficiente per il riscatto.');
+    await db.doc('players/' + p.id).update({loan: null});
+    await Promise.all([ledger(c.id, -L.buyout, `Riscatto ${p.name}`), owner ? ledger(owner.id, L.buyout, `Riscatto ${p.name} da parte del ${c.name}`) : null,
+      logTransfer({playerId: p.id, playerName: p.name, fromLabel: owner?.name || L.ownerLabel || 'Club CPU', toLabel: c.name, fromClubId: owner?.id || null, toClubId: c.id, fee: L.buyout, kind: 'redeem', mode: 'redeem'})]);
+    toast(`${p.name} riscattato`);
+  });
+}
+/* at season end: obligations become permanent, everything else goes back to its owner */
+async function settleLoans(s){
+  const due = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= s);
+  for (const p of due){
+    const L = p.loan, owner = club(L.ownerClubId), borrower = club(p.clubId);
+    const bLabel = borrower?.name || L.borrowerLabel || 'Club CPU', oLabel = owner?.name || L.ownerLabel || 'Club CPU';
+    if (L.type === 'loan-obligation'){
+      if (borrower){ await db.doc('players/' + p.id).update({loan: null}); if (L.buyout) await ledger(borrower.id, -L.buyout, `Obbligo di riscatto ${p.name}`); }
+      else await db.doc('players/' + p.id).delete();
+      if (owner && L.buyout) await ledger(owner.id, L.buyout, `Obbligo di riscatto ${p.name} (${bLabel})`);
+      await logTransfer({playerId: p.id, playerName: p.name, fromLabel: oLabel, toLabel: bLabel, fromClubId: owner?.id || null, toClubId: borrower?.id || null, fee: L.buyout || 0, kind: 'redeem', mode: 'redeem'});
+    } else {
+      if (owner) await db.doc('players/' + p.id).update({clubId: owner.id, loan: null}); else await db.doc('players/' + p.id).delete();
+      await logTransfer({playerId: p.id, playerName: p.name, fromLabel: bLabel, toLabel: oLabel, fromClubId: borrower?.id || null, toClubId: owner?.id || null, fee: 0, kind: 'return', mode: 'return'});
+    }
+  }
+  return due.length;
+}
+async function acceptOffer(o){
+  const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId), Se = club(o.sellerId);
+  try {
+    if (!window_()) fail('Il mercato è chiuso.');
+    if (!p || p.clubId !== o.sellerId || !B || !Se) { await db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null}); fail('Il giocatore non è più disponibile: trattativa scaduta.'); }
+    if (o.fee > budget(B)) fail(`${B.name} non ha più budget sufficiente.`);
+    const loan = isLoan(o.type);
+    if (p.loan) fail('Il giocatore è già in prestito: trattativa non valida.');
+    if (wageUsed(B.id) + o.wage * (loan ? (o.wagePct ?? 100) : 100) / 100 > (B.wage0 || 0)) fail(`L’ingaggio supera il monte ingaggi di ${B.name}.`);
+    squadRoom(B.id);
+    await db.doc('players/' + p.id).update({clubId: B.id, wage: o.wage, injured: !!p.injured, ...(loan ? {loan: loanDoc(o, Se.id, Se.name)} : {})});
+    const what = loan ? 'Prestito' : 'Acquisto', whatS = loan ? 'Prestito' : 'Cessione';
+    await Promise.all([db.doc('offers/' + o.id).update({status: 'accepted', ts: now(), actorClub: turnOf(o)}),
+      o.fee ? ledger(B.id, -o.fee, `${what} ${p.name} da ${Se.name}`) : null, o.fee ? ledger(Se.id, o.fee, `${whatS} ${p.name} a ${B.name}`) : null,
+      logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: B.name, fromClubId: Se.id, toClubId: B.id, fee: o.fee, kind: 'user', mode: o.type || 'transfer', buyout: o.buyout || 0}),
+      ...S.offers.filter(x => x.id !== o.id && x.playerId === p.id && x.status === 'open').map(x => db.doc('offers/' + x.id).update({status: 'expired', ts: now(), actorClub: null}))]);
+    toast(`Affare fatto: ${p.name} al ${B.name}${loan ? ' in prestito' : ''}`);
+  } catch (e){ toast(e.message || 'Operazione non riuscita.'); }
+}
+
+/* ---------- auctions ---------- */
+function canAfford(mc, amt, wage, auctionId){
+  if (amt > budget(mc) - reserved(mc.id, auctionId)) fail(`Budget insufficiente: hai ${fmtM(budget(mc) - reserved(mc.id, auctionId))} liberi (contano anche le aste in cui sei in testa).`);
+  if (wageUsed(mc.id) + reservedWage(mc.id, auctionId) + (wage || 0) > (mc.wage0 || 0)) fail('L’ingaggio non entra nel tuo monte ingaggi (contano anche le aste in cui sei in testa).');
+  squadRoom(mc.id, 1 + openAuctions().filter(a => a.id !== auctionId && a.highClubId === mc.id).length);
+}
+function startAuction(p){
+  const mc = myClub(); if (!mc && !S.comm) return toast('Prima crea o prendi una società.');
+  const {mins, step} = AUC();
+  openModal(`Asta per ${p.name}`, `<p class="sub">${esc(p.pos)} · OVR ${p.ovr || '—'} · POT ${p.pot || '—'} · ${ageOf(p) || '—'} anni · valore ${fmtM(p.value || 0)} · ingaggio ${fmtW(p.wage)}</p>
+    <div class="fgrid">${fld('amt', S.comm ? 'Base d’asta / offerta di partenza (milioni €)' : 'Offerta di partenza (milioni €)', `type="number" min="${(p.value || 0) / M}" step="0.1" value="${(p.value || 0) / M}" required`, `Base d’asta: il valore del giocatore, ${fmtM(p.value || 0)}. Non si può partire più in basso. L’asta dura ${mins} minuti. Ogni rilancio deve superare l’offerta più alta di almeno ${fmtM(step)}.`, true)}
+    ${S.comm ? `${mc ? `<div class="f"><span class="lbl">Partecipazione</span><label><input type="checkbox" id="join" name="join" checked> Parto io con questa offerta (${esc(mc.name)})</label><span class="hint">Togli la spunta per mettere il giocatore all’asta senza offrire: la cifra diventa la base d’asta.</span></div>` : ''}` : ''}</div>
+    ${mc ? `<p class="sub">Budget libero: <b class="num">${fmtM(budget(mc) - reserved(mc.id))}</b></p>` : ''}`,
+    async fd => {
+      if (!window_()) fail('Il mercato è chiuso.');
+      if (auctionFor(p.id)) fail('C’è già un’asta aperta per questo giocatore.');
+      const amt = Math.max(0, num(fd, 'amt') * M), t = now();
+      if (amt < (p.value || 0) - 1) fail(`L’offerta di partenza non può essere sotto il valore del giocatore (${fmtM(p.value || 0)}).`);
+      const join = !!mc && (!S.comm || fd.get('join') === 'on');
+      if (join) canAfford(mc, amt, p.wage);
+      await db.doc(`auctions/${p.id}-${t}`).set({playerId: p.id, playerName: p.name, startedBy: join ? mc.id : null, startTs: t, endsAt: t + mins * 6e4, base: amt,
+        highBid: amt, highClubId: join ? mc.id : null, bids: join ? [{c: mc.id, amt, ts: t}] : [], status: 'open', season: season()});
+      toast(`Asta avviata: ${p.name}, termina tra ${timeLeft(mins * 6e4)}`);
+    }, 'Avvia asta');
+}
+function bidAuction(a){
+  const mc = myClub(); if (!mc) return;
+  const {step, ext} = AUC(), p = S.players.find(x => x.id === a.playerId);
+  const last = (a.bids || []).slice(-4).reverse(), minOf = x => x.highClubId ? x.highBid + step : x.highBid, min = minOf(a);
+  openModal(`${a.highClubId ? 'Rilancio' : 'Prima offerta'} per ${a.playerName}`, `<p>${a.highClubId ? `Offerta più alta: <b class="num">${fmtM(a.highBid)}</b> (${esc(club(a.highClubId)?.name || '—')})` : `Base d’asta: <b class="num">${fmtM(a.highBid)}</b>, ancora nessuna offerta`} · termina tra ${timeLeft(a.endsAt - now())}</p>
+    <div class="fgrid">${fld('amt', a.highClubId ? 'Il tuo rilancio (milioni €)' : 'La tua offerta (milioni €)', `type="number" min="${min / M}" step="0.1" value="${min / M}" required`, `Minimo ${fmtM(min)}.`, true)}</div>
+    ${last.length ? `<div class="list">${last.map(b => `<div class="li"><span>${esc(club(b.c)?.name || '—')}</span><span class="num">${fmtM(b.amt)}</span><span class="sub">${new Date(b.ts).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</span></div>`).join('')}</div>` : ''}
+    <p class="sub">Budget libero: <b class="num">${fmtM(budget(mc) - reserved(mc.id, a.id))}</b> · ingaggio del giocatore ${fmtW(p?.wage)}</p>`,
+    async fd => {
+      if (!window_()) fail('Il mercato è chiuso.');
+      const amt = num(fd, 'amt') * M, ref = db.doc('auctions/' + a.id);
+      const lease = await ref.acquire({holder: S.me || mc.id, ttlMs: 5000});
+      if (!lease.acquired) fail('Un altro allenatore sta rilanciando proprio adesso. Riprova tra qualche secondo.');
+      const snap = await ref.get(), cur = snap.data();
+      if (!snap.exists || cur.status !== 'open' || now() > cur.endsAt) fail('L’asta è terminata.');
+      if (cur.highClubId === mc.id) fail('Sei già in testa a questa asta.');
+      if (amt < minOf(cur) - 1) fail(`L’offerta minima ora è ${fmtM(minOf(cur))}.`);
+      canAfford(mc, amt, p?.wage, a.id);
+      const t = now(), endsAt = cur.endsAt - t < SNIPE ? t + SNIPE : cur.endsAt;
+      await ref.update({highBid: amt, highClubId: mc.id, bids: [...(cur.bids || []), {c: mc.id, amt, ts: t}], endsAt});
+      toast(`Sei in testa per ${a.playerName}`);
+    }, 'Rilancia');
+}
+async function closeAuction(a){
+  const ref = db.doc('auctions/' + a.id);
+  const lease = await ref.acquire({holder: S.me || 'auto', ttlMs: 15000}); if (!lease.acquired) return;
+  const snap = await ref.get(), cur = snap.data();
+  if (!snap.exists || cur.status !== 'open' || now() < cur.endsAt) return;
+  const p = S.players.find(x => x.id === cur.playerId), w = club(cur.highClubId);
+  if (!p || p.clubId || p.loan || !w){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta' : 'Giocatore non più disponibile'}); return; }
+  await ref.update({status: 'closed', closedTs: now()});
+  await db.doc('players/' + p.id).update({clubId: w.id, injured: false});
+  await Promise.all([cur.highBid ? ledger(w.id, -cur.highBid, `Asta vinta: ${p.name}`) : null,
+    logTransfer({playerId: p.id, playerName: p.name, fromLabel: 'Svincolato', toLabel: w.name, fromClubId: null, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction'})]);
+}
+const closing = new Set();
+function autoClose(){
+  if (!db || !S.me || !S.loaded.players || !S.loaded.clubs || !S.loaded.auctions) return;
+  openAuctions().filter(a => a.endsAt <= now() && !closing.has(a.id)).forEach(a => { closing.add(a.id); closeAuction(a).catch(() => closing.delete(a.id)); });
+}
+
+function resultModal(m){
+  const H = club(m.homeId), A = club(m.awayId);
+  let seq = 0;
+  const opts = (cid, val, empty) => (empty ? `<option value="">${empty}</option>` : '') + roster(cid).map(p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}>${esc(p.pos)} · ${esc(p.name)}</option>`).join('')
+    + (val && !roster(cid).some(p => p.id === val) ? `<option value="${esc(val)}" selected>(ex) ${esc((m.events || []).find(e => e.p === val || e.a === val)?.[(m.events || []).find(e => e.p === val) ? 'n' : 'an'] || 'Giocatore')}</option>` : '');
+  const col = (c, side) => `<div class="evcol" data-cid="${c.id}"><div class="evhead"><b>${esc(c.short || c.name)}</b><span class="row">
+    <button type="button" class="btn sm" data-ev="g">+ Gol</button><button type="button" class="btn sm" data-ev="y">+ Giallo</button><button type="button" class="btn sm" data-ev="r">+ Rosso</button></span></div><div class="evlist" id="ev-${side}"></div></div>`;
+  const f = openModal(`Giornata ${m.round} · ${H.name} – ${A.name}`, `<div class="scorebox">
+      <div class="f"><label for="hg">${esc(H.name)}</label><input id="hg" name="hg" type="number" min="0" max="30" value="${m.played ? m.hg : 0}"></div><span class="dash">–</span>
+      <div class="f"><label for="ag">${esc(A.name)}</label><input id="ag" name="ag" type="number" min="0" max="30" value="${m.played ? m.ag : 0}"></div></div>
+    ${luDone(m.id, H.id) || luDone(m.id, A.id) ? `<details class="ludet"><summary>Distinte di gara</summary><div class="evcols"><div><b>${esc(H.name)}</b>${luSummary(luDone(m.id, H.id), true)}</div><div><b>${esc(A.name)}</b>${luSummary(luDone(m.id, A.id), true)}</div></div></details>` : ''}
+    <div class="evcols">${col(H, 'h')}${col(A, 'a')}</div>
+    <p class="sub">Aggiungi marcatori, assist e cartellini: servono per statistiche e squalifiche. Ogni gol aggiunto aggiorna il punteggio.</p>
+    ${m.played && S.comm ? `<button type="button" class="btn sm bad" id="unplay">Annulla risultato</button>` : ''}`,
+    async () => {
+      const hg = Math.max(0, Math.round(num(new FormData(f), 'hg'))), ag = Math.max(0, Math.round(num(new FormData(f), 'ag')));
+      const events = [];
+      f.querySelectorAll('.evrow').forEach(r => { const cid = r.closest('.evcol').dataset.cid, ps = r.querySelector('.evp'), as = r.querySelector('.eva');
+        if (!ps.value) return; const e = {t: r.dataset.t, c: cid, p: ps.value, n: ps.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, '')};
+        if (as && as.value){ e.a = as.value; e.an = as.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, ''); } events.push(e); });
+      const gh = events.filter(e => e.t === 'g' && e.c === H.id).length, ga = events.filter(e => e.t === 'g' && e.c === A.id).length;
+      if (gh > hg || ga > ag) fail('Ci sono più marcatori che gol nel punteggio.');
+      await db.doc('matches/' + m.id).update({hg, ag, events, played: true, playedAt: now(), by: S.me || null});
+      toast('Risultato salvato');
+    }, 'Salva risultato');
+  const addRow = (side, t, e = {}) => {
+    const cid = side === 'h' ? H.id : A.id, i = ++seq;
+    const div = document.createElement('div'); div.className = 'evrow'; div.dataset.t = t;
+    div.innerHTML = `<span class="evt ${t}">${{g:'Gol', y:'Giallo', r:'Rosso'}[t]}</span><select class="evp" id="evp-${i}" aria-label="Giocatore">${opts(cid, e.p, 'Scegli giocatore')}</select><button type="button" class="x" aria-label="Rimuovi">×</button>
+      ${t === 'g' ? `<select class="eva assist" id="eva-${i}" aria-label="Assist">${opts(cid, e.a, 'Nessun assist')}</select>` : ''}`;
+    div.querySelector('.x').onclick = () => div.remove();
+    $('#ev-' + side).appendChild(div);
+  };
+  f.querySelectorAll('.evcol').forEach((colEl, idx) => colEl.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => {
+    const side = idx ? 'a' : 'h'; addRow(side, b.dataset.ev);
+    if (b.dataset.ev === 'g'){ const inp = $('#' + side + 'g'), cnt = $('#ev-' + side).querySelectorAll('.evrow[data-t="g"]').length; if ((+inp.value || 0) < cnt) inp.value = cnt; } }));
+  (m.events || []).forEach(e => addRow(e.c === H.id ? 'h' : 'a', e.t, e));
+  const un = $('#unplay'); if (un) un.onclick = async () => { await db.doc('matches/' + m.id).update({played: false, hg: 0, ag: 0, events: []}); dlg.close(); toast('Risultato annullato'); };
+}
+
+/* ---------- distinte di gara ---------- */
+/* reparti per modulo, da sinistra a destra (POR → attacco) */
+const D4 = ['TS','DC','DC','TD'], D3 = ['DC','DC','DC'], D5 = ['TS','DC','DC','DC','TD'];
+const LINES = {
+  '4-3-3': [D4, ['CC','CC','CC'], ['AS','ATT','AD']],
+  '4-3-3 (difensivo)': [D4, ['CDC'], ['CC','CC'], ['AS','ATT','AD']],
+  '4-3-3 (offensivo)': [D4, ['CC','CC'], ['COC'], ['AS','ATT','AD']],
+  '4-4-2': [D4, ['ES','CC','CC','ED'], ['ATT','ATT']],
+  '4-4-1-1': [D4, ['ES','CC','CC','ED'], ['COC'], ['ATT']],
+  '4-2-3-1': [D4, ['CDC','CDC'], ['ES','COC','ED'], ['ATT']],
+  '4-2-2-2': [D4, ['CDC','CDC'], ['COC','COC'], ['ATT','ATT']],
+  '4-1-2-1-2': [D4, ['CDC'], ['CC','CC'], ['COC'], ['ATT','ATT']],
+  '4-1-4-1': [D4, ['CDC'], ['ES','CC','CC','ED'], ['ATT']],
+  '4-3-2-1': [D4, ['CC','CC','CC'], ['COC','COC'], ['ATT']],
+  '4-5-1': [D4, ['ES','CC','CC','CC','ED'], ['ATT']],
+  '3-5-2': [D3, ['CDC','CDC'], ['ES','COC','ED'], ['ATT','ATT']],
+  '3-4-3': [D3, ['ES','CC','CC','ED'], ['AS','ATT','AD']],
+  '3-4-2-1': [D3, ['ES','CC','CC','ED'], ['COC','COC'], ['ATT']],
+  '3-4-1-2': [D3, ['ES','CC','CC','ED'], ['COC'], ['ATT','ATT']],
+  '5-3-2': [D5, ['CDC'], ['CC','CC'], ['ATT','ATT']],
+  '5-2-3': [D5, ['CC','CC'], ['AS','ATT','AD']],
+  '5-4-1': [D5, ['ES','CC','CC','ED'], ['ATT']]};
+const MODULI = Object.keys(LINES);
+const lineLabel = l => l.includes('POR') ? 'Portiere' : l.some(r => ['DC','TD','TS'].includes(r)) ? 'Difesa' : l.every(r => r === 'CDC') ? 'Mediana'
+  : l.every(r => r === 'COC') ? 'Trequarti' : l.some(r => ['ATT','AD','AS'].includes(r)) ? 'Attacco' : 'Centrocampo';
+const linesOf = mod => [['POR'], ...(LINES[mod] || LINES['4-3-3'])];
+const slotsOf = mod => linesOf(mod).flat();
+const luId = (mid, cid) => `${mid}__${cid}`;
+const lineupOf = (mid, cid) => S.lineups.find(l => l.id === luId(mid, cid)) || null;
+const luDone = (mid, cid) => { const L = lineupOf(mid, cid); return L && !L.draft ? L : null; };
+const maxSubs = () => S.settings?.maxSubs ?? 5;
+const luRequired = () => S.settings?.lineupRequired !== false;
+const luName = (L, id) => L?.names?.[id] || S.players.find(p => p.id === id)?.name || 'Giocatore';
+/* chi può vedere la distinta di cid: il suo allenatore, il commissario, l'avversario solo dopo aver consegnato la propria, tutti a partita giocata */
+function canSeeLineup(m, cid){
+  if (m.played || S.comm || canManage(cid)) return true;
+  const oid = m.homeId === cid ? m.awayId : m.homeId;
+  return canManage(oid) ? !!luDone(m.id, oid) : !!(luDone(m.id, m.homeId) && luDone(m.id, m.awayId));
+}
+function luStatus(m, cid){
+  const L = lineupOf(m.id, cid), c = club(cid), st = !L ? 'mancante' : L.draft ? (canManage(cid) ? 'bozza' : 'mancante') : '✓';
+  return `<span class="pill ${st === '✓' ? 'good' : st === 'bozza' ? 'info' : 'warn'}" title="${esc(c?.name || '')}">${esc(c?.short || c?.name || '—')}: distinta ${st}</span>`;
+}
+function luSummary(L, compact){
+  if (!L) return '<p class="muted">Distinta non consegnata.</p>';
+  const subs = (L.subs || []).slice().sort((a, b) => a.min - b.min);
+  return `<div class="lulist"><div><b>Modulo</b> ${esc(L.module || '—')}</div>
+    ${L.slots && L.slots.length === (L.xi || []).length ? (() => { let k = 0; return linesOf(L.module).map(l => { const part = l.map(r => `<span class="posb ${GRP[r] || 'mid'}">${r}</span> ${esc(luName(L, L.xi[k++]))}`).join(' · ');
+        return `<div><b>${lineLabel(l)}</b> ${part}</div>`; }).join(''); })() : `<div><b>Titolari</b> ${(L.xi || []).map(id => esc(luName(L, id))).join(', ')}</div>`}
+    ${subs.length ? `<div><b>Cambi</b></div>${subs.map(s => `<div class="subli"><span class="num">${s.min}'</span> <span class="evt r">esce</span> ${esc(luName(L, s.out))} <span class="evt g">entra</span> ${esc(luName(L, s.in))}</div>`).join('')}` : '<div class="muted">Nessun cambio programmato.</div>'}
+    ${compact ? '' : `<div class="sub">Consegnata il ${day(L.ts)}</div>`}</div>`;
+}
+function viewLineups(m){
+  const H = club(m.homeId), A = club(m.awayId);
+  const block = c => `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b></div>${canSeeLineup(m, c.id) ? (canManage(c.id) && lineupOf(m.id, c.id)?.draft ? '<p class="muted">Bozza salvata, non ancora consegnata.</p>' : luSummary(luDone(m.id, c.id))) : `<p class="muted">${luDone(m.id, c.id) ? 'Consegnata. La vedrai dopo aver consegnato la tua distinta.' : 'Non ancora consegnata.'}</p>`}</div>`;
+  openModal(`Distinte · Giornata ${m.round}`, `<div class="evcols">${block(H)}${block(A)}</div>`, async () => {}, 'Chiudi');
+  $('#mcancel').hidden = true;
+}
+function lineupModal(m, cid){
+  if (m.played) return toast('La partita è già stata giocata: la distinta è chiusa.');
+  if (!canManage(cid)) return toast('Solo l’allenatore di questa società può consegnare la distinta.');
+  const c = club(cid), L = lineupOf(m.id, cid) || {}, rs = roster(cid), out = suspended();
+  const okP = p => !p.injured && !out.has(p.id);
+  if (rs.filter(okP).length < 11) return toast(`${c.name} non ha 11 giocatori disponibili: controlla infortuni e squalifiche in rosa.`);
+  const tag = p => `${p.pos} · ${p.name}${p.ovr ? ' ' + p.ovr : ''}${p.injured ? ' (infortunato)' : out.has(p.id) ? ' (squalificato)' : ''}`;
+  const opts = (val, empty) => `<option value="">${empty}</option>` + rs.map(p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}${okP(p) ? '' : ' disabled'}>${esc(tag(p))}</option>`).join('');
+  const opp = club(m.homeId === cid ? m.awayId : m.homeId), xi = L.xi || [];
+  const f = openModal(`Distinta · ${c.name}`, `<p class="sub">Giornata ${m.round} contro ${esc(opp?.name || '—')}. Scegli modulo e 11 titolari, poi programma i cambi con il minuto in cui farli (massimo ${maxSubs()}). Infortunati e squalificati non si possono schierare.</p>
+    <div class="fgrid">${sel('lumod', 'Modulo', MODULI, L.module || '4-3-3', true)}</div>
+    ${L.draft ? '<p class="notice">Questa è una bozza: non è ancora consegnata.</p>' : ''}
+    <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" id="lureset">Azzera distinta</button><button type="button" class="btn sm" id="ludraft">Salva bozza</button>${L.id && !L.draft ? '<button type="button" class="btn sm bad" id="ludel">Ritira distinta</button>' : ''}</div>
+    <div class="ph" style="margin-top:12px"><h3>Titolari</h3><span class="sub" id="lucount"></span></div>
+    <div id="luxi"></div>
+    <div class="ph" style="margin-top:14px"><h3>Cambi programmati</h3><button type="button" class="btn sm" id="luadd">+ Cambio</button></div>
+    <div class="lulist" id="lusubs"></div>
+    <p class="sub">Esce: un giocatore in campo in quel momento (anche uno entrato prima). Entra: un giocatore non titolare e non già usato. Minuto da 1 a 120.</p>`,
+    async () => {
+      const xiSel = [...f.querySelectorAll('.luxi')].map(s => s.value);
+      if (xiSel.some(v => !v)) fail('Scegli tutti gli 11 titolari.');
+      if (new Set(xiSel).size !== 11) fail('Lo stesso giocatore è stato scelto due volte tra i titolari.');
+      const subs = [...f.querySelectorAll('.subrow')].map(r => ({out: r.querySelector('.sout').value, in: r.querySelector('.sin').value, min: Math.round(+r.querySelector('.smin').value || 0)}))
+        .filter(s => s.out || s.in);
+      if (subs.length > maxSubs()) fail(`Puoi programmare al massimo ${maxSubs()} cambi.`);
+      subs.forEach((s, i) => { if (!s.out || !s.in) fail(`Cambio ${i + 1}: scegli chi esce e chi entra.`);
+        if (!(s.min >= 1 && s.min <= 120)) fail(`Cambio ${i + 1}: il minuto deve essere tra 1 e 120.`); });
+      const onPitch = new Set(xiSel), used = new Set(xiSel);
+      subs.slice().sort((a, b) => a.min - b.min).forEach(s => {
+        if (!onPitch.has(s.out)) fail(`Al ${s.min}' ${luName(null, s.out)} non è in campo, quindi non può uscire.`);
+        if (used.has(s.in)) fail(`${luName(null, s.in)} è già in campo o già usato: non può entrare al ${s.min}'.`);
+        onPitch.delete(s.out); onPitch.add(s.in); used.add(s.in); });
+      const names = {}; [...xiSel, ...subs.map(s => s.in)].forEach(id => names[id] = luName(null, id));
+      await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, season: m.season, round: m.round, module: String(new FormData(f).get('lumod')),
+        draft: false, xi: xiSel, slots: [...f.querySelectorAll('.luxi')].map(s => s.dataset.pos), subs: subs.sort((a, b) => a.min - b.min), names, ts: now(), by: S.me || null});
+      toast('Distinta consegnata');
+    }, 'Consegna distinta');
+  const count = () => { const n = [...f.querySelectorAll('.luxi')].filter(s => s.value).length; $('#lucount').textContent = `${n}/11`; };
+  const slotOpts = (pos, val) => { const o = p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}${okP(p) ? '' : ' disabled'}>${esc(tag(p))}</option>`;
+    const nat = rs.filter(p => p.pos === pos), rep_ = rs.filter(p => p.pos !== pos && GRP[p.pos] === GRP[pos]), oth = rs.filter(p => GRP[p.pos] !== GRP[pos]);
+    return `<option value="">Scegli ${pos}</option>` + [[`Ruolo ${pos}`, nat], ['Stesso reparto', rep_], ['Altri ruoli', oth]].filter(g => g[1].length).map(([l, ps]) => `<optgroup label="${l}">${ps.map(o).join('')}</optgroup>`).join(''); };
+  const drawSlots = (mod, chosen) => {
+    const slots = slotsOf(mod), pick = Array(11).fill(''), left = chosen.filter(Boolean);
+    slots.forEach((pos, i) => { const j = left.findIndex(id => S.players.find(p => p.id === id)?.pos === pos); if (j >= 0) pick[i] = left.splice(j, 1)[0]; });
+    slots.forEach((pos, i) => { if (!pick[i] && left.length) pick[i] = left.shift(); });
+    let k = 0;
+    $('#luxi').innerHTML = linesOf(mod).map(l => `<div class="luline"><span class="lbl">${lineLabel(l)}</span><div class="lugrid">${l.map(pos => { const i = k++;
+      return `<label class="luslot"><span class="posb ${GRP[pos] || 'mid'}">${pos}</span><select class="luxi" id="luxi-${i}" data-pos="${pos}" aria-label="${pos}">${slotOpts(pos, pick[i])}</select></label>`; }).join('')}</div></div>`).join('');
+    f.querySelectorAll('.luxi').forEach(s => s.onchange = count); count();
+  };
+  drawSlots(L.module && LINES[L.module] ? L.module : '4-3-3', L.slots ? xi : xi);
+  $('#lumod').onchange = e => drawSlots(e.target.value, [...f.querySelectorAll('.luxi')].map(s => s.value));
+  const addSub = (s = {}) => {
+    if (f.querySelectorAll('.subrow').length >= maxSubs()) return toast(`Massimo ${maxSubs()} cambi.`);
+    const div = document.createElement('div'); div.className = 'subrow';
+    div.innerHTML = `<select class="sout" aria-label="Esce">${opts(s.out, 'Esce…')}</select><select class="sin" aria-label="Entra">${opts(s.in, 'Entra…')}</select>
+      <input class="smin" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="Min" aria-label="Minuto" value="${s.min || ''}"><button type="button" class="x" aria-label="Rimuovi cambio">×</button>`;
+    div.querySelector('.x').onclick = () => div.remove();
+    $('#lusubs').appendChild(div);
+  };
+  $('#luadd').onclick = () => addSub();
+  $('#lureset').onclick = () => { f.querySelectorAll('.luxi').forEach(s => s.value = ''); $('#lusubs').innerHTML = ''; count(); toast('Distinta azzerata: ricomincia o salva la bozza'); };
+  $('#ludraft').onclick = async () => { try {
+      const xiD = [...f.querySelectorAll('.luxi')].map(s => s.value), subsD = [...f.querySelectorAll('.subrow')].map(r => ({out: r.querySelector('.sout').value, in: r.querySelector('.sin').value, min: Math.round(+r.querySelector('.smin').value || 0)})).filter(s => s.out || s.in || s.min);
+      const names = {}; [...xiD, ...subsD.map(s => s.in), ...subsD.map(s => s.out)].filter(Boolean).forEach(id => names[id] = luName(null, id));
+      await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, season: m.season, round: m.round, module: String(new FormData(f).get('lumod')),
+        xi: xiD, slots: [...f.querySelectorAll('.luxi')].map(s => s.dataset.pos), subs: subsD, names, draft: true, ts: now(), by: S.me || null});
+      dlg.close(); toast('Bozza salvata: la puoi completare e consegnare più tardi');
+    } catch (err){ toast(err.message || 'Bozza non salvata. Riprova.'); } };
+  const del = $('#ludel'); if (del) del.onclick = async () => { try { await db.doc('lineups/' + luId(m.id, cid)).delete(); dlg.close(); toast('Distinta ritirata: risulta di nuovo mancante'); } catch (err){ toast(err.message || 'Operazione non riuscita.'); } };
+  (L.subs || []).forEach(addSub);
+}
+function lineupPick(m){
+  const mine = [m.homeId, m.awayId].filter(canManage);
+  if (mine.length === 1) return lineupModal(m, mine[0]);
+  openModal(`Distinta · Giornata ${m.round}`, `<p class="sub">Per quale squadra vuoi inserire la distinta?</p><div class="row">${mine.map(id => `<button type="button" class="btn" data-lupick="${id}">${esc(club(id).name)}</button>`).join('')}</div>`, async () => {}, 'Chiudi');
+  dlg.querySelectorAll('[data-lupick]').forEach(b => b.onclick = () => { dlg.close(); lineupModal(m, b.dataset.lupick); });
+}
+
+function objModal(c){
+  openModal('Nuovo obiettivo', `<div class="fgrid">${sel('okind', 'Tipo', ['Piazzamento', 'Sviluppo giovani', 'Finanze', 'Mercato', 'Coppa/altro'], 'Piazzamento', true)}
+    ${fld('otext', 'Obiettivo', 'required maxlength="100" placeholder="Es. Arrivare tra le prime 3"', '', true)}
+    ${fld('orew', 'Premio se raggiunto (milioni €)', 'type="number" min="0" step="0.5" value="5"')}${fld('open', 'Penalità se fallito (milioni €)', 'type="number" min="0" step="0.5" value="2"')}</div>`,
+    async fd => { const text = String(fd.get('otext')).trim() || fail('Scrivi l’obiettivo.');
+      const o = {id: 'o' + now().toString(36), season: season(), kind: String(fd.get('okind')), text, reward: num(fd, 'orew') * M, penalty: num(fd, 'open') * M, status: 'open'};
+      await db.doc('clubs/' + c.id).update({objectives: [...(c.objectives || []), o]}); toast('Obiettivo aggiunto'); }, 'Aggiungi');
+}
+async function resolveObj(c, oid, status){
+  const o = (c.objectives || []).find(x => x.id === oid); if (!o) return;
+  await db.doc('clubs/' + c.id).update({objectives: c.objectives.map(x => x.id === oid ? {...x, status} : x)});
+  const amt = status === 'done' ? o.reward : -o.penalty;
+  if (amt) await ledger(c.id, amt, `${status === 'done' ? 'Premio' : 'Penalità'} obiettivo: ${o.text}`);
+  toast(status === 'done' ? 'Obiettivo raggiunto: premio accreditato' : 'Obiettivo fallito: penalità applicata');
+}
+
+function roundRobin(ids){
+  const a = [...ids]; if (a.length % 2) a.push(null);
+  const n = a.length, rounds = [];
+  for (let r = 0; r < n - 1; r++){
+    const pairs = [];
+    for (let i = 0; i < n / 2; i++){ const h = a[i], w = a[n - 1 - i]; if (h && w) pairs.push((r + i) % 2 ? [w, h] : [h, w]); }
+    rounds.push(pairs); a.splice(1, 0, a.pop());
+  }
+  return [...rounds, ...rounds.map(rd => rd.map(([h, w]) => [w, h]))];
+}
+async function generateFixtures(s){
+  const old = S.matches.filter(m => m.season === s);
+  for (let i = 0; i < old.length; i += 10) await Promise.all(old.slice(i, i + 10).map(m => db.doc('matches/' + m.id).delete()));
+  const ids = S.clubs.map(c => c.id).sort(() => Math.random() - .5);
+  const docs = []; roundRobin(ids).forEach((rd, ri) => rd.forEach(([h, a]) => docs.push({id: `s${s}-r${ri + 1}-${h}-${a}`, season: s, round: ri + 1, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []})));
+  for (let i = 0; i < docs.length; i += 10) await Promise.all(docs.slice(i, i + 10).map(({id, ...d}) => db.doc('matches/' + id).set(d)));
+  S.round = 1;
+}
+function closeSeason(){
+  const rows = standings(), pr = S.settings.prizes || [];
+  confirmBox(`Chiudi la stagione ${season()}`, `Classifica finale: ${rows.slice(0, 3).map((x, i) => `${i+1}° ${esc(x.c.name)}`).join(', ')}.<br>
+    Verranno accreditati i premi di piazzamento (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
+    'Chiudi stagione', async () => {
+      const s = season();
+      await Promise.all(rows.map((x, i) => pr[i] ? ledger(x.c.id, pr[i], `Premio ${i+1}° posto stagione ${s}`) : null));
+      await settleLoans(s);
+      await db.doc('league/settings').update({season: s + 1, windowOpen: true, champions: {...(S.settings.champions || {}), ['s' + s]: rows[0]?.c.id || null}});
+      S.settings = {...S.settings, season: s + 1};
+      await generateFixtures(s + 1);
+      toast(`Benvenuti nella stagione ${s + 1}`);
+    });
+}
+
+
+/* ---------- Supabase ---------- */
+const SB_URL = 'https://kqltgtdnuklvvlacqbka.supabase.co', SB_KEY = 'sb_publishable_8a5wshMCsu10jzHmFRRNNQ_3NDfzJ_o';
+let sb = null;
+function dbErr(e){
+  const m = String(e?.message || e || '');
+  if (/row-level security|permission|42501/i.test(m) || e?.code === '42501') return new Error('Operazione non permessa con il tuo account.');
+  return new Error(m || 'Operazione non riuscita. Riprova.');
+}
+const listeners = {};
+let channel = null;
+function ensureChannel(){
+  if (channel) return;
+  channel = sb.channel('lm-docs').on('postgres_changes', {event: '*', schema: 'public', table: 'docs'}, p => {
+    const row = p.eventType === 'DELETE' ? p.old : p.new; const L = listeners[row?.col]; if (!L) return;
+    if (p.eventType === 'DELETE') L.map.delete(row.id); else L.map.set(row.id, {id: row.id, data: row.data});
+    if (L.ready) L.emit();
+  }).subscribe(st => { if (st === 'SUBSCRIBED' && ensureChannel.was){ Object.keys(listeners).forEach(reload); } if (st === 'SUBSCRIBED') ensureChannel.was = true; });
+}
+async function reload(col){
+  const L = listeners[col]; if (!L) return;
+  const fresh = new Map(); let from = 0;
+  for (;;){ const {data, error} = await sb.from('docs').select('id,data').eq('col', col).range(from, from + 999);
+    if (error){ L.onErr && L.onErr({code: error.message}); return; }
+    data.forEach(r => fresh.set(r.id, r)); if (data.length < 1000) break; from += 1000; }
+  L.map = fresh; L.ready = true; L.emit();
+}
+const localDoc = path => ({
+  async get(){ let v = null; try { v = JSON.parse(localStorage.getItem('lm:' + path)); } catch {} return {exists: !!v, data: () => v || undefined}; },
+  async set(d){ try { localStorage.setItem('lm:' + path, JSON.stringify(d)); } catch {} },
+  async update(d){ const c = (await this.get()).data() || {}; await this.set({...c, ...d}); },
+  async delete(){ try { localStorage.removeItem('lm:' + path); } catch {} },
+  onSnapshot(cb){ setTimeout(async () => cb(await this.get()), 0); return () => {}; }
+});
+function makeDb(){
+  const tbl = () => sb.from('docs');
+  const bump = col => { clearTimeout(bump[col]); bump[col] = setTimeout(() => listeners[col] && reload(col), 700); };
+  const newId = () => Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-6);
+  return {
+    collection(col){ return {
+      async add(data){ const id = newId(); const {error} = await tbl().insert({col, id, data}); if (error) throw dbErr(error); bump(col); return {id}; },
+      onSnapshot(cb, onErr){
+        ensureChannel();
+        listeners[col] = {map: new Map(), ready: false, onErr,
+          emit(){ cb({docs: [...this.map.values()].map(r => ({id: r.id, exists: true, data: () => r.data})), metadata: {fromCache: false}}); }};
+        reload(col); return () => delete listeners[col]; } }; },
+    doc(path){
+      if (path.startsWith('data/')) return localDoc(path);
+      const i = path.indexOf('/'), col = path.slice(0, i), id = path.slice(i + 1);
+      let seen = null;
+      const read = async () => { const {data, error} = await tbl().select('data,updated_at').eq('col', col).eq('id', id).maybeSingle(); if (error) throw dbErr(error); return data; };
+      const write = async (cur, patch) => { const {data, error} = await tbl().update({data: {...cur.data, ...patch}}).eq('col', col).eq('id', id).eq('updated_at', cur.updated_at).select('id');
+        if (error) throw dbErr(error); if (data.length) bump(col); return data.length > 0; };
+      return {
+        async get(){ seen = await read(); return {exists: !!seen, id, data: () => seen ? seen.data : undefined}; },
+        async acquire(){ return {acquired: true}; },
+        async set(data){ const {error} = await tbl().upsert({col, id, data}); if (error) throw dbErr(error); bump(col); },
+        async delete(){ const {error} = await tbl().delete().eq('col', col).eq('id', id); if (error) throw dbErr(error); bump(col); },
+        async update(patch){
+          if (seen){ const cur = seen; seen = null; if (await write(cur, patch)) return;
+            const now_ = await read(); if (now_ && now_.updated_at === cur.updated_at) throw new Error('Operazione non permessa con il tuo account.');
+            throw new Error('Qualcun altro ha appena modificato questi dati: riprova.'); }
+          for (let t = 0; t < 4; t++){ const cur = await read(); if (!cur) throw new Error('Elemento non trovato: forse è stato eliminato.');
+            if (await write(cur, patch)) return;
+            const again = await read(); if (again && again.updated_at === cur.updated_at) throw new Error('Operazione non permessa con il tuo account.'); }
+          throw new Error('Dati molto contesi in questo momento: riprova.'); },
+        onSnapshot(cb){ read().then(r => cb({exists: !!r, data: () => r ? r.data : undefined})).catch(() => {}); return () => {}; }
+      };
+    }
+  };
+}
+const userApi = {
+  id: async () => S.me, isOwner: async () => S.comm,
+  async profiles(ids){ const o = {}; if (!ids.length) return o;
+    const {data} = await sb.from('profiles').select('id,name').in('id', ids); (data || []).forEach(p => o[p.id] = {name: p.name}); return o; }
+};
+async function loadSession(){
+  const {data: {session}} = await sb.auth.getSession();
+  if (!session) return;
+  S.me = session.user.id;
+  const {data: p} = await sb.from('profiles').select('name,is_admin').eq('id', S.me).maybeSingle();
+  S.myName = p?.name || session.user.email; S.comm = !!p?.is_admin;
+}
+function authMsg(e){
+  const m = String(e?.message || '');
+  if (/invalid login/i.test(m)) return 'Email o password sbagliate.';
+  if (/not confirmed/i.test(m)) return 'Devi prima confermare l’email: apri il link che ti è arrivato.';
+  if (/already registered|already exists/i.test(m)) return 'Esiste già un account con questa email: accedi.';
+  if (/password should be|at least/i.test(m)) return 'La password deve avere almeno 6 caratteri.';
+  if (/rate limit|too many/i.test(m)) return 'Troppi tentativi: aspetta qualche minuto e riprova.';
+  return m || 'Operazione non riuscita. Riprova.';
+}
+function authModal(mode = 'login'){
+  const reg = mode === 'signup';
+  openModal(reg ? 'Crea il tuo account' : 'Accedi a League Manager', `<div class="fgrid">
+    ${reg ? fld('aname', 'Nome da manager', 'required maxlength="30" autocomplete="nickname"', 'Lo vedono gli altri manager in classifica e sul mercato.', true) : ''}
+    ${fld('aemail', 'Email', 'type="email" required autocomplete="email" inputmode="email"', '', true)}
+    ${fld('apass', 'Password', `type="password" required minlength="6" autocomplete="${reg ? 'new-password' : 'current-password'}"`, reg ? 'Almeno 6 caratteri.' : '', true)}</div>
+    <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" id="aswitch">${reg ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati'}</button>${reg ? '' : '<button type="button" class="btn sm ghost" id="aforgot">Password dimenticata</button>'}</div>`,
+    async fd => {
+      const email = String(fd.get('aemail') || '').trim(), password = String(fd.get('apass') || '');
+      if (!email || !password) fail('Scrivi email e password.');
+      if (reg){
+        const name = String(fd.get('aname') || '').trim(); if (!name) fail('Scrivi il tuo nome da manager.');
+        const {data, error} = await sb.auth.signUp({email, password, options: {data: {name}, emailRedirectTo: location.origin + location.pathname}});
+        if (error) fail(authMsg(error));
+        if (!data.session){ toast('Account creato! Apri l’email che ti è arrivata e conferma, poi accedi.', 7000); return; }
+      } else { const {error} = await sb.auth.signInWithPassword({email, password}); if (error) fail(authMsg(error)); }
+      location.reload();
+    }, reg ? 'Registrati' : 'Accedi');
+  $('#aswitch').onclick = () => { dlg.close(); authModal(reg ? 'login' : 'signup'); };
+  const fg = $('#aforgot');
+  if (fg) fg.onclick = async () => { const email = String($('#aemail').value || '').trim(); if (!email) return toast('Scrivi prima la tua email.');
+    const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+    toast(error ? authMsg(error) : 'Ti ho mandato un’email per scegliere una nuova password.', 6000); };
+}
+function newPasswordModal(){
+  openModal('Nuova password', fld('npass', 'Scegli la nuova password', 'type="password" required minlength="6" autocomplete="new-password"', 'Almeno 6 caratteri.', true),
+    async fd => { const {error} = await sb.auth.updateUser({password: String(fd.get('npass') || '')}); if (error) fail(authMsg(error)); toast('Password aggiornata'); location.hash = ''; location.reload(); }, 'Salva password');
+}
+/* ---------- esportazione verso Supabase ---------- */
+function exportSQL(){
+  const clean = o => { const {id, ...d} = o; return d; };
+  const rows = [];
+  const add = (col, id, d) => rows.push(`('${col}','${String(id).replace(/'/g, "''")}',$j$${JSON.stringify(d)}$j$::jsonb)`);
+  if (S.settings) add('league', 'settings', {...clean(S.settings), name: 'League Manager'});
+  S.clubs.forEach(c => add('clubs', c.id, {...clean(c), managerId: null}));
+  S.players.forEach(p => add('players', p.id, clean(p)));
+  S.matches.forEach(m => add('matches', m.id, clean(m)));
+  [['offers', S.offers], ['auctions', S.auctions], ['ledger', S.ledger], ['transfers', S.transfers], ['lineups', S.lineups]]
+    .forEach(([col, list]) => (list || []).forEach(x => add(col, x.id, clean(x))));
+  const sql = '-- League Manager: dati importati (' + rows.length + ' righe)\ninsert into public.docs (col, id, data) values\n' + rows.join(',\n')
+    + '\non conflict (col, id) do update set data = excluded.data;\n';
+  openModal('Esporta per il nuovo sito', `<p class="sub">${rows.length} righe pronte: società, giocatori, calendario, mercato e impostazioni. Premi <b>Copia tutto</b> e incolla nell'editor SQL di Supabase. Le panchine vengono liberate: ogni manager la riprende dal nuovo sito.</p>
+    <div class="f full"><textarea id="exsql" readonly style="min-height:220px;font-family:monospace;font-size:12px">${esc(sql)}</textarea></div>
+    <div class="row"><button type="button" class="btn primary" id="excopy">Copia tutto</button></div>`, async () => {}, 'Chiudi');
+  $('#excopy').onclick = async () => { try { await navigator.clipboard.writeText(sql); toast('Copiato! Ora incollalo su Supabase'); }
+    catch { const t = $('#exsql'); t.focus(); t.select(); toast('Tieni premuto nel riquadro e scegli Copia'); } };
+}
+/* ---------- permessi ---------- */
+const COMM_ONLY = new Set(['export','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
+/* ---------- events ---------- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT') return;
+  const id = b.dataset.id, act = b.dataset.act;
+  if (act !== 'club' && act !== 'round' && !db) return;
+  const p = () => S.players.find(x => x.id === id), o = () => S.offers.find(x => x.id === id);
+  if (COMM_ONLY.has(act) && !S.comm) return toast('Questa operazione la fa solo il commissario.');
+  if (MKT_ACTS.has(act) && !S.comm && !window_()) return toast('Il mercato è chiuso.');
+  try {
+    switch (act){
+      case 'club': S.viewClub = id; if (location.hash !== '#societa') location.hash = 'societa'; else render(); window.scrollTo({top: 0}); break;
+      case 'round': S.round = +id; render(); break;
+      case 'settings': settingsModal(); break;
+      case 'club-new': clubModal(); break;
+      case 'club-edit': clubModal(club(id)); break;
+      case 'club-claim': if (!S.me) return authModal(); await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
+      case 'club-del': { const c = club(id);
+        if (seasonMatches().some(m => m.homeId === id || m.awayId === id)) return toast('La società è nel calendario: rigenera il calendario o chiudi la stagione prima di eliminarla.');
+        confirmBox(`Elimina ${c.name}`, 'Società e rosa vengono cancellate per sempre.', 'Elimina', async () => { const rs = roster(id);
+          for (let i = 0; i < rs.length; i += 10) await Promise.all(rs.slice(i, i + 10).map(x => db.doc('players/' + x.id).delete()));
+          await db.doc('clubs/' + id).delete(); S.viewClub = null; toast('Società eliminata'); }); break; }
+      case 'result': { const m = S.matches.find(x => x.id === id);
+        if (!m.played && luRequired() && !S.comm && !(luDone(m.id, m.homeId) && luDone(m.id, m.awayId))) return toast('Prima entrambi gli allenatori devono consegnare la distinta di gara.');
+        resultModal(m); break; }
+      case 'lineup': lineupPick(S.matches.find(x => x.id === id)); break;
+      case 'lineups': viewLineups(S.matches.find(x => x.id === id)); break;
+      case 'add-player': addPlayer(id); break;
+      case 'import': importPlayers(id); break;
+      case 'cpu-buy': cpuBuy(id); break;
+      case 'edit-player': editPlayer(p()); break;
+      case 'sell': sellPlayer(p()); break;
+      case 'offer': makeOffer(p()); break;
+      case 'redeem': redeem(p()); break;
+      case 'auc-start': startAuction(p()); break;
+      case 'bid': bidAuction(S.auctions.find(a => a.id === id)); break;
+      case 'auc-cancel': confirmBox('Annulla asta', 'L’asta viene chiusa senza vincitori e il giocatore resta svincolato.', 'Annulla asta', async () => {
+        await db.doc('auctions/' + id).update({status: 'cancelled', closedTs: now(), reason: 'Annullata dal commissario'}); toast('Asta annullata'); }); break;
+      case 'auc-time': { const a = S.auctions.find(x => x.id === id);
+        openModal(`Scadenza asta · ${a.playerName}`, `<p class="sub">Ora termina tra ${timeLeft(a.endsAt - now())}.</p><div class="fgrid">${fld('mins', 'Termina tra (minuti da adesso)', 'type="number" min="1" max="10080" step="1" value="10" required', 'Solo il commissario può cambiare la scadenza.', true)}</div>`,
+          async fd => { const m = Math.max(1, Math.min(10080, Math.round(num(fd, 'mins')) || 10));
+            await db.doc('auctions/' + id).update({endsAt: now() + m * 6e4}); toast(`L’asta termina tra ${timeLeft(m * 6e4)}`); }, 'Salva scadenza'); break; }
+      case 'fa-add': addPlayer(null); break;
+      case 'fa-import': importPlayers(null); break;
+      case 'fa-del': confirmBox(`Rimuovi ${p().name}`, 'Il giocatore esce dalla lista svincolati.', 'Rimuovi', async () => { await db.doc('players/' + id).delete(); toast('Svincolato rimosso'); }); break;
+      case 'offer-accept': b.disabled = true; await acceptOffer(o()); break;
+      case 'offer-counter': counterOffer(o()); break;
+      case 'offer-reject': await db.doc('offers/' + id).update({status: 'rejected', ts: now(), actorClub: turnOf(o())}); toast('Offerta rifiutata'); break;
+      case 'offer-withdraw': await db.doc('offers/' + id).update({status: 'withdrawn', ts: now(), actorClub: starterOf(o())}); toast('Offerta ritirata'); break;
+      case 'bell': S.notifOpen = !S.notifOpen; render(); break;
+      case 'notif-read': await markRead(); break;
+      case 'obj-add': objModal(club(id)); break;
+      case 'obj-done': await resolveObj(club(id), b.dataset.o, 'done'); break;
+      case 'obj-fail': await resolveObj(club(id), b.dataset.o, 'failed'); break;
+      case 'obj-del': { const c = club(id); await db.doc('clubs/' + id).update({objectives: (c.objectives || []).filter(x => x.id !== b.dataset.o)}); break; }
+      case 'adjust': { const c = club(id); openModal(`Rettifica budget · ${c.name}`, `<div class="fgrid">${fld('amt', 'Importo (milioni €, negativo per togliere)', 'type="number" step="0.1" required')}${fld('why', 'Motivo', 'required maxlength="80" placeholder="Es. Sponsor maglia"')}</div>`,
+        async fd => { const a = num(fd, 'amt') * M || fail('Inserisci un importo.'); await ledger(id, a, String(fd.get('why')).trim() || 'Rettifica del commissario'); toast('Budget aggiornato'); }); break; }
+      case 'window': await db.doc('league/settings').update({windowOpen: !window_()}); toast(window_() ? 'Mercato chiuso' : 'Mercato aperto'); break;
+      case 'export': exportSQL(); break;
+      case 'account': if (S.me) confirmBox('Esci', 'Vuoi uscire dal tuo account?', 'Esci', async () => { await sb.auth.signOut(); location.reload(); }); else authModal(); break;
+      case 'gen': confirmBox(roundInfo().total ? 'Rigenera calendario' : 'Genera calendario', `Andata e ritorno per ${S.clubs.length} società (${(S.clubs.length - 1 + S.clubs.length % 2) * 2} giornate).${roundInfo().total ? ' Il calendario attuale viene sostituito.' : ''}`, 'Genera', async () => { await generateFixtures(season()); toast('Calendario pronto'); }); break;
+      case 'close-season': closeSeason(); break;
+    }
+  } catch (err){ toast(err.message || 'Operazione non riuscita. Riprova.'); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'clubsel'){ S.viewClub = t.value; render(); }
+  if (t.id === 'statscope'){ S.statScope = t.value; render(); }
+  if (t.id === 'mktpos'){ S.mktPos = t.value; render(); }
+  if (t.id === 'fapos'){ S.faPos = t.value; refreshFreeTable(); }
+});
+document.addEventListener('input', e => { if (e.target.id === 'faq'){ S.faQ = e.target.value; refreshFreeTable(); } });
+window.addEventListener('hashchange', () => { render(); });
+
+/* ---------- boot ---------- */
+async function boot(){
+  render();
+  try { sb = window.supabase.createClient(SB_URL, SB_KEY); db = makeDb(); user = userApi; } catch { db = null; }
+  if (!db){ S.state = 'nodb'; render(); return; }
+  sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') setTimeout(newPasswordModal, 300); });
+  try { await loadSession(); } catch {}
+  S.who = !S.me ? 'none' : S.comm ? 'comm' : 'member';
+  const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
+  const subscribe = (name, fn) => db.collection(name).onSnapshot(snap => {
+    fn(snap.docs.map(d => ({id: d.id, ...d.data()}))); S.loaded[name] = true;
+    if (name === 'league' && !snap.metadata.fromCache){ clearTimeout(slow); S.state = 'ready'; }
+    schedule(); }, err => { clearTimeout(slow); toast('Dati non disponibili: ' + err.code); });
+  subscribe('league', d => S.settings = d.find(x => x.id === 'settings') || null);
+  subscribe('clubs', d => S.clubs = d.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+  subscribe('players', d => S.players = d);
+  subscribe('matches', d => S.matches = d);
+  subscribe('offers', d => S.offers = d);
+  subscribe('auctions', d => S.auctions = d);
+  setInterval(schedule, 30000);
+  setInterval(() => { let expired = false;
+    document.querySelectorAll('.cd').forEach(el => { const ms = +el.dataset.end - now(); el.textContent = timeLeft(ms); el.classList.toggle('hot', ms < SNIPE); if (ms <= 0) expired = true; });
+    if (expired) schedule(); }, 1000);
+  if (S.me) db.doc(`data/users/${S.me}/prefs`).onSnapshot(d => { S.seenAt = d.exists ? (d.data().seenAt || 0) : 0; schedule(); }, () => { S.seenAt = 0; });
+  subscribe('ledger', d => S.ledger = d);
+  subscribe('transfers', d => S.transfers = d);
+  subscribe('lineups', d => S.lineups = d);
+}
+boot();
+</script>
+
+</body></html>
