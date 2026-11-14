@@ -136,6 +136,7 @@ tr.z-bot .pos{color:var(--bad)}
 .li .main{min-width:0;flex:1 1 240px}
 .li .main b{font-weight:600}
 .amt{font-weight:700}.amt.pos{color:var(--good)}.amt.neg{color:var(--bad)}
+.gate{display:grid;place-items:center;min-height:60vh;padding:24px 0}.gatecard{width:100%;max-width:420px;padding:26px}.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}.merr.okmsg{color:var(--good,#1a7f37)}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -377,6 +378,7 @@ async function refreshProfiles(){
   if (ids.some(id => (ps[id]?.name || '') !== (S.profiles[id]?.name || ''))){ S.profiles = {...S.profiles, ...ps}; render(); }
 }
 function render(){
+  if (S.gate) return;
   const r = (location.hash || '#classifica').slice(1);
   S.route = ['classifica','calendario','societa','mercato','svincolati','statistiche','lega'].includes(r) ? r : 'classifica';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
@@ -1320,6 +1322,44 @@ function authModal(mode = 'login'){
     const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
     toast(error ? authMsg(error) : 'Ti ho mandato un’email per scegliere una nuova password.', 6000); };
 }
+
+function showGate(mode = 'login', note = ''){
+  S.gate = true;
+  const nav = document.querySelector('#tabs'); if (nav) nav.hidden = true;
+  $('#meta').innerHTML = '';
+  const reg = mode === 'signup';
+  $('#main').innerHTML = `<div class="gate"><div class="panel gatecard">
+    <div class="eyebrow">Lega carriera allenatore · FC 27</div>
+    <h2 style="margin:4px 0 6px;font-size:1.7rem">League Manager</h2>
+    <p class="sub" style="margin:0 0 16px">${reg ? 'Crea il tuo account per entrare nella lega e prendere una panchina.' : 'Accedi con il tuo account per entrare nella lega.'}</p>
+    <div class="seg" role="tablist"><button type="button" class="btn${reg ? '' : ' primary'}" data-gate="login" aria-pressed="${!reg}">Accedi</button><button type="button" class="btn${reg ? ' primary' : ''}" data-gate="signup" aria-pressed="${reg}">Registrati</button></div>
+    <form id="gform" novalidate style="display:grid;gap:12px;margin-top:16px">
+      ${reg ? fld('gname', 'Nome da manager', 'required maxlength="30" autocomplete="nickname"', 'Lo vedono gli altri manager in classifica e sul mercato.', true) : ''}
+      ${fld('gemail', 'Email', 'type="email" required autocomplete="email" inputmode="email"', '', true)}
+      ${fld('gpass', 'Password', `type="password" required minlength="6" autocomplete="${reg ? 'new-password' : 'current-password'}"`, reg ? 'Almeno 6 caratteri.' : '', true)}
+      <p class="merr" id="gerr" ${note ? '' : 'hidden'}>${esc(note)}</p>
+      <button class="btn primary" type="submit" id="gok" style="padding:11px 14px;font-size:1rem">${reg ? 'Crea account' : 'Entra'}</button>
+      ${reg ? '' : '<button type="button" class="btn ghost" id="gforgot">Password dimenticata?</button>'}
+    </form></div></div>`;
+  document.querySelectorAll('[data-gate]').forEach(b => b.onclick = () => showGate(b.dataset.gate));
+  const err = m => { const e = $('#gerr'); e.textContent = m; e.hidden = false; e.classList.remove('okmsg'); };
+  const ok = m => { const e = $('#gerr'); e.textContent = m; e.hidden = false; e.classList.add('okmsg'); };
+  $('#gform').onsubmit = async ev => { ev.preventDefault(); const b = $('#gok'); b.disabled = true; $('#gerr').hidden = true;
+    try {
+      const email = String($('#gemail').value || '').trim(), password = String($('#gpass').value || '');
+      if (!email || !password) return err('Scrivi email e password.');
+      if (reg){ const name = String($('#gname').value || '').trim(); if (!name) return err('Scrivi il tuo nome da manager.');
+        const {data, error} = await sb.auth.signUp({email, password, options: {data: {name}, emailRedirectTo: location.origin + location.pathname}});
+        if (error) return err(authMsg(error));
+        if (!data.session){ showGate('login'); return ok('Account creato! Apri l’email che ti è arrivata, tocca il link di conferma e poi accedi qui. Controlla anche lo spam.'); }
+      } else { const {error} = await sb.auth.signInWithPassword({email, password}); if (error) return err(authMsg(error)); }
+      location.reload();
+    } finally { const bb = $('#gok'); if (bb) bb.disabled = false; } };
+  const fg = $('#gforgot');
+  if (fg) fg.onclick = async () => { const email = String($('#gemail').value || '').trim(); if (!email) return err('Scrivi prima la tua email, poi premi di nuovo.');
+    const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+    if (error) err(authMsg(error)); else ok('Ti ho mandato un’email per scegliere una nuova password.'); };
+}
 function newPasswordModal(){
   openModal('Nuova password', fld('npass', 'Scegli la nuova password', 'type="password" required minlength="6" autocomplete="new-password"', 'Almeno 6 caratteri.', true),
     async fd => { const {error} = await sb.auth.updateUser({password: String(fd.get('npass') || '')}); if (error) fail(authMsg(error)); toast('Password aggiornata'); location.hash = ''; location.reload(); }, 'Salva password');
@@ -1428,6 +1468,7 @@ async function boot(){
   if (!db){ S.state = 'nodb'; render(); return; }
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') setTimeout(newPasswordModal, 300); });
   try { await loadSession(); } catch {}
+  if (!S.me){ showGate(); return; }
   S.who = !S.me ? 'none' : S.comm ? 'comm' : 'member';
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
   const subscribe = (name, fn) => db.collection(name).onSnapshot(snap => {
