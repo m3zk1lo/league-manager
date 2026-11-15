@@ -717,7 +717,7 @@ function viewLeague(){
       <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
         ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span></div>
           <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
-          <div class="row">${!c.managerId && !mc ? `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>` : ''}
+          <div class="row">${!c.managerId && !mc && (S.comm || drawPicker() === S.me) ? `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>` : ''}
           ${S.comm ? `<button class="btn sm ghost" data-act="club-edit" data-id="${c.id}">Modifica</button>` : ''}
           ${c.managerId && S.comm ? `<button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">${c.managerId === S.me ? 'Lascia' : 'Libera panchina'}</button>` : ''}
           ${S.comm ? `<button class="btn sm bad" data-act="club-del" data-id="${c.id}">Elimina</button>` : ''}</div></div>`).join('')}</div>`
@@ -1975,7 +1975,7 @@ document.addEventListener('click', async e => {
       case 'settings': settingsModal(); break;
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
-      case 'club-claim': if (!S.me) return authModal(); if (S.draw?.active && !S.comm){ const pk = drawPicker(); if (!pk || pk !== S.me) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'club-claim': if (!S.me) return authModal(); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!pk || pk !== S.me) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
       case 'reset-league': resetLeagueModal(); break;
