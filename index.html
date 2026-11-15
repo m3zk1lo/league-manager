@@ -145,6 +145,9 @@ tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;borde
 @keyframes drawin{0%{transform:scale(.6) rotate(-4deg);opacity:0}60%{transform:scale(1.06)}100%{transform:none;opacity:1}}
 .crest.logo{background:transparent;box-shadow:none;border-radius:0}.crest.logo img{width:100%;height:100%;object-fit:contain;display:block}
 .logoprev{display:flex;align-items:center;gap:12px}.logoprev .crest{width:58px;height:58px}
+.kits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:6px 0 10px}.kit{display:grid;justify-items:center;gap:6px;text-align:center;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 6px}.kit svg{max-width:100%;height:auto}
+.kitedit{display:grid;grid-template-columns:160px minmax(0,1fr);gap:14px;align-items:start}.kitprev{display:grid;place-items:center;background:var(--surface-2);border-radius:12px;padding:8px}
+@media (max-width:560px){.kitedit{grid-template-columns:minmax(0,1fr)}}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -624,6 +627,7 @@ function viewClub(){
   <section class="grid2">
     <section class="grid2">${stadiumPanel(c)}${medicalPanel(c)}</section>
     ${sponsorPanel(c)}
+    ${kitPanel(c)}
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
@@ -1877,6 +1881,68 @@ async function seasonEndFinance(s, upIds){
     const med = MED[medLevel(c)]; if (med.yearly) await ledger(c.id, -med.yearly, `Staff medico stagione ${s}`);
   }
 }
+/* ---------- SARTORIA: divise della società ---------- */
+const KIT_SLOTS = {home: 'Prima divisa', away: 'Seconda divisa', third: 'Terza divisa'};
+const KIT_PAT = {plain: 'Tinta unita', vstripes: 'Strisce verticali', pin: 'Gessato (righe sottili)', hoops: 'Strisce orizzontali', halves: 'Metà e metà', sash: 'Banda diagonale', sleeves: 'Maniche a contrasto', chest: 'Fascia sul petto'};
+const hexK = v => /^#[0-9a-f]{6}$/i.test(v || '') ? v : null;
+function kitDefault(c, slot){
+  const col = hexOk(c.color), on = textOn(col) === '#ffffff' ? '#ffffff' : '#111111';
+  if (slot === 'home') return {pat: 'plain', c1: col, c2: on, c3: on, shorts: col, socks: col};
+  if (slot === 'away') return {pat: 'plain', c1: '#ffffff', c2: col, c3: col, shorts: '#ffffff', socks: '#ffffff'};
+  return {pat: 'plain', c1: '#1d2433', c2: col, c3: col, shorts: '#1d2433', socks: '#1d2433'};
+}
+const kitOf = (c, slot) => ({...kitDefault(c, slot), ...((c.kits || {})[slot] || {})});
+const titlesOf = c => Object.entries(S.settings?.champions || {}).filter(([, id]) => id === c.id).map(([k]) => +k.slice(1));
+const isChampion = c => (S.settings?.champions || {})['s' + (season() - 1)] === c.id;
+function kitSVG(c, k, size = 120){
+  const id = 'k' + Math.random().toString(36).slice(2, 8), c1 = hexK(k.c1) || '#ccc', c2 = hexK(k.c2) || '#fff', c3 = hexK(k.c3) || c2;
+  const body = 'M62,22 L82,10 Q100,24 118,10 L138,22 L186,48 L170,88 L150,78 L150,202 L50,202 L50,78 L30,88 L14,48 Z';
+  const lsl = 'M62,22 L14,48 L30,88 L50,78 Z', rsl = 'M138,22 L186,48 L170,88 L150,78 Z';
+  let pat = '';
+  if (k.pat === 'vstripes') for (let x = 58; x < 150; x += 28) pat += `<rect x="${x}" y="0" width="14" height="210" fill="${c2}"/>`;
+  if (k.pat === 'pin') for (let x = 54; x < 150; x += 10) pat += `<rect x="${x}" y="0" width="2" height="210" fill="${c2}"/>`;
+  if (k.pat === 'hoops') for (let y = 30; y < 210; y += 32) pat += `<rect x="0" y="${y}" width="200" height="16" fill="${c2}"/>`;
+  if (k.pat === 'halves') pat = `<rect x="100" y="0" width="100" height="210" fill="${c2}"/>`;
+  if (k.pat === 'sash') pat = `<polygon points="40,40 70,40 170,200 140,200" fill="${c2}"/>`;
+  if (k.pat === 'sleeves') pat = `<path d="${lsl}" fill="${c2}"/><path d="${rsl}" fill="${c2}"/>`;
+  if (k.pat === 'chest') pat = `<rect x="0" y="92" width="200" height="26" fill="${c2}"/>`;
+  const txt = textOn(c1), sp = curSponsors(c), main = sp.main?.brand || '', tech = sp.tech?.brand || '';
+  const logo = c.logo && /^data:image\/(png|jpeg|webp);base64,/.test(c.logo) ? `<image href="${c.logo}" x="114" y="46" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>` : '';
+  const scu = isChampion(c) ? `<g transform="translate(118,30)"><path d="M0,0 h18 v9 q0,8 -9,12 q-9,-4 -9,-12 Z" fill="#fff" stroke="#333" stroke-width=".8"/><rect x="0" y="0" width="6" height="16" fill="#009246"/><rect x="12" y="0" width="6" height="16" fill="#ce2b37"/></g>` : '';
+  return `<svg viewBox="0 0 200 300" width="${size}" height="${size * 1.5}" role="img" aria-label="Divisa ${esc(c.name)}">
+    <defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect x="0" y="0" width="200" height="210" fill="${c1}"/>${pat}
+      <path d="M50,196 L150,196 L150,202 L50,202 Z" fill="${c3}"/><path d="M30,88 L14,48 L19,45 L35,85 Z" fill="${c3}"/><path d="M170,88 L186,48 L181,45 L165,85 Z" fill="${c3}"/></g>
+    <path d="${body}" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+    <path d="M82,10 Q100,30 118,10 Q100,22 82,10 Z" fill="${c3}" stroke="${c3}" stroke-width="3"/>
+    ${scu}${logo}
+    ${tech ? `<text x="72" y="62" font-size="9" font-weight="700" fill="${txt}" text-anchor="middle" font-family="Arial,sans-serif">${esc(tech.toUpperCase())}</text>` : ''}
+    ${main ? `<text x="100" y="${k.pat === 'chest' ? 110 : 124}" font-size="${main.length > 12 ? 13 : 17}" font-weight="800" fill="${k.pat === 'chest' ? textOn(c2) : txt}" text-anchor="middle" font-family="Arial,sans-serif">${esc(main.toUpperCase())}</text>` : ''}
+    <path d="M52,208 L148,208 L144,252 L104,252 L100,236 L96,252 L56,252 Z" fill="${hexK(k.shorts) || c1}" stroke="rgba(0,0,0,.3)"/>
+    <rect x="60" y="258" width="26" height="38" rx="4" fill="${hexK(k.socks) || c1}" stroke="rgba(0,0,0,.3)"/><rect x="114" y="258" width="26" height="38" rx="4" fill="${hexK(k.socks) || c1}" stroke="rgba(0,0,0,.3)"/>
+    <rect x="60" y="262" width="26" height="5" fill="${c3}"/><rect x="114" y="262" width="26" height="5" fill="${c3}"/>
+  </svg>`;
+}
+function kitPanel(c){
+  const mine = canManage(c.id), t = titlesOf(c);
+  return `<div class="panel"><div class="ph"><h3>Sartoria · divise</h3>${t.length ? `<span class="pill good">🏆 ${t.length} ${t.length === 1 ? 'scudetto' : 'scudetti'}</span>` : ''}</div>
+    <div class="kits">${Object.entries(KIT_SLOTS).map(([s, l]) => `<div class="kit">${kitSVG(c, kitOf(c, s))}<b>${l}</b>${mine ? `<button class="btn sm" data-act="kit-edit" data-id="${c.id}|${s}">Disegna</button>` : ''}</div>`).join('')}</div>
+    <p class="sub">Le divise mostrano lo sponsor di maglia e lo sponsor tecnico firmati per la stagione, e il logo della società. Chi vince la Serie A porta lo scudetto sulla maglia per tutta la stagione successiva.</p></div>`;
+}
+function kitModal(cid, slot){
+  const c = club(cid); if (!c) return; if (!canManage(cid)) return toast('Solo l’allenatore può disegnare le divise.');
+  const k = kitOf(c, slot), col = (n, l, v) => `<div class="f"><label for="${n}">${l}</label><input type="color" id="${n}" name="${n}" value="${hexK(v) || '#ffffff'}"></div>`;
+  const f = openModal(`${KIT_SLOTS[slot]} · ${c.name}`, `<div class="kitedit"><div id="kitprev" class="kitprev"></div><div class="fgrid">
+    ${sel('kpat', 'Disegno', Object.entries(KIT_PAT), k.pat, true)}
+    ${col('kc1', 'Colore principale', k.c1)}${col('kc2', 'Colore secondario', k.c2)}${col('kc3', 'Colletto e bordi', k.c3)}
+    ${col('ksh', 'Pantaloncini', k.shorts)}${col('kso', 'Calzettoni', k.socks)}</div></div>`,
+    async fd => { const v = {pat: String(fd.get('kpat')), c1: String(fd.get('kc1')), c2: String(fd.get('kc2')), c3: String(fd.get('kc3')), shorts: String(fd.get('ksh')), socks: String(fd.get('kso'))};
+      const cur = club(cid); await db.doc('clubs/' + cid).update({kits: {...(cur.kits || {}), [slot]: v}}); toast(`${KIT_SLOTS[slot]} salvata`); }, 'Salva divisa');
+  const upd = () => { const v = {pat: f.querySelector('#kpat').value, c1: f.querySelector('#kc1').value, c2: f.querySelector('#kc2').value, c3: f.querySelector('#kc3').value, shorts: f.querySelector('#ksh').value, socks: f.querySelector('#kso').value};
+    $('#kitprev').innerHTML = kitSVG(c, v, 150); };
+  f.querySelectorAll('select,input').forEach(x => x.oninput = x.onchange = upd); upd();
+}
+
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
@@ -1907,6 +1973,7 @@ document.addEventListener('click', async e => {
       case 'lineups': viewLineups(S.matches.find(x => x.id === id)); break;
       case 'sp-sign': { const [cid, oid] = id.split('|'); await signSponsor(cid, oid); break; }
       case 'st-edit': stadiumModal(club(id)); break;
+      case 'kit-edit': { const [cid, sl] = id.split('|'); kitModal(cid, sl); break; }
       case 'med-up': await medUpgrade(id); break;
       case 'med-cure': await medCure(id); break;
       case 'draw-new': await drawNew(); break;
