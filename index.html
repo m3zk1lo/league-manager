@@ -644,13 +644,6 @@ function viewClub(){
     <aside class="stack">
       ${loanedOut(c.id).length ? `<div class="panel"><div class="ph"><h3>In prestito altrove</h3><span class="sub">${loanedOut(c.id).length} giocatori</span></div><div class="list">
         ${loanedOut(c.id).map(p => `<div class="li"><div class="main"><b>${esc(p.name)}</b> <span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span><br><span class="sub">al ${esc(club(p.clubId)?.name || p.loan.borrowerLabel || 'club CPU')} · ${loanNote(p.loan)}</span></div><span class="pill info">${esc(MODE[p.loan.type] || 'Prestito')}</span></div>`).join('')}</div></div>` : ''}
-      <div class="panel"><div class="ph"><h3>Obiettivi della dirigenza</h3>${can ? `<button class="btn sm" data-act="obj-add" data-id="${c.id}">Aggiungi</button>` : ''}</div>
-        ${objs.length ? `<div class="list">${objs.map(o => `<div class="li"><div class="main"><span class="sub">${esc(o.kind)}</span><br><b>${esc(o.text)}</b><br><span class="sub">Premio ${fmtM(o.reward || 0)} · Penalità ${fmtM(o.penalty || 0)}</span></div>
-          <div class="row">${o.status === 'done' ? '<span class="pill good">Raggiunto</span>' : o.status === 'failed' ? '<span class="pill bad">Fallito</span>' : '<span class="pill info">In corso</span>'}
-          ${S.comm && o.status === 'open' ? `<button class="btn sm good" data-act="obj-done" data-id="${c.id}" data-o="${o.id}">Raggiunto</button><button class="btn sm bad" data-act="obj-fail" data-id="${c.id}" data-o="${o.id}">Fallito</button>` : ''}
-          ${S.comm ? `<button class="x" title="Elimina obiettivo" aria-label="Elimina obiettivo" data-act="obj-del" data-id="${c.id}" data-o="${o.id}">×</button>` : ''}</div></div>`).join('')}</div>`
-          : '<p class="muted">Nessun obiettivo per questa stagione. Come nella carriera, fissa obiettivi di piazzamento, sviluppo dei giovani e finanze: il commissario li valuta a fine stagione e assegna premio o penalità sul budget.</p>'}
-      </div>
       <div class="panel"><div class="ph"><h3>Movimenti di cassa</h3><span class="sub">Budget iniziale ${fmtM(c.budget0 || 0)}</span></div>
         ${led.length ? `<div class="list">${led.slice(0, 12).map(l => `<div class="li"><div class="main">${esc(l.reason)}<br><span class="sub">${day(l.ts)} · stagione ${l.season || 1}</span></div><span class="amt num ${l.amount >= 0 ? 'pos' : 'neg'}">${l.amount >= 0 ? '+' : ''}${fmtM(l.amount)}</span></div>`).join('')}</div>` : '<p class="muted">Nessun movimento.</p>'}
       </div>
