@@ -737,7 +737,8 @@ function viewLeague(){
           <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · max ${maxSubs()} cambi</b></div>
           <div class="li"><span>Squalifica</span><b>rosso o ${s.yellowLimit}° giallo</b></div>
           <div class="li"><span>Aste svincolati</span><b class="num">${AUC().mins} min · rilancio ${fmtM(AUC().step)}</b></div>
-          <div class="li"><div class="main"><span>Premi piazzamento</span><br><span class="sub num">${prizes || 'nessuno'}</span></div></div>
+          <div class="li"><div class="main"><span>Premi Serie A</span><br><span class="sub num">${prizes || 'nessuno'}</span></div></div>
+          <div class="li"><div class="main"><span>Premi Serie B</span><br><span class="sub num">${prizesB().map((p, i) => `${i+1}° ${fmtM(p)}`).join(' · ') || 'nessuno'}</span></div></div>
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
@@ -792,7 +793,8 @@ function settingsModal(){
     ${fld('maxSubs', 'Cambi massimi in distinta', `type="number" min="0" max="11" value="${s.maxSubs ?? 5}"`)}
     <div class="f"><span class="lbl">Distinta di gara</span><label><input type="checkbox" name="lureq" ${s.lineupRequired !== false ? 'checked' : ''}> Obbligatoria prima di inserire il risultato</label></div>
     ${fld('auctionStep', 'Rilancio minimo alle aste (milioni €)', `type="number" min="0" step="0.1" value="${(s.auctionStep ?? 0.5 * M) / M}"`)}
-    ${fld('prizes', 'Premi piazzamento (milioni €, dal 1° in giù)', `value="${esc((s.prizes || []).map(p => p / M).join(', '))}"`, 'Separati da virgola. Vengono accreditati alla chiusura della stagione.', true)}
+    ${fld('prizesB', 'Premi piazzamento Serie B (milioni €, dal 1° in giù)', `value="${esc(prizesB().map(p => p / M).join('; '))}"`, 'Separati da punto e virgola. Vengono accreditati alla chiusura della stagione.', true)}
+    ${fld('prizes', 'Premi piazzamento Serie A (milioni €, dal 1° in giù)', `value="${esc((s.prizes || []).map(p => p / M).join(', '))}"`, 'Separati da virgola. Vengono accreditati alla chiusura della stagione.', true)}
     <div class="f full"><label for="rules">Regolamento</label><textarea id="rules" name="rules" maxlength="8000">${esc(s.rules)}</textarea></div></div>`,
     async fd => {
       const name = String(fd.get('name')).trim() || fail('Dai un nome al torneo.');
@@ -800,6 +802,7 @@ function settingsModal(){
         yellowLimit: Math.max(1, Math.round(num(fd, 'yellowLimit')) || 3),
         maxSubs: Math.max(0, Math.min(11, Math.round(num(fd, 'maxSubs')))), lineupRequired: fd.get('lureq') === 'on',
         auctionStep: Math.max(0, num(fd, 'auctionStep')) * M,
+        prizesB: String(fd.get('prizesB') || '').split(';').map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
         prizes: String(fd.get('prizes')).split(/[,;]/).map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
         rules: String(fd.get('rules')).slice(0, 8000),
         budgetA: num(fd, 'budgetA') * M, budgetB: num(fd, 'budgetB') * M, wageMargin: Math.max(0, Math.min(100, num(fd, 'wageMargin')))};
@@ -1323,7 +1326,8 @@ function closeSeason(){
     Verranno accreditati i premi di piazzamento in Serie A (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
     'Chiudi stagione', async () => {
       const s = season();
-      await Promise.all(rows.map((x, i) => pr[i] ? ledger(x.c.id, pr[i], `Premio ${i+1}° posto stagione ${s}`) : null));
+      await Promise.all(rows.map((x, i) => pr[i] ? ledger(x.c.id, pr[i], `Premio ${i+1}° posto Serie A stagione ${s}`) : null));
+      if (hasB()){ const pb = prizesB(); await Promise.all(rowsB.map((x, i) => pb[i] ? ledger(x.c.id, pb[i], `Premio ${i+1}° posto Serie B stagione ${s}`) : null)); }
       await settleLoans(s);
       await seasonEndFinance(s, upIds);
       for (const c of down){ await db.doc('clubs/' + c.id).update({div: 'B'}); c.div = 'B'; }
@@ -1929,18 +1933,25 @@ function kitSVG(c, k, size = 120){
 function kitPanel(c){
   const mine = canManage(c.id), t = titlesOf(c);
   return `<div class="panel"><div class="ph"><h3>Sartoria · divise</h3>${t.length ? `<span class="pill good">🏆 ${t.length} ${t.length === 1 ? 'scudetto' : 'scudetti'}</span>` : ''}</div>
-    <div class="kits">${Object.entries(KIT_SLOTS).map(([s, l]) => `<div class="kit">${kitSVG(c, kitOf(c, s))}<b>${l}</b>${mine ? `<button class="btn sm" data-act="kit-edit" data-id="${c.id}|${s}">Disegna</button>` : ''}</div>`).join('')}</div>
-    <p class="sub">Le divise mostrano lo sponsor di maglia e lo sponsor tecnico firmati per la stagione, e il logo della società. Chi vince la Serie A porta lo scudetto sulla maglia per tutta la stagione successiva.</p></div>`;
+    <div class="kits">${Object.entries(KIT_SLOTS).map(([s, l]) => `<div class="kit">${kitSVG(c, kitOf(c, s))}<b>${l}</b>${mine ? (kitLocked(c, s) ? '<span class="sub">Già cambiata in questa stagione</span>' : `<button class="btn sm" data-act="kit-edit" data-id="${c.id}|${s}">Disegna · ${fmtM(KIT_COST[divOf(c)])}</button>`) : ''}</div>`).join('')}</div>
+    <p class="sub">Ogni divisa si può ridisegnare <b>una volta a stagione</b> e costa ${fmtM(KIT_COST[divOf(c)])} (${DIVS[divOf(c)] || 'Serie A'}). Le divise mostrano lo sponsor di maglia e lo sponsor tecnico firmati per la stagione, e il logo della società. Chi vince la Serie A porta lo scudetto sulla maglia per tutta la stagione successiva.</p></div>`;
 }
 function kitModal(cid, slot){
   const c = club(cid); if (!c) return; if (!canManage(cid)) return toast('Solo l’allenatore può disegnare le divise.');
+  if (kitLocked(c, slot)) return toast('Questa divisa è già stata cambiata in questa stagione.');
+  const cost = KIT_COST[divOf(c)];
   const k = kitOf(c, slot), col = (n, l, v) => `<div class="f"><label for="${n}">${l}</label><input type="color" id="${n}" name="${n}" value="${hexK(v) || '#ffffff'}"></div>`;
   const f = openModal(`${KIT_SLOTS[slot]} · ${c.name}`, `<div class="kitedit"><div id="kitprev" class="kitprev"></div><div class="fgrid">
     ${sel('kpat', 'Disegno', Object.entries(KIT_PAT), k.pat, true)}
     ${col('kc1', 'Colore principale', k.c1)}${col('kc2', 'Colore secondario', k.c2)}${col('kc3', 'Colletto e bordi', k.c3)}
-    ${col('ksh', 'Pantaloncini', k.shorts)}${col('kso', 'Calzettoni', k.socks)}</div></div>`,
-    async fd => { const v = {pat: String(fd.get('kpat')), c1: String(fd.get('kc1')), c2: String(fd.get('kc2')), c3: String(fd.get('kc3')), shorts: String(fd.get('ksh')), socks: String(fd.get('kso'))};
-      const cur = club(cid); await db.doc('clubs/' + cid).update({kits: {...(cur.kits || {}), [slot]: v}}); toast(`${KIT_SLOTS[slot]} salvata`); }, 'Salva divisa');
+    ${col('ksh', 'Pantaloncini', k.shorts)}${col('kso', 'Calzettoni', k.socks)}</div></div>
+    <p class="sub">Costo ${fmtM(cost)}. Dopo il salvataggio questa divisa non si può più cambiare fino alla prossima stagione.</p>`,
+    async fd => { const v = {pat: String(fd.get('kpat')), c1: String(fd.get('kc1')), c2: String(fd.get('kc2')), c3: String(fd.get('kc3')), shorts: String(fd.get('ksh')), socks: String(fd.get('kso')), season: season()};
+      const cur = club(cid); if (kitLocked(cur, slot)) fail('Questa divisa è già stata cambiata in questa stagione.');
+      if (budget(cur) < cost) fail(`Budget insufficiente: servono ${fmtM(cost)}.`);
+      await db.doc('clubs/' + cid).update({kits: {...(cur.kits || {}), [slot]: v}});
+      await ledger(cid, -cost, `Sartoria: nuova ${KIT_SLOTS[slot].toLowerCase()}`);
+      toast(`${KIT_SLOTS[slot]} salvata`); }, `Paga ${fmtM(cost)} e salva`);
   const upd = () => { const v = {pat: f.querySelector('#kpat').value, c1: f.querySelector('#kc1').value, c2: f.querySelector('#kc2').value, c3: f.querySelector('#kc3').value, shorts: f.querySelector('#ksh').value, socks: f.querySelector('#kso').value};
     $('#kitprev').innerHTML = kitSVG(c, v, 150); };
   f.querySelectorAll('select,input').forEach(x => x.oninput = x.onchange = upd); upd();
@@ -1991,6 +2002,10 @@ function releaseModal(p){
       toast(`${p.name} è all’asta per ${mins} minuti`);
     }, 'Conferma');
 }
+const DEF_PRIZES_B = [12, 10, 8, 6, 5, 4, 3, 2].map(x => x * M);
+const prizesB = () => S.settings?.prizesB ?? DEF_PRIZES_B;
+const KIT_COST = {A: 1 * M, B: 0.5 * M};
+const kitLocked = (c, slot) => ((c.kits || {})[slot] || {}).season === season();
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
