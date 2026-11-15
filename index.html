@@ -136,6 +136,7 @@ tr.z-bot .pos{color:var(--bad)}
 .li .main{min-width:0;flex:1 1 240px}
 .li .main b{font-weight:600}
 .amt{font-weight:700}.amt.pos{color:var(--good)}.amt.neg{color:var(--bad)}
+.livebtn{background:#d93a2b;border-color:#d93a2b;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}.livebtn:hover{border-color:#a92a1f}.livedot{width:8px;height:8px;border-radius:50%;background:#fff;animation:lmpulse 1.2s infinite}@keyframes lmpulse{50%{opacity:.25}}.onl{display:inline-flex;align-items:center;gap:6px}.onl .gdot{width:8px;height:8px;border-radius:50%;background:#22a35a}
 .gate{display:grid;place-items:center;min-height:60vh;padding:24px 0}.gatecard{width:100%;max-width:420px;padding:26px}.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}.merr.okmsg{color:var(--good,#1a7f37)}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
@@ -225,7 +226,7 @@ button.tag:hover{border-color:var(--on-pitch)}
 const M = 1e6, K = 1e3;
 const POS = ['POR','DC','TD','TS','CDC','CC','COC','ED','ES','AD','AS','ATT'];
 const GRP = {POR:'gk',DC:'def',TD:'def',TS:'def',CDC:'mid',CC:'mid',COC:'mid',ED:'mid',ES:'mid',AD:'att',AS:'att',ATT:'att'};
-const S = {settings:null, clubs:[], players:[], matches:[], offers:[], ledger:[], transfers:[], auctions:[], loaded:{}, lineups:[], me:null, comm:false,
+const S = {settings:null, clubs:[], players:[], matches:[], offers:[], ledger:[], transfers:[], auctions:[], loaded:{}, lineups:[], online:[], me:null, comm:false,
   route:'classifica', viewClub:null, round:null, statScope:'season', mktPos:'all', profiles:{}, state:'loading', seenAt:null, notifOpen:false, faQ:'', faPos:'all'};
 const BOOT = Date.now();
 let db = null, user = null;
@@ -277,6 +278,12 @@ const loanedOut = cid => S.players.filter(p => p.loan && p.loan.ownerClubId === 
 const squadValue = cid => [...roster(cid).filter(p => !p.loan), ...loanedOut(cid)].reduce((a, p) => a + (p.value || 0), 0);
 const loanNote = L => `fino a fine stagione ${L.untilSeason}${L.buyout ? ` · riscatto ${fmtM(L.buyout)}${L.type === 'loan-obligation' ? ' (obbligo)' : ''}` : ''}${(L.wagePct ?? 100) < 100 ? ` · ingaggio al ${L.wagePct}%` : ''}`;
 const ageOf = p => (p.age || 0) + (season() - (p.ageSeason || season()));
+/* valore e ingaggio automatici da OVR ed età */
+const AGE_V = a => a <= 21 ? 1.3 : a <= 24 ? 1.15 : a <= 28 ? 1 : a <= 30 ? 0.85 : a <= 32 ? 0.65 : a <= 34 ? 0.45 : 0.3;
+const AGE_W = a => a <= 21 ? 0.6 : a <= 24 ? 0.85 : a <= 30 ? 1 : 1.1;
+const roundTo = (x, st) => Math.max(st, Math.round(x / st) * st);
+function autoValue(ovr, age){ if (!ovr) return 0; const v = 0.3 * M * Math.exp(0.205 * (ovr - 60)) * AGE_V(age || 25); return v < M ? roundTo(v, 25 * K) : v < 10 * M ? roundTo(v, 100 * K) : roundTo(v, 500 * K); }
+function autoWage(ovr, age){ if (!ovr) return 0; return roundTo(2.5 * K * Math.exp(0.17 * (ovr - 60)) * AGE_W(age || 25), 500); }
 const canManage = cid => S.comm || (!!S.me && club(cid)?.managerId === S.me);
 const window_ = () => !!S.settings?.windowOpen;
 const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : 'Panchina libera';
@@ -389,6 +396,7 @@ function render(){
     ${ri.total ? `<span class="tag">${ri.done ? 'Stagione conclusa' : `Giornata ${ri.cur} di ${ri.total}`}</span>` : ''}
     <span class="tag ${window_() ? 'open' : 'closed'}"><span class="dot"></span>Mercato ${window_() ? 'aperto' : 'chiuso'}</span>
     ${mc ? `<span class="tag">${crest(mc)} ${esc(mc.name)}</span>` : ''}
+    <button class="tag onl" data-act="online"><span class="gdot"></span>${S.online.length} online</button>
     <button class="tag" data-act="account">${S.me ? esc(S.myName || 'Account') + ' · Esci' : 'Accedi'}</button>
     ${mc ? `<button class="tag" data-act="bell" aria-expanded="${S.notifOpen}">Notifiche${unread ? ` <span class="badge">${unread}</span>` : ''}</button>` : ''}` : '';
   const mb = $('#mktbadge'); mb.hidden = !unread; mb.textContent = unread;
@@ -496,6 +504,7 @@ function fixture(m){
     ${(m.played && (ev(m.homeId) || ev(m.awayId))) || can ? `<div class="fxd"><span>${m.played ? ev(m.homeId) : ''}</span>
       ${can ? `<button class="btn sm ${m.played ? 'ghost' : 'primary'}" data-act="result" data-id="${m.id}">${m.played ? 'Modifica' : 'Inserisci risultato'}</button>` : ''}
       <span class="r">${m.played ? ev(m.awayId) : ''}</span></div>` : ''}
+    ${m.live || S.comm ? `<div class="fxd lurow"><span class="row">${m.live ? `<a class="btn sm livebtn" href="${esc(m.live)}" target="_blank" rel="noopener"><span class="livedot"></span>${m.played ? 'Rivedi la live' : 'Guarda la live'}</a>` : ''}</span>${S.comm ? `<button class="btn sm ghost" data-act="live" data-id="${m.id}">${m.live ? 'Modifica link live' : 'Aggiungi link live'}</button>` : ''}</div>` : ''}
     ${!m.played ? `<div class="fxd lurow"><span class="row">${luStatus(m, m.homeId)}${luStatus(m, m.awayId)}</span><span class="row">${canLu ? `<button class="btn sm" data-act="lineup" data-id="${m.id}">${[m.homeId, m.awayId].filter(canManage).some(x => lineupOf(m.id, x)) ? 'Modifica distinta' : 'Inserisci distinta'}</button>` : ''}<button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Vedi distinte</button></span></div>`
       : (luDone(m.id, m.homeId) || luDone(m.id, m.awayId)) ? `<div class="fxd lurow"><span></span><button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Distinte</button></div>` : ''}
   </div>`;
@@ -540,7 +549,7 @@ function viewClub(){
       <div class="kpi"><div class="l">Posizione</div><div class="v num">${pos ? pos + '°' : '—'}</div><div class="sub">su ${S.clubs.length} società</div></div>
     </div></div>
   <section class="grid2">
-    <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
+    <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
         <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b>${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
@@ -657,6 +666,7 @@ function viewLeague(){
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
+          <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
           <button class="btn sm bad" data-act="reset-league">Azzera torneo</button>
           <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
           <button class="btn sm primary" data-act="close-season" ${ri.done ? '' : 'disabled'}>Chiudi stagione</button></div>
@@ -749,11 +759,10 @@ function playerFields(p = {}){
     ${fld('page', 'Età', `type="number" min="15" max="45" value="${p.age ? ageOf(p) : ''}"`)}
     ${fld('povr', 'Valutazione (OVR)', `type="number" min="40" max="99" value="${p.ovr || ''}"`)}
     ${fld('ppot', 'Potenziale (POT)', `type="number" min="40" max="99" value="${p.pot || ''}"`)}
-    ${fld('pvalue', 'Valore di mercato (milioni €)', `type="number" min="0" step="0.1" value="${p.value ? p.value / M : ''}"`)}
-    ${fld('pwage', 'Ingaggio (migliaia €/settimana)', `type="number" min="0" step="0.5" value="${p.wage ? p.wage / K : ''}"`)}</div>`;
+    <p class="sub full" id="pauto" style="grid-column:1/-1">Valore e ingaggio si calcolano da soli in base a <b>età</b> e <b>OVR</b>, come da regolamento.</p></div>`;
 }
 const readPlayer = fd => ({name: String(fd.get('pname')).trim() || fail('Scrivi il nome del giocatore.'), pos: String(fd.get('ppos')),
-  age: Math.round(num(fd, 'page')), ageSeason: season(), ovr: Math.round(num(fd, 'povr')), pot: Math.round(num(fd, 'ppot')), value: num(fd, 'pvalue') * M, wage: num(fd, 'pwage') * K});
+  age: Math.round(num(fd, 'page')), ageSeason: season(), ovr: Math.round(num(fd, 'povr')), pot: Math.round(num(fd, 'ppot')), value: autoValue(Math.round(num(fd, 'povr')), Math.round(num(fd, 'page'))), wage: autoWage(Math.round(num(fd, 'povr')), Math.round(num(fd, 'page')))});
 function squadRoom(cid, add = 1){ if (roster(cid).length + add > (S.settings.maxSquad || 30)) fail(`Rosa piena: il limite è ${S.settings.maxSquad} giocatori.`); }
 
 function addPlayer(cid){ openModal(cid ? 'Aggiungi giocatore' : 'Aggiungi svincolato', playerFields() + `<p class="sub">${cid ? 'Per i giocatori già in rosa all’inizio della carriera. I nuovi arrivi passano dalle trattative o dalle aste degli svincolati, così il budget si aggiorna.' : 'Il giocatore entra nella lista svincolati: ogni allenatore potrà avviare un’asta.'}</p>`,
@@ -762,14 +771,14 @@ function editPlayer(p){ openModal('Modifica giocatore', playerFields(p) + `<div 
   async fd => { await db.doc('players/' + p.id).update({...readPlayer(fd), injured: fd.get('pinj') === 'on'}); toast('Giocatore aggiornato'); }); }
 function importPlayers(cid){
   openModal(cid ? 'Importa rosa' : 'Importa svincolati', `<div class="f full"><label for="bulk">Un giocatore per riga</label><textarea id="bulk" name="bulk" style="min-height:200px" placeholder="Mike Maignan; POR; 87; 87; 31; 38; 140&#10;Rafael Leão; AS; 86; 88; 27; 75; 175"></textarea>
-    <span class="hint">Ordine: Nome; Ruolo; OVR; POT; Età; Valore (milioni €); Ingaggio (migliaia €/sett). Separatore punto e virgola o tabulazione, così puoi incollare da un foglio di calcolo. Ruoli: ${POS.join(' ')}.</span></div>`,
+    <span class="hint">Ordine: Nome; Ruolo; OVR; POT; Età. Valore e ingaggio si calcolano da soli da età e OVR. Separatore punto e virgola o tabulazione, così puoi incollare da un foglio di calcolo. Ruoli: ${POS.join(' ')}.</span></div>`,
     async fd => {
       const lines = String(fd.get('bulk')).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (!lines.length) fail('Incolla almeno una riga.');
       const rows = lines.map((l, i) => { const c = l.split(/\t|;/).map(x => x.trim()); const pos = (c[1] || '').toUpperCase();
         if (!c[0]) fail(`Riga ${i+1}: manca il nome.`); if (!POS.includes(pos)) fail(`Riga ${i+1}: ruolo “${c[1] || ''}” non valido.`);
         const n = x => parseFloat(String(x || '').replace(',', '.')) || 0;
-        return {name: c[0], pos, ovr: Math.round(n(c[2])), pot: Math.round(n(c[3])), age: Math.round(n(c[4])), ageSeason: season(), value: n(c[5]) * M, wage: n(c[6]) * K, clubId: cid, injured: false}; });
+        return {name: c[0], pos, ovr: Math.round(n(c[2])), pot: Math.round(n(c[3])), age: Math.round(n(c[4])), ageSeason: season(), value: autoValue(Math.round(n(c[2])), Math.round(n(c[4]))), wage: autoWage(Math.round(n(c[2])), Math.round(n(c[4]))), clubId: cid, injured: false}; });
       if (cid) squadRoom(cid, rows.length);
       for (let i = 0; i < rows.length; i += 8) await Promise.all(rows.slice(i, i + 8).map(r => db.collection('players').add(r)));
       toast(`${rows.length} giocatori importati`);
@@ -1203,7 +1212,8 @@ function closeSeason(){
       await db.doc('league/settings').update({season: s + 1, windowOpen: true, champions: {...(S.settings.champions || {}), ['s' + s]: rows[0]?.c.id || null}});
       S.settings = {...S.settings, season: s + 1};
       await generateFixtures(s + 1);
-      toast(`Benvenuti nella stagione ${s + 1}`);
+      try { await recalcAll(); } catch {}
+      toast(`Benvenuti nella stagione ${s + 1}: valori e ingaggi aggiornati con la nuova età`);
     });
 }
 
@@ -1233,6 +1243,7 @@ async function reload(col){
     if (error){ L.onErr && L.onErr({code: error.message}); return; }
     data.forEach(r => fresh.set(r.id, r)); if (data.length < 1000) break; from += 1000; }
   L.map = fresh; L.ready = true; L.emit();
+  if (col === 'players' && S.comm && !reload.autoDone){ reload.autoDone = true; setTimeout(() => { if (typeof recalcAll === 'function') recalcAll().then(n => { if (n) toast(`Valori e ingaggi aggiornati per ${n} giocatori (età + overall)`, 4000); }).catch(() => {}); }, 1500); }
 }
 const localDoc = path => ({
   async get(){ let v = null; try { v = JSON.parse(localStorage.getItem('lm:' + path)); } catch {} return {exists: !!v, data: () => v || undefined}; },
@@ -1423,8 +1434,71 @@ function resetLeagueModal(){
       Object.keys(listeners).forEach(reload); toast('Torneo azzerato', 4000);
     }, 'Azzera tutto', true);
 }
+/* ---------- rosa iniziale dagli svincolati (commissario) ---------- */
+function assignModal(cid){
+  const c = club(cid); if (!c) return;
+  const fa = freeAgents();
+  if (!fa.length) return toast('Non ci sono svincolati.');
+  const f = openModal(`Rosa di ${c.name}`, `<p class="sub">Scegli gli svincolati da mettere direttamente in rosa. <b>Non è un acquisto</b>: niente soldi spesi, niente asta e niente trasferimento nello storico. Cerca per nome e spunta i giocatori.</p>
+    <div class="row" style="margin:8px 0"><input id="asq" placeholder="Cerca giocatore…" autocomplete="off" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:16px;background:var(--surface-2)">
+      <button type="button" class="btn sm" id="asall">Spunta i visibili</button><button type="button" class="btn sm ghost" id="asnone">Togli tutte</button></div>
+    <p class="sub" id="ascount">0 selezionati · rosa attuale ${roster(cid).length}</p>
+    <div id="aslist" style="max-height:45vh;overflow:auto;border:1px solid var(--line);border-radius:8px">${fa.map(p => `<label class="asrow" data-n="${esc((p.name || '').toLowerCase())}" style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" value="${p.id}"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span><span style="flex:1;min-width:0">${esc(p.name)}</span><span class="num">${p.ovr || ''}</span><span class="sub num">${fmtM(p.value || 0)}</span></label>`).join('')}</div>`,
+    async () => {
+      const ids = [...f.querySelectorAll('#aslist input:checked')].map(x => x.value);
+      if (!ids.length) fail('Spunta almeno un giocatore.');
+      const max = S.settings?.maxSquad || 99;
+      if (roster(cid).length + ids.length > max) fail(`La rosa supererebbe il massimo di ${max} giocatori.`);
+      const list = S.players.filter(p => ids.includes(p.id));
+      for (let i = 0; i < list.length; i += 10) await Promise.all(list.slice(i, i + 10).map(async p => {
+        const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, clubId: cid, loan: null}}).eq('col', 'players').eq('id', id);
+        if (error) throw dbErr(error); }));
+      listeners.players && reload('players'); toast(`${list.length} giocatori aggiunti alla rosa di ${c.name}`, 4000);
+    }, 'Metti in rosa');
+  const upd = () => { $('#ascount').textContent = `${f.querySelectorAll('#aslist input:checked').length} selezionati · rosa attuale ${roster(cid).length}`; };
+  $('#aslist').onchange = upd;
+  $('#asq').oninput = e => { const q = e.target.value.trim().toLowerCase(); f.querySelectorAll('.asrow').forEach(r => r.style.display = !q || r.dataset.n.includes(q) ? 'flex' : 'none'); };
+  $('#asall').onclick = () => { f.querySelectorAll('.asrow').forEach(r => { if (r.style.display !== 'none') r.querySelector('input').checked = true; }); upd(); };
+  $('#asnone').onclick = () => { f.querySelectorAll('#aslist input').forEach(x => x.checked = false); upd(); };
+}
+/* ---------- ricalcolo valori e ingaggi ---------- */
+async function recalcAll(){
+  const ch = S.players.filter(p => p.ovr).map(p => ({p, v: autoValue(p.ovr, ageOf(p)), w: autoWage(p.ovr, ageOf(p))})).filter(x => x.v !== x.p.value || x.w !== x.p.wage);
+  for (let i = 0; i < ch.length; i += 10) await Promise.all(ch.slice(i, i + 10).map(async ({p, v, w}) => {
+    const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, value: v, wage: w}}).eq('col', 'players').eq('id', id); if (error) throw dbErr(error); }));
+  listeners.players && reload('players'); return ch.length;
+}
+function recalcModal(){
+  const ex = [[70, 20], [75, 26], [80, 23], [80, 31], [85, 27], [88, 33]];
+  openModal('Ricalcola valori e ingaggi', `<p>Tutti i giocatori (rose e svincolati) prendono <b>valore di cartellino</b> e <b>ingaggio</b> calcolati da <b>OVR</b> ed <b>età</b>, con la stessa regola per tutti. Si fa da solo anche a ogni chiusura di stagione.</p>
+    <table class="tbl" style="margin-top:8px"><thead><tr><th>OVR</th><th>Età</th><th class="r">Valore</th><th class="r">Ingaggio</th></tr></thead><tbody>${ex.map(([o, a]) => `<tr><td class="num">${o}</td><td class="num">${a}</td><td class="r num">${fmtM(autoValue(o, a))}</td><td class="r num">${fmtW(autoWage(o, a))}</td></tr>`).join('')}</tbody></table>`,
+    async () => { const n = await recalcAll(); toast(`${n} giocatori aggiornati`, 4000); }, 'Ricalcola tutti');
+}
+/* ---------- live e chi è online ---------- */
+function liveModal(m){
+  if (!m) return; const H = club(m.homeId), A = club(m.awayId);
+  openModal(`Link live · ${H?.name || ''} – ${A?.name || ''}`, `${fld('lurl', 'Link della diretta', `type="url" inputmode="url" placeholder="https://www.twitch.tv/… o https://youtube.com/…" value="${esc(m.live || '')}"`, 'Twitch, YouTube, TikTok o qualsiasi link https. Lascia vuoto per toglierlo.', true)}`,
+    async fd => { let u = String(fd.get('lurl') || '').trim();
+      if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u;
+      if (u){ try { const x = new URL(u); if (!/^https?:$/.test(x.protocol)) throw 0; } catch { fail('Il link non è valido.'); } }
+      await db.doc('matches/' + m.id).update({live: u || null}); toast(u ? 'Link live salvato: tutti vedono «Guarda la live»' : 'Link live tolto'); }, 'Salva');
+}
+function onlineModal(){
+  const list = S.online.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  openModal(`Online adesso · ${list.length}`, list.length ? `<div class="lulist">${list.map(u => { const c = S.clubs.find(x => x.managerId === u.id);
+    return `<div class="onl"><span class="gdot"></span><b>${esc(u.name || 'Manager')}</b>${c ? ` <span class="sub">· ${esc(c.name)}</span>` : ''}${u.id === S.me ? ' <span class="sub">(tu)</span>' : ''}</div>`; }).join('')}</div>` : '<p class="muted">Nessuno online.</p>', async () => {}, 'Chiudi');
+  $('#mcancel').hidden = true;
+}
+function startPresence(){
+  if (!S.me) return;
+  const ch = sb.channel('lm-online', {config: {presence: {key: S.me}}});
+  ch.on('presence', {event: 'sync'}, () => { const st = ch.presenceState();
+    S.online = Object.entries(st).map(([id, arr]) => ({id, name: arr[0]?.name || ''})); render(); });
+  ch.subscribe(async st => { if (st === 'SUBSCRIBED') await ch.track({name: S.myName || '', at: Date.now()}); });
+}
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['export','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -1445,13 +1519,17 @@ document.addEventListener('click', async e => {
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
       case 'reset-league': resetLeagueModal(); break;
+      case 'recalc': recalcModal(); break;
       case 'result': { const m = S.matches.find(x => x.id === id);
         if (!m.played && luRequired() && !S.comm && !(luDone(m.id, m.homeId) && luDone(m.id, m.awayId))) return toast('Prima entrambi gli allenatori devono consegnare la distinta di gara.');
         resultModal(m); break; }
       case 'lineup': lineupPick(S.matches.find(x => x.id === id)); break;
       case 'lineups': viewLineups(S.matches.find(x => x.id === id)); break;
+      case 'live': liveModal(S.matches.find(x => x.id === id)); break;
+      case 'online': onlineModal(); break;
       case 'add-player': addPlayer(id); break;
       case 'import': importPlayers(id); break;
+      case 'assign': assignModal(id); break;
       case 'cpu-buy': cpuBuy(id); break;
       case 'edit-player': editPlayer(p()); break;
       case 'sell': sellPlayer(p()); break;
@@ -1506,6 +1584,7 @@ async function boot(){
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') setTimeout(newPasswordModal, 300); });
   try { await loadSession(); } catch {}
   if (!S.me){ showGate(); return; }
+  try { startPresence(); } catch {}
   S.who = !S.me ? 'none' : S.comm ? 'comm' : 'member';
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
   const subscribe = (name, fn) => db.collection(name).onSnapshot(snap => {
