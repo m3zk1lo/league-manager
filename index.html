@@ -657,6 +657,7 @@ function viewLeague(){
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
+          <button class="btn sm bad" data-act="reset-league">Azzera torneo</button>
           <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
           <button class="btn sm primary" data-act="close-season" ${ri.done ? '' : 'disabled'}>Chiudi stagione</button></div>
           <p class="sub">${anyPlayed ? 'Il calendario non si può rigenerare dopo la prima partita giocata.' : S.clubs.length < 2 ? 'Servono almeno 2 società per il calendario.' : 'Il calendario mescola le società e crea andata e ritorno.'} La stagione si chiude quando tutte le partite sono giocate: premi di piazzamento sul budget, età +1, nuovo calendario.</p>` : '<p class="sub">Calendario, mercato e chiusura stagione li gestisce il commissario.</p>'}
@@ -1383,8 +1384,47 @@ function exportSQL(){
   $('#excopy').onclick = async () => { try { await navigator.clipboard.writeText(sql); toast('Copiato! Ora incollalo su Supabase'); }
     catch { const t = $('#exsql'); t.focus(); t.select(); toast('Tieni premuto nel riquadro e scegli Copia'); } };
 }
+/* ---------- pulizia torneo (commissario) ---------- */
+async function freePlayers(list){
+  for (let i = 0; i < list.length; i += 10) await Promise.all(list.slice(i, i + 10).map(async p => {
+    const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, clubId: null, loan: null, injured: false}}).eq('col', 'players').eq('id', id);
+    if (error) throw dbErr(error); }));
+}
+async function wipe(cols){ for (const col of cols){ const {error} = await sb.from('docs').delete().eq('col', col); if (error) throw dbErr(error); } }
+function delClubModal(c){
+  if (!c) return;
+  const inCal = S.matches.some(m => m.homeId === c.id || m.awayId === c.id), rs = roster(c.id);
+  openModal(`Elimina ${c.name}`, `<p>${inCal ? '<b>La società è nel calendario:</b> verranno cancellate anche tutte le sue partite e le distinte collegate. ' : ''}La società sparisce dalla lega.</p>
+    <div class="f full"><label><input type="checkbox" name="keep" checked> Metti i ${rs.length} giocatori della rosa tra gli svincolati (se togli la spunta vengono cancellati)</label></div>`,
+    async fd => {
+      if (fd.get('keep') === 'on') await freePlayers(rs);
+      else for (const p of rs){ const {error} = await sb.from('docs').delete().eq('col', 'players').eq('id', p.id); if (error) throw dbErr(error); }
+      const ms = S.matches.filter(m => m.homeId === c.id || m.awayId === c.id).map(m => m.id);
+      for (let i = 0; i < ms.length; i += 50){ const part = ms.slice(i, i + 50);
+        let r = await sb.from('docs').delete().eq('col', 'matches').in('id', part); if (r.error) throw dbErr(r.error);
+        r = await sb.from('docs').delete().eq('col', 'lineups').in('data->>matchId', part); if (r.error) throw dbErr(r.error); }
+      const {error} = await sb.from('docs').delete().eq('col', 'clubs').eq('id', c.id); if (error) throw dbErr(error);
+      S.viewClub = null; ['players','matches','lineups','clubs'].forEach(x => listeners[x] && reload(x)); toast('Società eliminata');
+    }, 'Elimina', true);
+}
+function resetLeagueModal(){
+  const owned = S.players.filter(p => p.clubId || p.loan);
+  openModal('Azzera torneo', `<p>Riporta la lega all'inizio, come se il torneo non fosse mai partito. Si cancellano <b>calendario, risultati, distinte, offerte, aste, movimenti di budget e trasferimenti</b>.</p>
+    <div class="f full"><label><input type="checkbox" name="free" checked> Metti tutti i ${owned.length} giocatori delle rose tra gli svincolati</label></div>
+    <div class="f full"><label><input type="checkbox" name="clubs"> Elimina anche tutte le ${S.clubs.length} società</label></div>
+    <div class="f full"><label for="rconf">Per confermare scrivi <b>AZZERA</b></label><input id="rconf" name="rconf" autocomplete="off"></div>`,
+    async fd => {
+      if (String(fd.get('rconf') || '').trim().toUpperCase() !== 'AZZERA') fail('Scrivi AZZERA per confermare.');
+      if (fd.get('free') === 'on') await freePlayers(owned);
+      await wipe(['matches','lineups','offers','auctions','ledger','transfers']);
+      if (fd.get('clubs') === 'on') await wipe(['clubs']);
+      else for (const c of S.clubs){ const {id, ...d} = c; const {error} = await sb.from('docs').update({data: {...d, objectives: []}}).eq('col', 'clubs').eq('id', id); if (error) throw dbErr(error); }
+      if (S.settings){ const {id, champions, ...d} = S.settings; const {error} = await sb.from('docs').update({data: {...d, season: 1}}).eq('col', 'league').eq('id', 'settings'); if (error) throw dbErr(error); }
+      Object.keys(listeners).forEach(reload); toast('Torneo azzerato', 4000);
+    }, 'Azzera tutto', true);
+}
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['export','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['export','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -1403,11 +1443,8 @@ document.addEventListener('click', async e => {
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
-      case 'club-del': { const c = club(id);
-        if (seasonMatches().some(m => m.homeId === id || m.awayId === id)) return toast('La società è nel calendario: rigenera il calendario o chiudi la stagione prima di eliminarla.');
-        confirmBox(`Elimina ${c.name}`, 'Società e rosa vengono cancellate per sempre.', 'Elimina', async () => { const rs = roster(id);
-          for (let i = 0; i < rs.length; i += 10) await Promise.all(rs.slice(i, i + 10).map(x => db.doc('players/' + x.id).delete()));
-          await db.doc('clubs/' + id).delete(); S.viewClub = null; toast('Società eliminata'); }); break; }
+      case 'club-del': delClubModal(club(id)); break;
+      case 'reset-league': resetLeagueModal(); break;
       case 'result': { const m = S.matches.find(x => x.id === id);
         if (!m.played && luRequired() && !S.comm && !(luDone(m.id, m.homeId) && luDone(m.id, m.awayId))) return toast('Prima entrambi gli allenatori devono consegnare la distinta di gara.');
         resultModal(m); break; }
