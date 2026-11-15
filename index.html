@@ -713,6 +713,7 @@ function viewLeague(){
   return `<section class="grid2">
     <div class="stack">
       ${drawPanel()}
+      ${usersPanel()}
       <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
         ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span></div>
           <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
@@ -1936,6 +1937,26 @@ function kitModal(cid, slot){
   f.querySelectorAll('select,input').forEach(x => x.oninput = x.onchange = upd); upd();
 }
 
+let usersCache = null, usersAt = 0;
+async function loadUsers(force){
+  if (!S.comm) return; if (!force && usersCache && Date.now() - usersAt < 60000) return;
+  usersAt = Date.now();
+  let r = await sb.rpc('admin_users');
+  if (r.error){ const p = await sb.from('profiles').select('id,name,created_at'); usersCache = (p.data || []).map(x => ({...x, email: ''})); usersCache.noEmail = true; }
+  else usersCache = r.data || [];
+  render();
+}
+function usersPanel(){
+  if (!S.comm) return '';
+  if (!usersCache){ setTimeout(() => loadUsers(), 0); return `<div class="panel"><div class="ph"><h3>Manager registrati</h3></div><p class="muted">Caricamento…</p></div>`; }
+  const list = usersCache.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  return `<div class="panel"><div class="ph"><h3>Manager registrati · ${list.length}</h3><button class="btn sm ghost" data-act="users-reload">Aggiorna</button></div>
+    <div class="tscroll"><table><thead><tr><th>#</th><th>Nome</th>${usersCache.noEmail ? '' : '<th>Email</th>'}<th>Iscritto il</th><th>Squadra</th></tr></thead><tbody>
+    ${list.map((u, i) => { const c = S.clubs.find(x => x.managerId === u.id), on = S.online.some(o => o.id === u.id);
+      return `<tr><td class="pos">${i + 1}</td><td>${on ? '<span class="gdot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22a35a;margin-right:6px"></span>' : ''}<b>${esc(u.name || 'Manager')}</b>${u.is_admin ? ' <span class="pill info">commissario</span>' : ''}</td>
+        ${usersCache.noEmail ? '' : `<td class="sub">${esc(u.email || '')}</td>`}<td class="sub">${u.created_at ? new Date(u.created_at).toLocaleDateString('it-IT') : ''}</td><td>${c ? esc(c.name) : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
+    </tbody></table></div>${usersCache.noEmail ? '<p class="sub">Per vedere anche le email esegui lo script SQL «admin_users» su Supabase.</p>' : ''}</div>`;
+}
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
@@ -1974,6 +1995,7 @@ document.addEventListener('click', async e => {
       case 'draw-all': await drawNext(true); break;
       case 'draw-end': confirmBox('Chiudi sorteggio', 'Il sorteggio sparisce e le panchine tornano libere da prendere per tutti.', 'Chiudi', async () => { await db.doc('league/draw').update({active: false}); }); break;
       case 'start-budgets': applyStartBudgets(); break;
+      case 'users-reload': await loadUsers(true); break;
       case 'div': S.div = id; S.round = null; render(); break;
       case 'po-adv': await advancePlayoff(); break;
       case 'live': liveModal(S.matches.find(x => x.id === id)); break;
