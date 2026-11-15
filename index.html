@@ -143,6 +143,8 @@ tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;borde
 .drawlist .dn{font-weight:800;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--on-accent)}
 .drawlist li.drawturn{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.drawlist li.drawnew{animation:drawin .9s cubic-bezier(.2,1.4,.4,1)}
 @keyframes drawin{0%{transform:scale(.6) rotate(-4deg);opacity:0}60%{transform:scale(1.06)}100%{transform:none;opacity:1}}
+.crest.logo{background:transparent;box-shadow:none;border-radius:0}.crest.logo img{width:100%;height:100%;object-fit:contain;display:block}
+.logoprev{display:flex;align-items:center;gap:12px}.logoprev .crest{width:58px;height:58px}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -348,6 +350,7 @@ const window_ = () => !!S.settings?.windowOpen;
 const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : 'Panchina libera';
 
 function crest(c, lg){ if (!c) return '<span class="crest" style="--c:#8a9a91;--ct:#fff">?</span>';
+  if (c.logo && /^data:image\/(png|jpeg|webp);base64,/.test(c.logo)) return `<span class="crest logo${lg?' lg':''}"><img src="${c.logo}" alt="" loading="lazy"></span>`;
   const col = hexOk(c.color); return `<span class="crest${lg?' lg':''}" style="--c:${col};--ct:${textOn(col)}">${esc((c.short||c.name||'?').slice(0,3).toUpperCase())}</span>`; }
 function clubLink(c, withMgr){ if (!c) return '<span class="muted">Club rimosso</span>';
   return `<button class="clublink" data-act="club" data-id="${c.id}">${crest(c)}<span><span class="nm">${esc(c.name)}</span>${withMgr?`<span class="mgr">${esc(mgrName(c))}</span>`:''}</span></button>`; }
@@ -813,7 +816,10 @@ function clubModal(c){
   openModal(isNew ? 'Nuova società' : 'Modifica società', `<div class="fgrid">
     ${fld('cname', 'Nome della società', `required maxlength="32" value="${esc(c.name)}" placeholder="Es. AC Milan"`, '', true)}
     ${fld('cshort', 'Sigla (3 lettere)', `required maxlength="3" value="${esc(c.short)}" placeholder="MIL"`)}
-    ${fld('ccolor', 'Colore sociale', `type="color" value="${hexOk(c.color)}"`)}
+    ${fld('ccolor', 'Colore sociale', `type="color" value="${hexOk(c.color)}"`, 'Usato solo se non carichi il logo.')}
+    <div class="f full"><label for="clogo">Logo della società</label><div class="logoprev"><span id="clogoprev">${c.logo ? crest(c, true) : '<span class="sub">Nessun logo</span>'}</span>
+      <input id="clogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">${c.logo ? '<button type="button" class="btn sm ghost" id="clogodel">Togli logo</button>' : ''}</div>
+      <span class="hint">PNG con sfondo trasparente è l’ideale. Viene ridotto in automatico.</span></div>
     ${sel('cdiv', 'Campionato', [['A', 'Serie A'], ['B', 'Serie B']], divOf(c))}
     ${fld('ccap', 'Capienza stadio (posti)', `type="number" min="1000" max="80000" step="100" value="${stadium(c).cap}"`, 'Metti la capienza reale dello stadio del club.')}
     ${fld('cbudget', 'Budget trasferimenti iniziale (milioni €)', `type="number" min="0" step="0.5" value="${c.budget0 / M}"`, 'Usa quello che FC 27 assegna al tuo club, o lo standard della lega.')}
@@ -824,8 +830,9 @@ function clubModal(c){
       const short = (String(fd.get('cshort')).trim() || name.slice(0, 3)).toUpperCase();
       if (S.clubs.some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail('Esiste già una società con questo nome.');
       const dv = String(fd.get('cdiv')) === 'B' ? 'B' : 'A';
+      const logo = clubModal.logo === undefined ? (c.logo || null) : clubModal.logo;
       const data = {name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
-        stadium: {...(c.stadium || {}), cap: Math.max(1000, Math.round(num(fd, 'ccap')) || stadium({...c, div: dv}).cap)}};
+        stadium: {...(c.stadium || {}), cap: Math.max(1000, Math.round(num(fd, 'ccap')) || stadium({...c, div: dv}).cap)}, logo};
       if (isNew){
         const manage = S.comm ? (!myClub() && fd.get('cmine') === 'on') : true;
         if (manage && !S.me) fail('Serve un account con accesso per allenare una società.');
@@ -833,6 +840,17 @@ function clubModal(c){
         toast(`${name} è iscritta alla lega`);
       } else { await db.doc('clubs/' + c.id).update(data); toast('Società aggiornata'); }
     }, isNew ? 'Iscrivi società' : 'Salva');
+  clubModal.logo = undefined;
+  const fi = $('#clogo'); if (fi) fi.onchange = async () => { const file = fi.files[0]; if (!file) return;
+    try { clubModal.logo = await shrinkLogo(file); $('#clogoprev').innerHTML = crest({logo: clubModal.logo}, true); } catch { toast('Immagine non valida.'); } };
+  const fd0 = $('#clogodel'); if (fd0) fd0.onclick = () => { clubModal.logo = null; $('#clogoprev').innerHTML = '<span class="sub">Logo tolto (salva per confermare)</span>'; };
+}
+function shrinkLogo(file){
+  return new Promise((ok, ko) => { const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { const S2 = 128, cv = document.createElement('canvas'); cv.width = S2; cv.height = S2; const x = cv.getContext('2d');
+      const r = Math.min(S2 / img.width, S2 / img.height), w = img.width * r, h = img.height * r; x.drawImage(img, (S2 - w) / 2, (S2 - h) / 2, w, h);
+      URL.revokeObjectURL(url); let d = cv.toDataURL('image/webp', 0.9); if (!d.startsWith('data:image/webp')) d = cv.toDataURL('image/png'); ok(d); };
+    img.onerror = () => { URL.revokeObjectURL(url); ko(); }; img.src = url; });
 }
 
 function playerFields(p = {}){
