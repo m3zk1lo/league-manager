@@ -521,7 +521,8 @@ function auctionRow(a, mc){
   return `<div class="li"><div class="main"><b>${esc(a.playerName)}</b> ${p ? `<span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <span class="sub">OVR ${p.ovr || '—'} · ${fmtW(p.wage)}</span>` : ''}<br>
     <span class="pts num">${fmtM(a.highBid)}</span> <span class="sub">${me ? 'sei in testa' : a.highClubId ? 'in testa: ' + esc(club(a.highClubId)?.name || '—') : 'base d’asta, nessuna offerta'} · ${bids.length} ${bids.length === 1 ? 'offerta' : 'offerte'} · ${ms > 0 ? `termina tra <b class="cd num${ms < SNIPE ? ' hot' : ''}" data-end="${a.endsAt}">${timeLeft(ms)}</b>` : 'in chiusura'}</span></div>
     <div class="row">${me ? '<span class="pill good">In testa</span>' : was ? '<span class="pill bad">Superato</span>' : ''}
-    ${mc && !me && ms > 0 && window_() ? `<button class="btn sm primary" data-act="bid" data-id="${a.id}">${a.highClubId ? 'Rilancia' : 'Offri'}</button>` : ''}
+    ${a.sellerClubId ? `<span class="pill info">Messo all’asta dal ${esc(club(a.sellerClubId)?.name || '—')}</span>` : ''}
+    ${mc && !me && ms > 0 && window_() && a.sellerClubId !== mc.id ? `<button class="btn sm primary" data-act="bid" data-id="${a.id}">${a.highClubId ? 'Rilancia' : 'Offri'}</button>` : ''}
     ${S.comm ? `<button class="btn sm ghost" data-act="auc-cancel" data-id="${a.id}">Annulla asta</button>` : ''}</div></div>`;
 }
 function notifPanel(nl, unread){
@@ -636,7 +637,7 @@ function viewClub(){
         <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
         <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
         <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ` <span class="pill warn">Infortunato${injLeft(p) ? ' · ' + injLeft(p) + ' g.' : ''}</span>` : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
-        <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm bad" data-act="sell" data-id="${p.id}">Cedi o presta</button>`
+        <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm bad" data-act="sell" data-id="${p.id}">Svincola o asta</button>`
             : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
           : mine && window_() && !p.loan ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : `<div class="empty"><strong>Rosa vuota</strong><span>${can ? 'Copia la rosa dalla tua carriera su FC 27: aggiungi i giocatori uno per uno oppure incolla l’elenco con “Importa rosa”.' : 'Il commissario non ha ancora caricato la rosa.'}</span></div>`}
@@ -1064,6 +1065,7 @@ function bidAuction(a){
       const snap = await ref.get(), cur = snap.data();
       if (!snap.exists || cur.status !== 'open' || now() > cur.endsAt) fail('L’asta è terminata.');
       if (cur.highClubId === mc.id) fail('Sei già in testa a questa asta.');
+      if (cur.sellerClubId === mc.id) fail('Non puoi fare offerte per un tuo giocatore.');
       if (amt < minOf(cur) - 1) fail(`L’offerta minima ora è ${fmtM(minOf(cur))}.`);
       canAfford(mc, amt, p?.wage, a.id);
       const t = now(), endsAt = cur.endsAt - t < SNIPE ? t + SNIPE : cur.endsAt;
@@ -1077,6 +1079,15 @@ async function closeAuction(a){
   const snap = await ref.get(), cur = snap.data();
   if (!snap.exists || cur.status !== 'open' || now() < cur.endsAt) return;
   const p = S.players.find(x => x.id === cur.playerId), w = club(cur.highClubId);
+  if (cur.sellerClubId){
+    const sc = club(cur.sellerClubId);
+    if (!p || p.clubId !== cur.sellerClubId || p.loan || !w || !sc){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta: il giocatore resta al club' : 'Giocatore non più disponibile'}); return; }
+    await ref.update({status: 'closed', closedTs: now()});
+    await db.doc('players/' + p.id).update({clubId: w.id});
+    await Promise.all([ledger(w.id, -cur.highBid, `Asta vinta: ${p.name} dal ${sc.name}`), ledger(sc.id, cur.highBid, `Asta: ${p.name} venduto al ${w.name}`),
+      logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: w.name, fromClubId: sc.id, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction'})]);
+    return;
+  }
   if (!p || p.clubId || p.loan || !w){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta' : 'Giocatore non più disponibile'}); return; }
   await ref.update({status: 'closed', closedTs: now()});
   await db.doc('players/' + p.id).update({clubId: w.id, injured: false});
@@ -1507,8 +1518,7 @@ function exportSQL(){
 /* ---------- pulizia torneo (commissario) ---------- */
 async function freePlayers(list){
   for (let i = 0; i < list.length; i += 10) await Promise.all(list.slice(i, i + 10).map(async p => {
-    const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, clubId: null, loan: null, injured: false}}).eq('col', 'players').eq('id', id);
-    if (error) throw dbErr(error); }));
+    await db.doc('players/' + p.id).update({clubId: null, loan: null, injured: false, injury: null}); }));
 }
 async function wipe(cols){ for (const col of cols){ const {error} = await sb.from('docs').delete().eq('col', col); if (error) throw dbErr(error); } }
 function delClubModal(c){
@@ -1561,8 +1571,7 @@ function assignModal(cid){
       if (roster(cid).length + ids.length > max) fail(`La rosa supererebbe il massimo di ${max} giocatori.`);
       const list = S.players.filter(p => ids.includes(p.id));
       for (let i = 0; i < list.length; i += 10) await Promise.all(list.slice(i, i + 10).map(async p => {
-        const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, clubId: cid, loan: null}}).eq('col', 'players').eq('id', id);
-        if (error) throw dbErr(error); }));
+        await db.doc('players/' + p.id).update({clubId: cid, loan: null}); }));
       listeners.players && reload('players'); toast(`${list.length} giocatori aggiunti alla rosa di ${c.name}`, 4000);
     }, 'Metti in rosa');
   const upd = () => { $('#ascount').textContent = `${f.querySelectorAll('#aslist input:checked').length} selezionati · rosa attuale ${roster(cid).length}`; };
@@ -1575,7 +1584,7 @@ function assignModal(cid){
 async function recalcAll(){
   const ch = S.players.filter(p => p.ovr).map(p => ({p, v: autoValue(p.ovr, ageOf(p)), w: autoWage(p.ovr, ageOf(p))})).filter(x => x.v !== x.p.value || x.w !== x.p.wage);
   for (let i = 0; i < ch.length; i += 10) await Promise.all(ch.slice(i, i + 10).map(async ({p, v, w}) => {
-    const {id, ...d} = p; const {error} = await sb.from('docs').update({data: {...d, value: v, wage: w}}).eq('col', 'players').eq('id', id); if (error) throw dbErr(error); }));
+    await db.doc('players/' + p.id).update({value: v, wage: w}); }));
   listeners.players && reload('players'); return ch.length;
 }
 function recalcModal(){
@@ -1819,7 +1828,7 @@ function injuryData(p, fd){
 }
 async function autoHeal(){
   const list = S.players.filter(p => p.injured && p.injury && injLeft(p) === 0);
-  for (const p of list){ const {id, ...d} = p; await sb.from('docs').update({data: {...d, injured: false, injury: null}}).eq('col', 'players').eq('id', id); }
+  for (const p of list) await db.doc('players/' + p.id).update({injured: false, injury: null});
   if (list.length){ listeners.players && reload('players'); toast(`${list.length} giocatori rientrati dall’infortunio`); }
 }
 
@@ -1941,7 +1950,7 @@ let usersCache = null, usersAt = 0;
 async function loadUsers(force){
   if (!S.comm) return; if (!force && usersCache && Date.now() - usersAt < 60000) return;
   usersAt = Date.now();
-  let r = await sb.rpc('admin_users');
+  let r; try { r = await sb.rpc('admin_users'); } catch (e){ r = {error: e}; }
   if (r.error){ const p = await sb.from('profiles').select('id,name,created_at'); usersCache = (p.data || []).map(x => ({...x, email: ''})); usersCache.noEmail = true; }
   else usersCache = r.data || [];
   render();
@@ -1956,6 +1965,31 @@ function usersPanel(){
       return `<tr><td class="pos">${i + 1}</td><td>${on ? '<span class="gdot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22a35a;margin-right:6px"></span>' : ''}<b>${esc(u.name || 'Manager')}</b>${u.is_admin ? ' <span class="pill info">commissario</span>' : ''}</td>
         ${usersCache.noEmail ? '' : `<td class="sub">${esc(u.email || '')}</td>`}<td class="sub">${u.created_at ? new Date(u.created_at).toLocaleDateString('it-IT') : ''}</td><td>${c ? esc(c.name) : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
     </tbody></table></div>${usersCache.noEmail ? '<p class="sub">Per vedere anche le email esegui lo script SQL «admin_users» su Supabase.</p>' : ''}</div>`;
+}
+function releaseModal(p){
+  const c = club(p?.clubId); if (!c) return;
+  if (!canManage(c.id)) return toast('Solo l’allenatore della società può farlo.');
+  if (!window_()) return toast('Il mercato è chiuso.');
+  if (auctionFor(p.id)) return toast('C’è già un’asta aperta per questo giocatore.');
+  const {mins} = AUC();
+  const f = openModal(`${p.name} · svincolo o asta`, `<div class="f full"><span class="lbl">Cosa vuoi fare</span>
+      <label><input type="radio" name="how" value="auction" checked> <b>Metti all’asta</b>: gli altri manager fanno offerte per ${mins} minuti, base d’asta il valore (${fmtM(p.value || 0)}). Chi vince paga te. Senza offerte il giocatore resta tuo.</label>
+      <label style="margin-top:8px;display:block"><input type="radio" name="how" value="free"> <b>Svincola</b>: il giocatore esce subito dalla rosa senza incasso e finisce tra gli svincolati, all’asta per tutti.</label></div>
+    <p class="sub">Non esistono cessioni a club esterni: un giocatore lascia la tua società solo con un’offerta di un altro manager, con l’asta o con lo svincolo.</p>`,
+    async fd => {
+      if (!window_()) fail('Il mercato è chiuso.');
+      if (auctionFor(p.id)) fail('C’è già un’asta aperta per questo giocatore.');
+      if (String(fd.get('how')) === 'free'){
+        await db.doc('players/' + p.id).update({clubId: null, loan: null});
+        await logTransfer({playerId: p.id, playerName: p.name, fromLabel: c.name, toLabel: 'Svincolato', fromClubId: c.id, toClubId: null, fee: 0, kind: 'release', mode: 'release'});
+        await Promise.all(S.offers.filter(o => o.playerId === p.id && o.status === 'open').map(o => db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null})));
+        toast(`${p.name} svincolato`); return;
+      }
+      const t = now(), base = p.value || 0;
+      await db.doc(`auctions/${p.id}-${t}`).set({playerId: p.id, playerName: p.name, sellerClubId: c.id, startedBy: c.id, startTs: t, endsAt: t + mins * 6e4, base,
+        highBid: base, highClubId: null, bids: [], status: 'open', season: season()});
+      toast(`${p.name} è all’asta per ${mins} minuti`);
+    }, 'Conferma');
 }
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
@@ -2005,7 +2039,7 @@ document.addEventListener('click', async e => {
       case 'assign': assignModal(id); break;
       case 'cpu-buy': cpuBuy(id); break;
       case 'edit-player': editPlayer(p()); break;
-      case 'sell': sellPlayer(p()); break;
+      case 'sell': releaseModal(p()); break;
       case 'offer': makeOffer(p()); break;
       case 'redeem': redeem(p()); break;
       case 'auc-start': startAuction(p()); break;
