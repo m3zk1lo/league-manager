@@ -138,6 +138,11 @@ tr.z-bot .pos{color:var(--bad)}
 .amt{font-weight:700}.amt.pos{color:var(--good)}.amt.neg{color:var(--bad)}
 .livebtn{background:#d93a2b;border-color:#d93a2b;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}.livebtn:hover{border-color:#a92a1f}.livedot{width:8px;height:8px;border-radius:50%;background:#fff;animation:lmpulse 1.2s infinite}@keyframes lmpulse{50%{opacity:.25}}.onl{display:inline-flex;align-items:center;gap:6px}.onl .gdot{width:8px;height:8px;border-radius:50%;background:#22a35a}
 .gate{display:grid;place-items:center;min-height:60vh;padding:24px 0}.gatecard{width:100%;max-width:420px;padding:26px}.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}.merr.okmsg{color:var(--good,#1a7f37)}
+tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:2px}.zl.z-top{background:var(--gold)}.zl.z-bot{background:var(--bad,#c0392b)}.zl.z-po{background:#2f6fdb}
+.drawlist{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:6px}.drawlist li{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.drawlist .dn{font-weight:800;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--on-accent)}
+.drawlist li.drawturn{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.drawlist li.drawnew{animation:drawin .9s cubic-bezier(.2,1.4,.4,1)}
+@keyframes drawin{0%{transform:scale(.6) rotate(-4deg);opacity:0}60%{transform:scale(1.06)}100%{transform:none;opacity:1}}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -244,6 +249,60 @@ const club = id => S.clubs.find(c => c.id === id);
 const myClub = () => S.me ? S.clubs.find(c => c.managerId === S.me) : null;
 const season = () => S.settings?.season || 1;
 const seasonMatches = (s = season()) => S.matches.filter(m => m.season === s);
+/* ---------- due divisioni: Serie A e Serie B ---------- */
+const DIVS = {A: 'Serie A', B: 'Serie B'}, PROMO = 2, RELEG = 3;
+const divOf = c => (c && c.div) || 'A';
+const mDiv = m => m.div || 'A';
+const hasB = () => S.clubs.some(c => divOf(c) === 'B');
+const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m) === div && !m.stage);
+const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : divOf(myClub());
+const divTabs = () => hasB() ? `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${['A', 'B'].map(d => `<button class="chip" aria-pressed="${curDiv() === d}" data-act="div" data-id="${d}">${DIVS[d]}</button>`).join('')}</div>` : '';
+const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
+function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
+function tieWinner(ms, s = season()){
+  const a = ms[0].homeId, b = ms[0].awayId, g = {[a]: 0, [b]: 0};
+  ms.forEach(m => { g[m.homeId] += m.hg; g[m.awayId] += m.ag; });
+  if (g[a] !== g[b]) return g[a] > g[b] ? a : b;
+  return seedOf(a, s) < seedOf(b, s) ? a : b;
+}
+function playoffWinner(s = season()){
+  const rows = standings(s, 'B'); if (rows.length < 3) return null;
+  if (rows.length < 6) return rows[2]?.c.id || null;
+  const f = poMatches(s).filter(m => m.stage === 'po-f');
+  return f.length === 2 && f.every(m => m.played) ? tieWinner(f, s) : null;
+}
+function seasonDone(s = season()){
+  if (!roundInfo('A').done) return false;
+  if (!hasB()) return true;
+  return roundInfo('B').done && !!playoffWinner(s);
+}
+async function advancePlayoff(){
+  const s = season(), ri = roundInfo('B'), rows = standings(s, 'B'), po = poMatches(s);
+  if (!ri.done) fail('Prima vanno giocate tutte le giornate di Serie B.');
+  if (rows.length < 6) fail('Con meno di 6 squadre in Serie B non ci sono playoff: sale direttamente la terza.');
+  const base = ri.total, mk = (stage, leg, round, h, a) => ({id: `s${s}-B-${stage}${leg || ''}-${h}-${a}`, season: s, div: 'B', stage, leg: leg || 0, round, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []});
+  const sf = po.filter(m => m.stage === 'po-sf'), fin = po.filter(m => m.stage === 'po-f');
+  let docs = [];
+  if (!sf.length) docs = [mk('po-sf', 0, base + 1, rows[2].c.id, rows[5].c.id), mk('po-sf', 0, base + 1, rows[3].c.id, rows[4].c.id)];
+  else if (!fin.length){
+    if (!sf.every(m => m.played)) fail('Prima vanno giocate le due semifinali.');
+    const w = sf.map(m => tieWinner([m], s)).sort((x, y) => seedOf(x, s) - seedOf(y, s));
+    docs = [mk('po-f', 1, base + 2, w[1], w[0]), mk('po-f', 2, base + 3, w[0], w[1])];
+  } else fail('I playoff sono già tutti in calendario.');
+  for (const {id, ...d} of docs) await db.doc('matches/' + id).set(d);
+  toast(sf.length ? 'Finale playoff in calendario (andata e ritorno)' : 'Semifinali playoff in calendario');
+}
+function playoffPanel(){
+  if (!hasB()) return '';
+  const s = season(), rows = standings(s, 'B'), po = poMatches(s), sf = po.filter(m => m.stage === 'po-sf'), fin = po.filter(m => m.stage === 'po-f').sort((a, b) => a.leg - b.leg);
+  const w = playoffWinner(s), ri = roundInfo('B');
+  const canAdv = S.comm && ri.done && rows.length >= 6 && (!sf.length || (sf.every(m => m.played) && !fin.length));
+  return `<div class="panel"><div class="ph"><h3>Playoff Serie B</h3>${canAdv ? `<button class="btn sm primary" data-act="po-adv">${sf.length ? 'Genera la finale' : 'Genera le semifinali'}</button>` : ''}</div>
+    <p class="sub">Come nella realtà: le prime ${PROMO} salgono direttamente in Serie A, dalla 3ª alla 6ª fanno i playoff per l’ultimo posto. Semifinali secche (3ª–6ª e 4ª–5ª) in casa della meglio piazzata, finale di andata e ritorno. In caso di parità passa la squadra meglio piazzata in classifica.</p>
+    ${w ? `<p><span class="pill good">Promossa dai playoff</span> <b>${esc(club(w)?.name || '')}</b></p>` : ''}
+    ${sf.length ? `<h4 style="margin:12px 0 4px">Semifinali</h4>${sf.map(fixture).join('')}` : `<p class="muted">${ri.done ? (S.comm ? 'Stagione regolare finita: genera le semifinali.' : 'In attesa che il commissario generi le semifinali.') : 'Si giocano alla fine del campionato di Serie B.'}</p>`}
+    ${fin.length ? `<h4 style="margin:12px 0 4px">Finale</h4>${fin.map(m => `<p class="sub" style="margin:6px 0 0">${m.leg === 1 ? 'Andata' : 'Ritorno'}</p>${fixture(m)}`).join('')}` : ''}</div>`;
+}
 const budget = c => (c?.budget0 || 0) + S.ledger.filter(l => l.clubId === c?.id).reduce((a, l) => a + (l.amount || 0), 0);
 const roster = cid => S.players.filter(p => p.clubId === cid).sort((a, b) => POS.indexOf(a.pos) - POS.indexOf(b.pos) || (b.ovr||0) - (a.ovr||0));
 const LOAN = {'transfer':'Acquisto a titolo definitivo', 'loan':'Prestito secco', 'loan-option':'Prestito con diritto di riscatto', 'loan-obligation':'Prestito con obbligo di riscatto'};
@@ -277,7 +336,7 @@ const wageUsed = cid => S.players.reduce((a, p) => a + (p.clubId === cid ? (p.wa
 const loanedOut = cid => S.players.filter(p => p.loan && p.loan.ownerClubId === cid && p.clubId !== cid);
 const squadValue = cid => [...roster(cid).filter(p => !p.loan), ...loanedOut(cid)].reduce((a, p) => a + (p.value || 0), 0);
 const loanNote = L => `fino a fine stagione ${L.untilSeason}${L.buyout ? ` · riscatto ${fmtM(L.buyout)}${L.type === 'loan-obligation' ? ' (obbligo)' : ''}` : ''}${(L.wagePct ?? 100) < 100 ? ` · ingaggio al ${L.wagePct}%` : ''}`;
-const ageOf = p => (p.age || 0) + (season() - (p.ageSeason || season()));
+const ageOf = p => p.age || 0;
 /* valore e ingaggio automatici da OVR ed età */
 const AGE_V = a => a <= 21 ? 1.3 : a <= 24 ? 1.15 : a <= 28 ? 1 : a <= 30 ? 0.85 : a <= 32 ? 0.65 : a <= 34 ? 0.45 : 0.3;
 const AGE_W = a => a <= 21 ? 0.6 : a <= 24 ? 0.85 : a <= 30 ? 1 : 1.1;
@@ -329,10 +388,10 @@ async function markRead(){
   schedule();
 }
 
-function standings(s = season()){
+function standings(s = season(), div = curDiv()){
   const rows = {};
-  S.clubs.forEach(c => rows[c.id] = {c, g:0, v:0, n:0, p:0, gf:0, gs:0, pt:0, form:[]});
-  seasonMatches(s).filter(m => m.played).sort((a, b) => a.round - b.round).forEach(m => {
+  S.clubs.filter(c => divOf(c) === div).forEach(c => rows[c.id] = {c, g:0, v:0, n:0, p:0, gf:0, gs:0, pt:0, form:[]});
+  leagueMatches(div, s).filter(m => m.played).sort((a, b) => a.round - b.round).forEach(m => {
     const h = rows[m.homeId], a = rows[m.awayId]; if (!h || !a) return;
     h.g++; a.g++; h.gf += m.hg; h.gs += m.ag; a.gf += m.ag; a.gs += m.hg;
     if (m.hg > m.ag){ h.v++; a.p++; h.pt += 3; h.form.push('V'); a.form.push('P'); }
@@ -366,8 +425,8 @@ function suspended(){
   });
   return out;
 }
-function roundInfo(){
-  const ms = seasonMatches(); if (!ms.length) return {cur:null, total:0, played:0};
+function roundInfo(div = curDiv()){
+  const ms = leagueMatches(div); if (!ms.length) return {cur:null, total:0, played:0};
   const total = Math.max(...ms.map(m => m.round)), un = ms.filter(m => !m.played);
   const cur = un.length ? Math.min(...un.map(m => m.round)) : null;
   const played = new Set(ms.filter(m => m.played).map(m => m.round)).size;
@@ -410,7 +469,7 @@ function render(){
   const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
   const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
   restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
-  main.innerHTML = roBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
+  main.innerHTML = roBanner() + drawBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
   if (restoreFocus) restoreFocus();
 }
 let restoreFocus = null;
@@ -472,24 +531,35 @@ function viewSetup(){
   return panelEmpty('Lega non ancora creata', 'Il commissario (chi ha creato questa pagina) deve prima impostare la lega. Torna qui appena lo ha fatto.');
 }
 
+function zoneOf(i, n){
+  if (!hasB()) return i === 0 ? 'z-top' : i === n - 1 && n > 2 ? 'z-bot' : '';
+  if (curDiv() === 'A') return i === 0 ? 'z-top' : i >= n - RELEG ? 'z-bot' : '';
+  return i < PROMO ? 'z-top' : i >= 2 && i <= 5 && n >= 6 ? 'z-po' : '';
+}
+function zoneLegend(){
+  if (!hasB()) return '';
+  return curDiv() === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Campione · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>`
+    : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
+}
 function viewTable(){
   const ri = roundInfo(), rows = standings(), n = rows.length;
   const tbl = !S.clubs.length ? `<div class="empty"><strong>Nessuna società</strong><span>Vai su Lega e crea la tua società per entrare nel torneo.</span><a class="btn primary" href="#lega">Vai a Lega</a></div>` : `
     <div class="tscroll"><table>
       <thead><tr><th>#</th><th>Società</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">GF</th><th class="r">GS</th><th class="r">DR</th><th class="r">Pt</th><th>Forma</th></tr></thead>
-      <tbody>${rows.map((x, i) => `<tr class="${i === 0 && x.g ? 'z-top' : ''}${i === n-1 && n > 2 && x.g ? 'z-bot' : ''}">
+      <tbody>${rows.map((x, i) => `<tr class="${zoneOf(i, n)}">
         <td class="pos">${i+1}</td><td>${clubLink(x.c, true)}</td>
         <td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td>
         <td class="r">${x.gf}</td><td class="r">${x.gs}</td><td class="r">${x.gf-x.gs > 0 ? '+' : ''}${x.gf-x.gs}</td>
         <td class="r pts">${x.pt}</td><td><span class="form">${x.form.slice(-5).map(f => `<i class="${f}">${f}</i>`).join('') || '<span class="muted">—</span>'}</span></td></tr>`).join('')}</tbody>
-    </table></div>`;
-  const next = ri.cur ? seasonMatches().filter(m => m.round === ri.cur) : [];
+    </table></div>${zoneLegend()}`;
+  const next = ri.cur ? leagueMatches(curDiv()).filter(m => m.round === ri.cur) : [];
   const tr = [...S.transfers].sort((a, b) => b.ts - a.ts).slice(0, 6);
   return `<section class="grid2">
-    <div class="panel"><div class="ph"><h2>Classifica</h2><span class="sub">Stagione ${season()} · ${ri.played} giornate giocate · 3 punti a vittoria</span></div>${tbl}</div>
+    <div class="panel">${divTabs()}<div class="ph"><h2>Classifica${hasB() ? ' ' + DIVS[curDiv()] : ''}</h2><span class="sub">Stagione ${season()} · ${ri.played} giornate giocate · 3 punti a vittoria</span></div>${tbl}</div>
     <aside class="stack">
       <div class="panel"><div class="ph"><h3>${ri.cur ? `Giornata ${ri.cur}` : ri.total ? 'Stagione conclusa' : 'Calendario'}</h3><a class="sub" href="#calendario">Tutto il calendario</a></div>
         ${next.length ? next.map(fixture).join('') : `<p class="muted">${ri.total ? 'Tutte le partite sono state giocate. Il commissario può chiudere la stagione da Lega.' : 'Il calendario non è ancora stato generato.'}</p>`}</div>
+      ${curDiv() === 'B' && ri.done ? playoffPanel() : ''}
       <div class="panel"><div class="ph"><h3>Ultimi trasferimenti</h3><a class="sub" href="#mercato">Mercato</a></div>
         ${tr.length ? `<div class="list">${tr.map(transferRow).join('')}</div>` : '<p class="muted">Nessuna operazione di mercato registrata.</p>'}</div>
     </aside></section>`;
@@ -516,14 +586,14 @@ function transferRow(t){
 
 function viewFixtures(){
   const ri = roundInfo();
-  if (!ri.total) return panelEmpty('Calendario da generare', 'Quando tutte le società sono iscritte, il commissario genera il calendario di andata e ritorno da Lega.', S.comm ? '<a class="btn primary" href="#lega">Vai a Lega</a>' : '');
+  if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Quando tutte le società sono iscritte, il commissario genera il calendario di andata e ritorno da Lega.', S.comm ? '<a class="btn primary" href="#lega">Vai a Lega</a>' : '');
   const r = S.round && S.round <= ri.total ? S.round : (ri.cur || ri.total);
-  const ms = seasonMatches().filter(m => m.round === r);
+  const ms = leagueMatches(curDiv()).filter(m => m.round === r);
   const half = ri.total / 2;
   const chips = Array.from({length: ri.total}, (_, i) => i + 1).map(x => {
-    const done = seasonMatches().filter(m => m.round === x).every(m => m.played);
+    const done = leagueMatches(curDiv()).filter(m => m.round === x).every(m => m.played);
     return `<button class="chip${done ? ' done' : ''}" aria-pressed="${x === r}" data-act="round" data-id="${x}">${x}</button>`; }).join('');
-  return `<div class="panel"><div class="ph"><h2>Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="sub">Stagione ${season()} · ${ri.total} giornate</span></div>
+  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="sub">Stagione ${season()} · ${ri.total} giornate</span></div>
     <div class="chips" role="group" aria-label="Scegli giornata">${chips}</div>
     <div style="margin-top:12px">${ms.map(fixture).join('')}</div>
     <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
@@ -534,12 +604,12 @@ function viewClub(){
   const c = club(S.viewClub) || myClub() || S.clubs[0];
   S.viewClub = c.id;
   const can = S.comm, canMkt = canManage(c.id) && (S.comm || window_()), mine = myClub(), b = budget(c), wu = wageUsed(c.id), wb = c.wage0 || 0;
-  const pos = standings().findIndex(x => x.c.id === c.id) + 1;
+  const pos = standings(season(), divOf(c)).findIndex(x => x.c.id === c.id) + 1;
   const ps = pstats('season'), sus = suspended(), rs = roster(c.id);
   const objs = (c.objectives || []).filter(o => (o.season || 1) === season());
   const led = S.ledger.filter(l => l.clubId === c.id).sort((a, b2) => b2.ts - a.ts);
   return `<div class="panel">
-    <div class="clubhead"><div class="who">${crest(c, true)}<div><h2>${esc(c.name)}</h2><span class="sub">${esc(mgrName(c))} · ${rs.length}/${S.settings.maxSquad || 30} giocatori</span></div></div>
+    <div class="clubhead"><div class="who">${crest(c, true)}<div><h2>${esc(c.name)}</h2><span class="sub">${hasB() ? DIVS[divOf(c)] + ' · ' : ''}${esc(mgrName(c))} · ${rs.length}/${S.settings.maxSquad || 30} giocatori</span></div></div>
       <div class="row"><select class="inl" id="clubsel" data-act="clubsel" aria-label="Scegli società">${S.clubs.map(x => `<option value="${x.id}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
       ${S.comm ? `<button class="btn sm" data-act="adjust" data-id="${c.id}">Rettifica budget</button>` : ''}</div></div>
     <div class="kpis" style="margin-top:16px">
@@ -549,6 +619,8 @@ function viewClub(){
       <div class="kpi"><div class="l">Posizione</div><div class="v num">${pos ? pos + '°' : '—'}</div><div class="sub">su ${S.clubs.length} società</div></div>
     </div></div>
   <section class="grid2">
+    <section class="grid2">${stadiumPanel(c)}${medicalPanel(c)}</section>
+    ${sponsorPanel(c)}
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
@@ -556,7 +628,7 @@ function viewClub(){
         <td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td>
         <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
         <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
-        <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ' <span class="pill warn">Infortunato</span>' : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
+        <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ` <span class="pill warn">Infortunato${injLeft(p) ? ' · ' + injLeft(p) + ' g.' : ''}</span>` : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
         <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm bad" data-act="sell" data-id="${p.id}">Cedi o presta</button>`
             : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
           : mine && window_() && !p.loan ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>` : ''}</td></tr>`; }).join('')}
@@ -640,8 +712,9 @@ function viewLeague(){
   const prizes = (s.prizes || []).map((p, i) => `${i+1}° ${fmtM(p)}`).join(' · ');
   return `<section class="grid2">
     <div class="stack">
+      ${drawPanel()}
       <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
-        ${S.clubs.length ? `<div class="list">${S.clubs.map(c => `<div class="li"><div class="main">${clubLink(c, true)}</div>
+        ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span></div>
           <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
           <div class="row">${!c.managerId && !mc ? `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>` : ''}
           ${S.comm ? `<button class="btn sm ghost" data-act="club-edit" data-id="${c.id}">Modifica</button>` : ''}
@@ -656,8 +729,8 @@ function viewLeague(){
       <div class="panel"><div class="ph"><h3>Stagione ${season()}</h3></div>
         <div class="list">
           <div class="li"><span>Giornate</span><b class="num">${ri.total ? `${ri.played}/${ri.total}` : 'calendario da generare'}</b></div>
-          <div class="li"><span>Budget standard</span><b class="num">${fmtM(s.startBudget)}</b></div>
-          <div class="li"><span>Monte ingaggi standard</span><b class="num">${fmtW(s.startWage)}</b></div>
+          <div class="li"><span>Budget di partenza</span><b class="num">A ${fmtM(divBudget('A'))} · B ${fmtM(divBudget('B'))}</b></div>
+          <div class="li"><span>Monte ingaggi</span><b>ingaggi della rosa iniziale + ${wageMargin()}%</b></div>
           <div class="li"><span>Rosa massima</span><b class="num">${s.maxSquad} giocatori</b></div>
           <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · max ${maxSubs()} cambi</b></div>
           <div class="li"><span>Squalifica</span><b>rosso o ${s.yellowLimit}° giallo</b></div>
@@ -666,10 +739,12 @@ function viewLeague(){
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
+          <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
+          <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
           <button class="btn sm bad" data-act="reset-league">Azzera torneo</button>
           <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
-          <button class="btn sm primary" data-act="close-season" ${ri.done ? '' : 'disabled'}>Chiudi stagione</button></div>
+          <button class="btn sm primary" data-act="close-season" ${seasonDone() ? '' : 'disabled'}>Chiudi stagione</button></div>
           <p class="sub">${anyPlayed ? 'Il calendario non si può rigenerare dopo la prima partita giocata.' : S.clubs.length < 2 ? 'Servono almeno 2 società per il calendario.' : 'Il calendario mescola le società e crea andata e ritorno.'} La stagione si chiude quando tutte le partite sono giocate: premi di piazzamento sul budget, età +1, nuovo calendario.</p>` : '<p class="sub">Calendario, mercato e chiusura stagione li gestisce il commissario.</p>'}
       </div>
       <div class="panel"><h3>Come funziona</h3>
@@ -707,13 +782,16 @@ function settingsModal(){
     ${fld('name', 'Nome del torneo', `required maxlength="40" value="${esc(s.name)}" placeholder="Es. Lega degli Amici"`, '', true)}
     ${fld('startBudget', 'Budget trasferimenti standard (milioni €)', `type="number" min="0" step="0.5" value="${s.startBudget / M}"`)}
     ${fld('startWage', 'Monte ingaggi standard (migliaia €/settimana)', `type="number" min="0" step="10" value="${s.startWage / K}"`)}
+    ${fld('budgetA', 'Budget di partenza Serie A (milioni €)', `type="number" min="0" step="0.5" value="${divBudget('A') / M}"`)}
+    ${fld('budgetB', 'Budget di partenza Serie B (milioni €)', `type="number" min="0" step="0.5" value="${divBudget('B') / M}"`)}
+    ${fld('wageMargin', 'Margine monte ingaggi (%)', `type="number" min="0" max="100" step="1" value="${wageMargin()}"`, 'Monte ingaggi = ingaggi della rosa iniziale + questa percentuale.')}
     ${fld('maxSquad', 'Rosa massima', `type="number" min="11" max="52" value="${s.maxSquad}"`)}
     ${fld('yellowLimit', 'Gialli per la squalifica', `type="number" min="1" max="10" value="${s.yellowLimit}"`)}
     ${fld('maxSubs', 'Cambi massimi in distinta', `type="number" min="0" max="11" value="${s.maxSubs ?? 5}"`)}
     <div class="f"><span class="lbl">Distinta di gara</span><label><input type="checkbox" name="lureq" ${s.lineupRequired !== false ? 'checked' : ''}> Obbligatoria prima di inserire il risultato</label></div>
     ${fld('auctionStep', 'Rilancio minimo alle aste (milioni €)', `type="number" min="0" step="0.1" value="${(s.auctionStep ?? 0.5 * M) / M}"`)}
     ${fld('prizes', 'Premi piazzamento (milioni €, dal 1° in giù)', `value="${esc((s.prizes || []).map(p => p / M).join(', '))}"`, 'Separati da virgola. Vengono accreditati alla chiusura della stagione.', true)}
-    <div class="f full"><label for="rules">Regolamento</label><textarea id="rules" name="rules" maxlength="4000">${esc(s.rules)}</textarea></div></div>`,
+    <div class="f full"><label for="rules">Regolamento</label><textarea id="rules" name="rules" maxlength="8000">${esc(s.rules)}</textarea></div></div>`,
     async fd => {
       const name = String(fd.get('name')).trim() || fail('Dai un nome al torneo.');
       const data = {name, startBudget: num(fd, 'startBudget') * M, startWage: num(fd, 'startWage') * K, maxSquad: Math.round(num(fd, 'maxSquad')) || 30,
@@ -721,7 +799,8 @@ function settingsModal(){
         maxSubs: Math.max(0, Math.min(11, Math.round(num(fd, 'maxSubs')))), lineupRequired: fd.get('lureq') === 'on',
         auctionStep: Math.max(0, num(fd, 'auctionStep')) * M,
         prizes: String(fd.get('prizes')).split(/[,;]/).map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
-        rules: String(fd.get('rules')).slice(0, 4000)};
+        rules: String(fd.get('rules')).slice(0, 8000),
+        budgetA: num(fd, 'budgetA') * M, budgetB: num(fd, 'budgetB') * M, wageMargin: Math.max(0, Math.min(100, num(fd, 'wageMargin')))};
       if (S.settings) await db.doc('league/settings').update(data);
       else await db.doc('league/settings').set({...data, season: 1, windowOpen: true, createdAt: now()});
       toast('Impostazioni salvate');
@@ -735,6 +814,8 @@ function clubModal(c){
     ${fld('cname', 'Nome della società', `required maxlength="32" value="${esc(c.name)}" placeholder="Es. AC Milan"`, '', true)}
     ${fld('cshort', 'Sigla (3 lettere)', `required maxlength="3" value="${esc(c.short)}" placeholder="MIL"`)}
     ${fld('ccolor', 'Colore sociale', `type="color" value="${hexOk(c.color)}"`)}
+    ${sel('cdiv', 'Campionato', [['A', 'Serie A'], ['B', 'Serie B']], divOf(c))}
+    ${fld('ccap', 'Capienza stadio (posti)', `type="number" min="1000" max="80000" step="100" value="${stadium(c).cap}"`, 'Metti la capienza reale dello stadio del club.')}
     ${fld('cbudget', 'Budget trasferimenti iniziale (milioni €)', `type="number" min="0" step="0.5" value="${c.budget0 / M}"`, 'Usa quello che FC 27 assegna al tuo club, o lo standard della lega.')}
     ${fld('cwage', 'Monte ingaggi (migliaia €/settimana)', `type="number" min="0" step="10" value="${c.wage0 / K}"`)}
     ${isNew && S.comm && myClub() ? '' : isNew && S.comm ? `<div class="f full"><label><input type="checkbox" id="cmine" name="cmine" checked> Alleno io questa società</label></div>` : ''}</div>`,
@@ -742,7 +823,9 @@ function clubModal(c){
       const name = String(fd.get('cname')).trim() || fail('Scrivi il nome della società.');
       const short = (String(fd.get('cshort')).trim() || name.slice(0, 3)).toUpperCase();
       if (S.clubs.some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail('Esiste già una società con questo nome.');
-      const data = {name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K};
+      const dv = String(fd.get('cdiv')) === 'B' ? 'B' : 'A';
+      const data = {name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
+        stadium: {...(c.stadium || {}), cap: Math.max(1000, Math.round(num(fd, 'ccap')) || stadium({...c, div: dv}).cap)}};
       if (isNew){
         const manage = S.comm ? (!myClub() && fd.get('cmine') === 'on') : true;
         if (manage && !S.me) fail('Serve un account con accesso per allenare una società.');
@@ -767,8 +850,8 @@ function squadRoom(cid, add = 1){ if (roster(cid).length + add > (S.settings.max
 
 function addPlayer(cid){ openModal(cid ? 'Aggiungi giocatore' : 'Aggiungi svincolato', playerFields() + `<p class="sub">${cid ? 'Per i giocatori già in rosa all’inizio della carriera. I nuovi arrivi passano dalle trattative o dalle aste degli svincolati, così il budget si aggiorna.' : 'Il giocatore entra nella lista svincolati: ogni allenatore potrà avviare un’asta.'}</p>`,
   async fd => { if (cid) squadRoom(cid); await db.collection('players').add({...readPlayer(fd), clubId: cid, injured: false}); toast('Giocatore aggiunto'); }, 'Aggiungi'); }
-function editPlayer(p){ openModal('Modifica giocatore', playerFields(p) + `<div class="f"><label><input type="checkbox" id="pinj" name="pinj" ${p.injured ? 'checked' : ''}> Infortunato</label></div>`,
-  async fd => { await db.doc('players/' + p.id).update({...readPlayer(fd), injured: fd.get('pinj') === 'on'}); toast('Giocatore aggiornato'); }); }
+function editPlayer(p){ openModal('Modifica giocatore', playerFields(p) + `${injuryField(p)}`,
+  async fd => { await db.doc('players/' + p.id).update({...readPlayer(fd), ...injuryData(p, fd)}); toast('Giocatore aggiornato'); }); }
 function importPlayers(cid){
   openModal(cid ? 'Importa rosa' : 'Importa svincolati', `<div class="f full"><label for="bulk">Un giocatore per riga</label><textarea id="bulk" name="bulk" style="min-height:200px" placeholder="Mike Maignan; POR; 87; 87; 31; 38; 140&#10;Rafael Leão; AS; 86; 88; 27; 75; 175"></textarea>
     <span class="hint">Ordine: Nome; Ruolo; OVR; POT; Età. Valore e ingaggio si calcolano da soli da età e OVR. Separatore punto e virgola o tabulazione, così puoi incollare da un foglio di calcolo. Ruoli: ${POS.join(' ')}.</span></div>`,
@@ -1013,6 +1096,7 @@ function resultModal(m){
       const gh = events.filter(e => e.t === 'g' && e.c === H.id).length, ga = events.filter(e => e.t === 'g' && e.c === A.id).length;
       if (gh > hg || ga > ag) fail('Ci sono più marcatori che gol nel punteggio.');
       await db.doc('matches/' + m.id).update({hg, ag, events, played: true, playedAt: now(), by: S.me || null});
+      if (!m.played && !m.gate) await creditGate(m);
       toast('Risultato salvato');
     }, 'Salva risultato');
   const addRow = (side, t, e = {}) => {
@@ -1027,7 +1111,7 @@ function resultModal(m){
     const side = idx ? 'a' : 'h'; addRow(side, b.dataset.ev);
     if (b.dataset.ev === 'g'){ const inp = $('#' + side + 'g'), cnt = $('#ev-' + side).querySelectorAll('.evrow[data-t="g"]').length; if ((+inp.value || 0) < cnt) inp.value = cnt; } }));
   (m.events || []).forEach(e => addRow(e.c === H.id ? 'h' : 'a', e.t, e));
-  const un = $('#unplay'); if (un) un.onclick = async () => { await db.doc('matches/' + m.id).update({played: false, hg: 0, ag: 0, events: []}); dlg.close(); toast('Risultato annullato'); };
+  const un = $('#unplay'); if (un) un.onclick = async () => { await db.doc('matches/' + m.id).update({played: false, hg: 0, ag: 0, events: []}); await refundGate(m); dlg.close(); toast('Risultato annullato'); };
 }
 
 /* ---------- distinte di gara ---------- */
@@ -1196,24 +1280,32 @@ function roundRobin(ids){
 async function generateFixtures(s){
   const old = S.matches.filter(m => m.season === s);
   for (let i = 0; i < old.length; i += 10) await Promise.all(old.slice(i, i + 10).map(m => db.doc('matches/' + m.id).delete()));
-  const ids = S.clubs.map(c => c.id).sort(() => Math.random() - .5);
-  const docs = []; roundRobin(ids).forEach((rd, ri) => rd.forEach(([h, a]) => docs.push({id: `s${s}-r${ri + 1}-${h}-${a}`, season: s, round: ri + 1, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []})));
+  const docs = [];
+  ['A', 'B'].forEach(div => { const ids = S.clubs.filter(c => divOf(c) === div).map(c => c.id).sort(() => Math.random() - .5); if (ids.length < 2) return;
+    roundRobin(ids).forEach((rd, ri) => rd.forEach(([h, a]) => docs.push({id: `s${s}-${div}-r${ri + 1}-${h}-${a}`, season: s, div, round: ri + 1, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []}))); });
   for (let i = 0; i < docs.length; i += 10) await Promise.all(docs.slice(i, i + 10).map(({id, ...d}) => db.doc('matches/' + id).set(d)));
   S.round = 1;
 }
 function closeSeason(){
-  const rows = standings(), pr = S.settings.prizes || [];
+  const rows = standings(season(), 'A'), pr = S.settings.prizes || [];
+  const rowsB = hasB() ? standings(season(), 'B') : [], down = hasB() ? rows.slice(-RELEG).map(x => x.c) : [];
+  const upIds = hasB() ? [...rowsB.slice(0, PROMO).map(x => x.c.id), playoffWinner()].filter(Boolean) : [], up = upIds.map(club).filter(Boolean);
   confirmBox(`Chiudi la stagione ${season()}`, `Classifica finale: ${rows.slice(0, 3).map((x, i) => `${i+1}° ${esc(x.c.name)}`).join(', ')}.<br>
-    Verranno accreditati i premi di piazzamento (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
+    ${hasB() ? `<b>Retrocedono in Serie B:</b> ${down.map(c => esc(c.name)).join(', ')}.<br><b>Salgono in Serie A:</b> ${up.map(c => esc(c.name)).join(', ')}.<br>` : ''}
+    Si pagano anche bonus sponsor raggiunti, manutenzione stadi e costo annuo dello staff medico.<br>
+    Verranno accreditati i premi di piazzamento in Serie A (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
     'Chiudi stagione', async () => {
       const s = season();
       await Promise.all(rows.map((x, i) => pr[i] ? ledger(x.c.id, pr[i], `Premio ${i+1}° posto stagione ${s}`) : null));
       await settleLoans(s);
+      await seasonEndFinance(s, upIds);
+      for (const c of down){ await db.doc('clubs/' + c.id).update({div: 'B'}); c.div = 'B'; }
+      for (const c of up){ await db.doc('clubs/' + c.id).update({div: 'A'}); c.div = 'A'; }
       await db.doc('league/settings').update({season: s + 1, windowOpen: true, champions: {...(S.settings.champions || {}), ['s' + s]: rows[0]?.c.id || null}});
       S.settings = {...S.settings, season: s + 1};
       await generateFixtures(s + 1);
       try { await recalcAll(); } catch {}
-      toast(`Benvenuti nella stagione ${s + 1}: valori e ingaggi aggiornati con la nuova età`);
+      toast(`Benvenuti nella stagione ${s + 1}`);
     });
 }
 
@@ -1243,6 +1335,7 @@ async function reload(col){
     if (error){ L.onErr && L.onErr({code: error.message}); return; }
     data.forEach(r => fresh.set(r.id, r)); if (data.length < 1000) break; from += 1000; }
   L.map = fresh; L.ready = true; L.emit();
+  if (col === 'matches' && S.comm){ clearTimeout(reload.heal); reload.heal = setTimeout(() => { if (typeof autoHeal === 'function') autoHeal().catch(() => {}); }, 1500); }
   if (col === 'players' && S.comm && !reload.autoDone){ reload.autoDone = true; setTimeout(() => { if (typeof recalcAll === 'function') recalcAll().then(n => { if (n) toast(`Valori e ingaggi aggiornati per ${n} giocatori (età + overall)`, 4000); }).catch(() => {}); }, 1500); }
 }
 const localDoc = path => ({
@@ -1471,7 +1564,7 @@ async function recalcAll(){
 }
 function recalcModal(){
   const ex = [[70, 20], [75, 26], [80, 23], [80, 31], [85, 27], [88, 33]];
-  openModal('Ricalcola valori e ingaggi', `<p>Tutti i giocatori (rose e svincolati) prendono <b>valore di cartellino</b> e <b>ingaggio</b> calcolati da <b>OVR</b> ed <b>età</b>, con la stessa regola per tutti. Si fa da solo anche a ogni chiusura di stagione.</p>
+  openModal('Ricalcola valori e ingaggi', `<p>Tutti i giocatori (rose e svincolati) prendono <b>valore di cartellino</b> e <b>ingaggio</b> calcolati da <b>OVR</b> ed <b>età</b>, con la stessa regola per tutti. L’età resta quella iniziale di FC 27 anche nelle stagioni successive.</p>
     <table class="tbl" style="margin-top:8px"><thead><tr><th>OVR</th><th>Età</th><th class="r">Valore</th><th class="r">Ingaggio</th></tr></thead><tbody>${ex.map(([o, a]) => `<tr><td class="num">${o}</td><td class="num">${a}</td><td class="r num">${fmtM(autoValue(o, a))}</td><td class="r num">${fmtW(autoWage(o, a))}</td></tr>`).join('')}</tbody></table>`,
     async () => { const n = await recalcAll(); toast(`${n} giocatori aggiornati`, 4000); }, 'Ricalcola tutti');
 }
@@ -1497,8 +1590,277 @@ function startPresence(){
     S.online = Object.entries(st).map(([id, arr]) => ({id, name: arr[0]?.name || ''})); render(); });
   ch.subscribe(async st => { if (st === 'SUBSCRIBED') await ch.track({name: S.myName || '', at: Date.now()}); });
 }
+/* ================= GESTIONE SOCIETÀ: budget, sponsor, stadio, staff medico, sorteggio ================= */
+const DEF_BUDGET = {A: 50 * M, B: 20 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K};
+const divBudget = d => S.settings?.['budget' + d] ?? DEF_BUDGET[d];
+const divWage = d => S.settings?.['wage' + d] ?? DEF_WAGE[d];
+const divPlayed = d => roundInfo(d).played || 0;
+const divSize = d => S.clubs.filter(c => divOf(c) === d).length;
+
+/* forza della rosa: media OVR dei migliori 16 */
+function clubStrength(c){
+  const o = roster(c.id).map(p => p.ovr || 0).sort((a, b) => b - a).slice(0, 16);
+  return o.length ? o.reduce((a, b) => a + b, 0) / o.length : 0;
+}
+/* rango atteso nella divisione (1 = più forte) e debolezza 0..1 */
+function strengthRank(c){
+  const d = divOf(c), list = S.clubs.filter(x => divOf(x) === d).map(x => ({id: x.id, s: clubStrength(x)})).sort((a, b) => b.s - a.s);
+  const n = list.length, r = list.findIndex(x => x.id === c.id) + 1;
+  return {rank: r || n, n, weak: n > 1 ? (r - 1) / (n - 1) : 0};
+}
+function seeded(str){ let h = 2166136261; for (const ch of str){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; }; }
+const roundM = v => v >= 2 * M ? Math.round(v / (250 * K)) * 250 * K : Math.round(v / (50 * K)) * 50 * K;
+
+/* ---------- SPONSOR ---------- */
+const BRANDS = {
+  main: ['Emirates', 'Etihad Airways', 'Qatar Airways', 'MSC Crociere', 'Eni', 'Pirelli', 'Lavazza', 'Barilla', 'Unipol', 'Jeep', 'Plenitude', 'Iveco', 'Kia', 'Hisense', 'Acqua Lete', 'Frecciarossa'],
+  tech: ['Nike', 'Adidas', 'Puma', 'Kappa', 'Macron', 'Joma', 'Erreà', 'Umbro', 'New Balance', 'Castore', 'Hummel', 'EYE Sport']
+};
+const SP_TIER = [{k: 'safe', t: 'Sicuro', up: 1.0, bo: 0.35}, {k: 'bal', t: 'Bilanciato', up: 0.7, bo: 0.9}, {k: 'amb', t: 'Ambizioso', up: 0.4, bo: 1.8}];
+function sponsorGoal(c, tier, slot){
+  const d = divOf(c), {rank: e, n} = strengthRank(c), games = Math.max(2, (n - 1) * 2);
+  if (slot === 'tech'){
+    const w = strengthRank(c).weak, base = games * (1.75 - 0.75 * w);
+    const g = Math.round(base * (tier === 'safe' ? 0.75 : tier === 'bal' ? 0.95 : 1.15));
+    return {type: 'goals', v: Math.max(5, g), label: `Segnare almeno ${Math.max(5, g)} gol in campionato`};
+  }
+  const weakSide = e > n / 2;
+  if (d === 'A'){
+    if (weakSide){
+      if (tier === 'safe') return {type: 'pos', v: Math.max(1, n - 1), label: 'Non arrivare ultimi'};
+      if (tier === 'bal') return {type: 'pos', v: Math.max(1, n - RELEG), label: `Salvezza (evitare le ultime ${RELEG})`};
+      const v = Math.max(1, Math.floor(n / 2)); return {type: 'pos', v, label: `Chiudere nella prima metà (prime ${v})`};
+    }
+    const at = (v, t) => ({type: 'pos', v, label: v === 1 ? 'Vincere il campionato' : `Chiudere tra le prime ${v}`});
+    if (tier === 'safe') return at(Math.min(n - RELEG, e + 2));
+    if (tier === 'bal') return at(Math.max(1, e));
+    return at(Math.max(1, e - 2));
+  }
+  if (weakSide){
+    if (tier === 'safe') return {type: 'pos', v: Math.max(1, n - 1), label: 'Non arrivare ultimi'};
+    if (tier === 'bal') return {type: 'pos', v: Math.min(n, 6), label: 'Arrivare ai playoff (prime 6)'};
+    return {type: 'promo', v: 1, label: 'Promozione in Serie A'};
+  }
+  if (tier === 'safe') return {type: 'pos', v: Math.min(n, 6), label: 'Arrivare ai playoff (prime 6)'};
+  if (tier === 'bal') return e <= PROMO ? {type: 'promo', v: 1, label: 'Promozione in Serie A'} : {type: 'pos', v: e, label: `Chiudere tra le prime ${e}`};
+  return e <= PROMO ? {type: 'pos', v: 1, label: 'Vincere la Serie B'} : {type: 'promo', v: 1, label: 'Promozione in Serie A'};
+}
+function sponsorOffers(c, slot){
+  const s = season(), d = divOf(c), rnd = seeded(`${c.id}|${s}|${slot}`), {weak} = strengthRank(c);
+  const base = (slot === 'main' ? (d === 'A' ? 6 * M : 2.5 * M) : (d === 'A' ? 3.5 * M : 1.5 * M)) * (1 + 0.6 * weak);
+  const pool = BRANDS[slot].slice(); const brands = [];
+  for (let i = 0; i < 3; i++) brands.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+  return SP_TIER.map((t, i) => { const j = 0.9 + rnd() * 0.2;
+    return {id: `${slot}-${t.k}`, slot, tier: t.t, brand: brands[i], upfront: roundM(base * t.up * j), bonus: roundM(base * t.bo * j), goal: sponsorGoal(c, t.k, slot), season: s}; });
+}
+function sponsorReached(c, sp, ctx){
+  const s = sp.season, d = ctx?.div || divOf(c), rows = standings(s, d), i = rows.findIndex(x => x.c.id === c.id);
+  if (sp.goal.type === 'goals') return i >= 0 && rows[i].gf >= sp.goal.v;
+  if (sp.goal.type === 'promo') return !!ctx?.promoted?.includes(c.id);
+  return i >= 0 && i + 1 <= sp.goal.v;
+}
+const curSponsors = c => c.sponsors && c.sponsors.season === season() ? c.sponsors : {};
+function sponsorPanel(c){
+  const mine = canManage(c.id), cur = curSponsors(c);
+  const card = (o, signed) => `<div class="li" style="align-items:flex-start"><div class="main"><b>${esc(o.brand)}</b> <span class="pill ${o.tier === 'Ambizioso' ? 'warn' : o.tier === 'Sicuro' ? 'good' : 'info'}">${o.tier}</span><br>
+    <span class="sub">Subito <b class="num">${fmtM(o.upfront)}</b> · Bonus <b class="num">${fmtM(o.bonus)}</b> se: ${esc(o.goal.label)}</span></div>
+    ${signed ? '<span class="pill good">Firmato</span>' : mine ? `<button class="btn sm primary" data-act="sp-sign" data-id="${c.id}|${o.id}">Firma</button>` : ''}</div>`;
+  const slot = (k, title) => cur[k] ? `<h4 style="margin:10px 0 4px">${title}</h4><div class="list">${card(cur[k], true)}</div>`
+    : `<h4 style="margin:10px 0 4px">${title} <span class="sub">· scegline uno</span></h4><div class="list">${sponsorOffers(c, k).map(o => card(o, false)).join('')}</div>`;
+  return `<div class="panel"><div class="ph"><h3>Sponsor · stagione ${season()}</h3></div>
+    <p class="sub">Ogni stagione si firma <b>uno sponsor di maglia</b> e <b>uno sponsor tecnico</b>. La quota «subito» entra nel budget alla firma, il bonus a fine stagione solo se l’obiettivo è raggiunto. Le società meno forti ricevono offerte più ricche. La firma non si può annullare.</p>
+    ${slot('main', 'Sponsor di maglia')}${slot('tech', 'Sponsor tecnico')}</div>`;
+}
+async function signSponsor(cid, oid){
+  const c = club(cid); if (!c) return; if (!canManage(cid)) fail('Solo l’allenatore di questa società può firmare.');
+  const o = sponsorOffers(c, oid.split('-')[0]).find(x => x.id === oid); if (!o) fail('Offerta non trovata.');
+  const cur = curSponsors(c); if (cur[o.slot]) fail('Hai già firmato questo sponsor per la stagione.');
+  confirmBox(`Firma con ${o.brand}`, `Ricevi subito <b>${fmtM(o.upfront)}</b>. Bonus di <b>${fmtM(o.bonus)}</b> a fine stagione se: ${esc(o.goal.label)}.<br>La firma vale per tutta la stagione ${season()} e non si può annullare.`, 'Firma', async () => {
+    const fresh = curSponsors(club(cid)); if (fresh[o.slot]) fail('Sponsor già firmato.');
+    await db.doc('clubs/' + cid).update({sponsors: {...fresh, season: season(), [o.slot]: o}});
+    await ledger(cid, o.upfront, `Sponsor ${o.slot === 'main' ? 'di maglia' : 'tecnico'} ${o.brand}: quota alla firma`);
+    toast(`Contratto firmato con ${o.brand}`);
+  });
+}
+
+/* ---------- STADIO E BIGLIETTERIA ---------- */
+const ST_DEF = {A: {cap: 30000, price: 35, ref: 35, fans: 30000}, B: {cap: 12000, price: 18, ref: 18, fans: 10000}};
+const ST_SEATS = [{seats: 2500, cost: 3.5 * M, rounds: 2}, {seats: 5000, cost: 6.5 * M, rounds: 4}, {seats: 10000, cost: 12 * M, rounds: 8}];
+const ST_HOSP = [null, {cost: 4 * M, rounds: 2}, {cost: 8 * M, rounds: 3}, {cost: 14 * M, rounds: 4}];
+const ST_MAX = 80000;
+function stadium(c){ const d = divOf(c), st = c.stadium || {}; return {name: st.name || `Stadio ${c.name}`, cap: st.cap || ST_DEF[d].cap, price: st.price || ST_DEF[d].price, hosp: st.hosp || 0, build: st.build || null}; }
+function buildReady(c, b = stadium(c).build){ return b && (b.season < season() || divPlayed(divOf(c)) >= b.readyRound); }
+function effStadium(c){ const st = stadium(c), b = st.build; let cap = st.cap, hosp = st.hosp;
+  if (b && buildReady(c, b)){ if (b.kind === 'seats') cap = Math.min(ST_MAX, cap + b.seats); else hosp = Math.min(3, hosp + 1); }
+  return {...st, cap, hosp}; }
+function gateFor(home, away){
+  const d = divOf(home), def = ST_DEF[d], st = effStadium(home), {weak} = strengthRank(home);
+  const rows = standings(season(), d), n = rows.length || 1, pos = rows.findIndex(x => x.c.id === home.id), played = divPlayed(d);
+  const form = played ? 0.85 + 0.3 * (1 - Math.max(0, pos) / Math.max(1, n - 1)) : 1;
+  const oppPos = rows.findIndex(x => x.c.id === away?.id), opp = played && oppPos >= 0 ? 0.95 + 0.15 * (1 - oppPos / Math.max(1, n - 1)) : 1;
+  const priceF = Math.max(0.3, Math.min(1.6, Math.pow(def.ref / st.price, 0.8)));
+  const demand = def.fans * (1.35 - 0.6 * weak) * form * opp * priceF;
+  const att = Math.round(Math.min(st.cap, demand) / 10) * 10;
+  return {att, price: st.price, rev: Math.round(att * st.price * (1 + 0.12 * st.hosp)), cap: st.cap};
+}
+function stadiumPanel(c){
+  const mine = canManage(c.id), st = stadium(c), eff = effStadium(c), b = st.build;
+  const next = seasonMatches().filter(m => !m.played && m.homeId === c.id && !m.stage).sort((a, b2) => a.round - b2.round)[0];
+  const g = gateFor(c, next ? club(next.awayId) : null);
+  const games = seasonMatches().filter(m => m.played && m.homeId === c.id && m.gate), inc = games.reduce((a, m) => a + (m.gate.rev || 0), 0);
+  const avg = games.length ? Math.round(games.reduce((a, m) => a + m.gate.att, 0) / games.length) : 0;
+  const busy = b && !buildReady(c, b);
+  return `<div class="panel"><div class="ph"><h3>${esc(st.name)}</h3>${mine ? `<button class="btn sm" data-act="st-edit" data-id="${c.id}">Biglietti e lavori</button>` : ''}</div>
+    <div class="list">
+      <div class="li"><span>Capienza</span><b class="num">${nf(eff.cap)} posti</b></div>
+      <div class="li"><span>Prezzo medio biglietto</span><b class="num">€${eff.price}</b></div>
+      <div class="li"><span>Hospitality / aree VIP</span><b>${eff.hosp ? `livello ${eff.hosp} (+${eff.hosp * 12}% incasso)` : 'nessuna'}</b></div>
+      <div class="li"><span>Prossima in casa (stima)</span><b class="num">${nf(g.att)} spettatori · ${fmtM(g.rev)}</b></div>
+      <div class="li"><span>Incassi stagione</span><b class="num">${fmtM(inc)}${games.length ? ` · media ${nf(avg)}` : ''}</b></div>
+      ${busy ? `<div class="li"><span>Cantiere aperto</span><b>${b.kind === 'seats' ? `+${nf(b.seats)} posti` : `hospitality livello ${st.hosp + 1}`} · pronto dalla giornata ${b.readyRound + 1}</b></div>` : ''}
+    </div>
+    <p class="sub">L’incasso arriva sul budget a ogni partita in casa. Gli spettatori dipendono da prezzo, capienza, classifica, avversario e tifoseria. Biglietti troppo cari svuotano lo stadio. A fine stagione si paga la manutenzione (€25 a posto).</p></div>`;
+}
+function stadiumModal(c){
+  const st = stadium(c), b = st.build, busy = b && !buildReady(c, b), d = divOf(c);
+  const f = openModal(`${st.name}`, `<div class="fgrid">
+    ${fld('stname', 'Nome dello stadio', `maxlength="40" value="${esc(st.name)}"`, '', true)}
+    ${fld('stprice', 'Prezzo medio del biglietto (€)', `type="number" min="5" max="200" step="1" value="${st.price}"`, `Riferimento ${DIVS[d]}: circa €${ST_DEF[d].ref}. Più alto = più incasso a spettatore ma meno pubblico.`, true)}
+    <p class="sub full" id="stprev" style="grid-column:1/-1"></p>
+    <div class="f full"><label for="stwork">Lavori allo stadio</label><select id="stwork" name="stwork" ${busy ? 'disabled' : ''}>
+      <option value="">Nessun lavoro</option>
+      ${ST_SEATS.map((o, i) => `<option value="s${i}" ${st.cap + o.seats > ST_MAX ? 'disabled' : ''}>Ampliamento +${nf(o.seats)} posti · ${fmtM(o.cost)} · ${o.rounds} giornate di lavori</option>`).join('')}
+      ${st.hosp < 3 ? `<option value="h">Hospitality livello ${st.hosp + 1} (+12% incasso) · ${fmtM(ST_HOSP[st.hosp + 1].cost)} · ${ST_HOSP[st.hosp + 1].rounds} giornate</option>` : ''}
+    </select><span class="hint">${busy ? 'C’è già un cantiere aperto: aspetta che finisca.' : `Budget attuale ${fmtM(budget(c))}. I lavori si pagano subito e il nuovo settore apre a fine cantiere. Capienza massima ${nf(ST_MAX)}.`}</span></div></div>`,
+    async fd => {
+      const price = Math.max(5, Math.min(200, Math.round(num(fd, 'stprice')) || st.price)), name = String(fd.get('stname') || '').trim().slice(0, 40) || st.name;
+      const cur = club(c.id), base = stadium(cur); let upd = {...(cur.stadium || {}), name, price, cap: base.cap, hosp: base.hosp};
+      if (base.build && buildReady(cur, base.build)){ if (base.build.kind === 'seats') upd.cap = Math.min(ST_MAX, upd.cap + base.build.seats); else upd.hosp = Math.min(3, upd.hosp + 1); upd.build = null; }
+      const w = String(fd.get('stwork') || ''); let cost = 0, label = '';
+      if (w && !(upd.build && !buildReady(cur, upd.build))){
+        if (w === 'h'){ const o = ST_HOSP[upd.hosp + 1]; if (!o) fail('Hospitality già al massimo.'); cost = o.cost; upd.build = {kind: 'hosp', season: season(), readyRound: divPlayed(divOf(cur)) + o.rounds}; label = `Lavori hospitality livello ${upd.hosp + 1}`; }
+        else { const o = ST_SEATS[+w.slice(1)]; if (upd.cap + o.seats > ST_MAX) fail('Supereresti la capienza massima.'); cost = o.cost; upd.build = {kind: 'seats', seats: o.seats, season: season(), readyRound: divPlayed(divOf(cur)) + o.rounds}; label = `Ampliamento stadio +${nf(o.seats)} posti`; }
+        if (budget(cur) < cost) fail(`Budget insufficiente: servono ${fmtM(cost)}.`);
+      }
+      await db.doc('clubs/' + c.id).update({stadium: upd});
+      if (cost) await ledger(c.id, -cost, label);
+      toast(cost ? `${label}: cantiere aperto` : 'Stadio aggiornato');
+    }, 'Salva');
+  const prev = () => { const p = Math.max(5, Math.round(+f.querySelector('#stprice').value || st.price));
+    const g = gateFor({...c, stadium: {...(c.stadium || {}), price: p}}, null); $('#stprev').textContent = `Con €${p}: circa ${nf(g.att)} spettatori su ${nf(g.cap)}, incasso ${fmtM(g.rev)} a partita.`; };
+  f.querySelector('#stprice').oninput = prev; prev();
+}
+async function creditGate(m){
+  const H = club(m.homeId); if (!H || m.gate) return;
+  const g = gateFor(H, club(m.awayId));
+  await db.doc('matches/' + m.id).update({gate: g});
+  await ledger(H.id, g.rev, `Incasso stadio vs ${club(m.awayId)?.name || ''}: ${nf(g.att)} spettatori × €${g.price}`);
+}
+async function refundGate(m){ if (!m.gate) return; await ledger(m.homeId, -m.gate.rev, `Storno incasso stadio vs ${club(m.awayId)?.name || ''}`); await db.doc('matches/' + m.id).update({gate: null}); }
+
+/* ---------- STAFF MEDICO ---------- */
+const MED = [null, {red: 0, cost: 0, yearly: 0.3 * M, t: 'Base'}, {red: 0.15, cost: 2 * M, yearly: 0.6 * M, t: 'Fisioterapista dedicato'}, {red: 0.25, cost: 4 * M, yearly: 1 * M, t: 'Centro di recupero'}, {red: 0.35, cost: 7 * M, yearly: 1.6 * M, t: 'Medicina sportiva avanzata'}, {red: 0.45, cost: 11 * M, yearly: 2.4 * M, t: 'Centro medico d’eccellenza'}];
+const medLevel = c => Math.max(1, Math.min(5, c?.medical || 1));
+const injLeft = p => { const i = p.injury; if (!i || !p.injured) return 0; const c = club(p.clubId); const d = i.div || (c ? divOf(c) : 'A');
+  return i.season < season() ? 0 : Math.max(0, i.untilRound - divPlayed(d)); };
+function medicalPanel(c){
+  const mine = canManage(c.id), L = medLevel(c), cur = MED[L], nx = MED[L + 1];
+  const inj = roster(c.id).filter(p => p.injured);
+  return `<div class="panel"><div class="ph"><h3>Staff medico</h3>${mine && nx ? `<button class="btn sm" data-act="med-up" data-id="${c.id}">Potenzia (${fmtM(nx.cost)})</button>` : ''}</div>
+    <div class="list"><div class="li"><span>Livello ${L} · ${esc(cur.t)}</span><b>${cur.red ? `recupero −${Math.round(cur.red * 100)}%` : 'tempi di recupero normali'}</b></div>
+      <div class="li"><span>Costo annuo dello staff</span><b class="num">${fmtM(cur.yearly)}</b></div>
+      ${nx ? `<div class="li"><span>Prossimo livello</span><b>${esc(nx.t)} · −${Math.round(nx.red * 100)}% · ${fmtM(nx.cost)}</b></div>` : ''}</div>
+    ${inj.length ? `<h4 style="margin:12px 0 4px">In infermeria</h4><div class="list">${inj.map(p => { const left = injLeft(p), can = mine && L >= 3 && !p.injury?.cured && left > 1;
+      return `<div class="li"><div class="main"><b>${esc(p.name)}</b> <span class="sub">${left ? `rientra tra ${left} ${left === 1 ? 'giornata' : 'giornate'}` : 'in attesa di rientro'}${p.injury?.cured ? ' · cura intensiva fatta' : ''}</span></div>
+        ${can ? `<button class="btn sm" data-act="med-cure" data-id="${p.id}">Cura intensiva (${fmtM(cureCost(c))})</button>` : ''}</div>`; }).join('')}</div>` : '<p class="sub">Nessun infortunato.</p>'}
+    <p class="sub">Lo staff accorcia i tempi di recupero degli infortuni. Dal livello 3 si può pagare una cura intensiva che fa rientrare il giocatore una giornata prima (una volta per infortunio). Il costo annuo si paga a fine stagione.</p></div>`;
+}
+const cureCost = c => divOf(c) === 'A' ? 1 * M : 0.4 * M;
+async function medUpgrade(cid){
+  const c = club(cid), L = medLevel(c), nx = MED[L + 1]; if (!nx) fail('Staff medico già al massimo.');
+  if (budget(c) < nx.cost) fail(`Budget insufficiente: servono ${fmtM(nx.cost)}.`);
+  confirmBox('Potenzia lo staff medico', `Passi al livello ${L + 1} (${esc(nx.t)}): recupero −${Math.round(nx.red * 100)}%. Costo ${fmtM(nx.cost)} subito e ${fmtM(nx.yearly)} all’anno.`, 'Conferma', async () => {
+    await db.doc('clubs/' + cid).update({medical: L + 1}); await ledger(cid, -nx.cost, `Staff medico livello ${L + 1}`); toast('Staff medico potenziato'); });
+}
+async function medCure(pid){
+  const p = S.players.find(x => x.id === pid), c = club(p?.clubId); if (!p || !c) return;
+  if (!canManage(c.id)) fail('Solo l’allenatore può decidere la cura.'); if (medLevel(c) < 3) fail('Serve lo staff medico almeno di livello 3.');
+  if (p.injury?.cured) fail('Cura intensiva già fatta per questo infortunio.'); if (budget(c) < cureCost(c)) fail('Budget insufficiente.');
+  confirmBox(`Cura intensiva · ${p.name}`, `Rientra una giornata prima. Costo ${fmtM(cureCost(c))}.`, 'Paga e cura', async () => {
+    await db.doc('players/' + pid).update({injury: {...p.injury, untilRound: p.injury.untilRound - 1, cured: true}});
+    await ledger(c.id, -cureCost(c), `Cura intensiva ${p.name}`); toast(`${p.name} rientra prima`); });
+}
+function injuryField(p){
+  const left = injLeft(p);
+  return `${fld('pinjg', 'Infortunio: giornate di stop previste', `type="number" min="0" max="40" value="${p.injured ? (p.injury?.gg ?? left) : 0}"`, 'Metti 0 se è sano. Lo staff medico della società accorcia i tempi in automatico.', true)}`;
+}
+function injuryData(p, fd){
+  const gg = Math.max(0, Math.round(num(fd, 'pinjg')));
+  if (!gg) return {injured: false, injury: null};
+  if (p.injured && p.injury && p.injury.gg === gg) return {};
+  const c = club(p.clubId), d = c ? divOf(c) : 'A', red = MED[medLevel(c)].red, eff = Math.max(1, Math.round(gg * (1 - red)));
+  return {injured: true, injury: {gg, eff, season: season(), div: d, fromRound: divPlayed(d), untilRound: divPlayed(d) + eff}};
+}
+async function autoHeal(){
+  const list = S.players.filter(p => p.injured && p.injury && injLeft(p) === 0);
+  for (const p of list){ const {id, ...d} = p; await sb.from('docs').update({data: {...d, injured: false, injury: null}}).eq('col', 'players').eq('id', id); }
+  if (list.length){ listeners.players && reload('players'); toast(`${list.length} giocatori rientrati dall’infortunio`); }
+}
+
+/* ---------- BUDGET DI PARTENZA PER DIVISIONE ---------- */
+const wageMargin = () => S.settings?.wageMargin ?? 10;
+const rosterWages = cid => roster(cid).reduce((a, p) => a + (p.loan ? Math.round((p.wage || 0) * (p.loan.wagePct ?? 100) / 100) : (p.wage || 0)), 0);
+const startWageOf = c => Math.round(rosterWages(c.id) * (1 + wageMargin() / 100) / 1000) * 1000;
+function applyStartBudgets(){
+  const ex = S.clubs.slice(0, 4).map(c => `${esc(c.name)}: ${fmtW(startWageOf(c))}`).join(' · ');
+  confirmBox('Budget di partenza', `<b>Budget trasferimenti</b> uguale per serie: Serie A ${fmtM(divBudget('A'))} · Serie B ${fmtM(divBudget('B'))}.<br>
+    <b>Monte ingaggi</b> di ogni società = ingaggi della sua rosa iniziale${wageMargin() ? ` + ${wageMargin()}% di margine` : ''}.${ex ? `<br><span class="sub">Esempio: ${ex}${S.clubs.length > 4 ? ' …' : ''}</span>` : ''}<br>
+    Fallo dopo aver messo le rose e prima che parta il torneo: sovrascrive budget e monte ingaggi di tutte le società.`, 'Applica a tutte', async () => {
+    for (const c of S.clubs) await db.doc('clubs/' + c.id).update({budget0: divBudget(divOf(c)), wage0: startWageOf(c)});
+    toast('Budget e monte ingaggi applicati'); });
+}
+
+/* ---------- SORTEGGIO LIVE ---------- */
+const drawPicker = () => { const D = S.draw; if (!D || !D.active) return null;
+  return (D.order || []).find(id => !S.clubs.some(c => c.managerId === id)) || null; };
+async function drawNew(){
+  const {data, error} = await sb.from('profiles').select('id,name'); if (error) throw dbErr(error);
+  const ppl = (data || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const f = openModal('Nuovo sorteggio', `<p class="sub">Spunta chi partecipa. Durante il sorteggio estrai i nomi uno alla volta: tutti i manager collegati vedono l’estrazione in diretta. Poi ognuno, nel suo turno, prende la panchina che vuole.</p>
+    <div class="list" style="max-height:45vh;overflow:auto">${ppl.map(p => `<label class="li" style="cursor:pointer"><span><input type="checkbox" name="dp" value="${p.id}" ${S.clubs.some(c => c.managerId === p.id) ? '' : 'checked'}> ${esc(p.name || 'Manager')}</span></label>`).join('')}</div>`,
+    async () => { const ids = [...f.querySelectorAll('input[name=dp]:checked')].map(x => x.value); if (ids.length < 2) fail('Servono almeno 2 partecipanti.');
+      const names = {}; ppl.forEach(p => { if (ids.includes(p.id)) names[p.id] = p.name || 'Manager'; });
+      await db.doc('league/draw').set({active: true, pool: ids, order: [], names, startedAt: now()}); toast('Sorteggio pronto: estrai il primo nome'); }, 'Prepara sorteggio');
+}
+async function drawNext(all){
+  const D = S.draw; if (!D?.active) fail('Nessun sorteggio attivo.');
+  let order = [...(D.order || [])], left = (D.pool || []).filter(id => !order.includes(id));
+  if (!left.length) fail('Tutti i nomi sono già stati estratti.');
+  do { const k = Math.floor(Math.random() * left.length); order.push(left[k]); left.splice(k, 1); } while (all && left.length);
+  await db.doc('league/draw').update({order, lastAt: now()});
+}
+let drawSeen = 0;
+function drawPanel(){
+  const D = S.draw; if (!D || !D.active) return '';
+  const order = D.order || [], left = (D.pool || []).length - order.length, pick = drawPicker(), fresh = order.length > drawSeen; drawSeen = order.length;
+  const nm = id => esc(D.names?.[id] || S.profiles[id]?.name || 'Manager');
+  return `<div class="panel drawp"><div class="ph"><h2>🎲 Sorteggio ordine di scelta</h2>${S.comm ? `<div class="row">${left ? `<button class="btn sm primary" data-act="draw-next">Estrai il prossimo</button><button class="btn sm" data-act="draw-all">Estrai tutti</button>` : ''}<button class="btn sm ghost" data-act="draw-end">Chiudi sorteggio</button></div>` : ''}</div>
+    <p class="sub">${left ? `Mancano ${left} nomi da estrarre.` : 'Estrazione completata.'} ${pick ? `Tocca a <b>${nm(pick)}</b> scegliere la panchina.` : order.length && !left ? 'Tutti hanno scelto.' : ''}</p>
+    <ol class="drawlist">${order.map((id, i) => { const c = S.clubs.find(x => x.managerId === id);
+      return `<li class="${i === order.length - 1 && fresh ? 'drawnew' : ''}${id === pick ? ' drawturn' : ''}"><span class="dn">${i + 1}</span><b>${nm(id)}</b>${id === S.me ? ' <span class="sub">(tu)</span>' : ''}<span class="sub" style="margin-left:auto">${c ? `${esc(c.name)} · ${DIVS[divOf(c)]}` : id === pick ? 'sta scegliendo…' : 'in attesa'}</span></li>`; }).join('')}</ol></div>`;
+}
+const drawBanner = () => S.draw?.active && S.route !== 'lega' ? `<div class="notice" style="margin-bottom:14px">🎲 Sorteggio in corso${drawPicker() === S.me ? ': <b>tocca a te scegliere la panchina!</b>' : ''} · <a href="#lega">Vai a Lega</a></div>` : '';
+
+async function seasonEndFinance(s, upIds){
+  for (const c of S.clubs){
+    const sp = c.sponsors && c.sponsors.season === s ? c.sponsors : null;
+    if (sp) for (const k of ['main', 'tech']) if (sp[k] && sponsorReached(c, sp[k], {promoted: upIds, div: divOf(c)})) await ledger(c.id, sp[k].bonus, `Bonus sponsor ${sp[k].brand}: obiettivo raggiunto (${sp[k].goal.label})`);
+    const cap = effStadium(c).cap; await ledger(c.id, -cap * 25, `Manutenzione stadio stagione ${s} (${nf(cap)} posti)`);
+    const med = MED[medLevel(c)]; if (med.yearly) await ledger(c.id, -med.yearly, `Staff medico stagione ${s}`);
+  }
+}
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -1515,7 +1877,7 @@ document.addEventListener('click', async e => {
       case 'settings': settingsModal(); break;
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
-      case 'club-claim': if (!S.me) return authModal(); await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'club-claim': if (!S.me) return authModal(); if (S.draw?.active && !S.comm){ const pk = drawPicker(); if (!pk || pk !== S.me) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
       case 'reset-league': resetLeagueModal(); break;
@@ -1525,6 +1887,17 @@ document.addEventListener('click', async e => {
         resultModal(m); break; }
       case 'lineup': lineupPick(S.matches.find(x => x.id === id)); break;
       case 'lineups': viewLineups(S.matches.find(x => x.id === id)); break;
+      case 'sp-sign': { const [cid, oid] = id.split('|'); await signSponsor(cid, oid); break; }
+      case 'st-edit': stadiumModal(club(id)); break;
+      case 'med-up': await medUpgrade(id); break;
+      case 'med-cure': await medCure(id); break;
+      case 'draw-new': await drawNew(); break;
+      case 'draw-next': await drawNext(false); break;
+      case 'draw-all': await drawNext(true); break;
+      case 'draw-end': confirmBox('Chiudi sorteggio', 'Il sorteggio sparisce e le panchine tornano libere da prendere per tutti.', 'Chiudi', async () => { await db.doc('league/draw').update({active: false}); }); break;
+      case 'start-budgets': applyStartBudgets(); break;
+      case 'div': S.div = id; S.round = null; render(); break;
+      case 'po-adv': await advancePlayoff(); break;
       case 'live': liveModal(S.matches.find(x => x.id === id)); break;
       case 'online': onlineModal(); break;
       case 'add-player': addPlayer(id); break;
@@ -1591,7 +1964,7 @@ async function boot(){
     fn(snap.docs.map(d => ({id: d.id, ...d.data()}))); S.loaded[name] = true;
     if (name === 'league' && !snap.metadata.fromCache){ clearTimeout(slow); S.state = 'ready'; }
     schedule(); }, err => { clearTimeout(slow); toast('Dati non disponibili: ' + err.code); });
-  subscribe('league', d => S.settings = d.find(x => x.id === 'settings') || null);
+  subscribe('league', d => { S.settings = d.find(x => x.id === 'settings') || null; S.draw = d.find(x => x.id === 'draw') || null; });
   subscribe('clubs', d => S.clubs = d.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
   subscribe('players', d => S.players = d);
   subscribe('matches', d => S.matches = d);
