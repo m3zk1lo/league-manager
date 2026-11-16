@@ -495,15 +495,15 @@ function viewFree(){
   <section class="grid2"><div class="stack">
     <div class="panel"><div class="ph"><h2>Aste in corso</h2><span class="sub">Durata ${mins} minuti · rilancio minimo ${fmtM(step)}</span></div>
       ${au.length ? `<div class="list">${au.map(a => auctionRow(a, mc)).join('')}</div>` : '<p class="muted">Nessuna asta aperta. Scegli uno svincolato qui sotto e avvia un’asta con la tua offerta di partenza.</p>'}</div>
-    <div class="panel"><div class="ph"><h3>Lista svincolati</h3>${S.comm ? `<div class="row"><button class="btn sm" data-act="fa-add">Aggiungi svincolato</button><button class="btn sm" data-act="fa-import">Importa svincolati</button></div>` : ''}</div>
+    <div class="panel"><div class="ph"><h3>Lista svincolati</h3>${S.comm ? `<div class="row"><button class="btn sm" data-act="fa-add">Aggiungi svincolato</button><button class="btn sm" data-act="fa-import">Importa svincolati</button><button class="btn sm primary" data-act="fa-file">Importa da file</button></div>` : ''}</div>
       <div class="row filters"><input type="search" class="search" id="faq" placeholder="Cerca per nome, es. Wirtz" aria-label="Cerca svincolato per nome" value="${esc(S.faQ)}" autocomplete="off">
         <select class="inl" id="fapos" aria-label="Filtra per ruolo"><option value="all">Tutti i ruoli</option>
           <optgroup label="Reparto">${[['gk','Portieri'],['def','Difensori'],['mid','Centrocampisti'],['att','Attaccanti']].map(([v, l]) => `<option value="g:${v}"${S.faPos === 'g:' + v ? ' selected' : ''}>${l}</option>`).join('')}</optgroup>
           <optgroup label="Ruolo">${POS.map(r => `<option value="p:${r}"${S.faPos === 'p:' + r ? ' selected' : ''}>${r}</option>`).join('')}</optgroup></select>
-        <span class="sub" id="facount">${fa.length} di ${all.length} giocatori</span></div>
+        <span class="sub" id="facount">${fa.length > 200 ? `primi 200 di ${fa.length} (usa ricerca e ruolo per trovare gli altri)` : `${fa.length} di ${all.length} giocatori`}</span></div>
       <div id="fatable">
       ${fa.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th></th></tr></thead><tbody>
-        ${fa.map(p => { const a = auctionFor(p.id); return `<tr><td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b></td><td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td><td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td>
+        ${fa.slice(0, 200).map(p => { const a = auctionFor(p.id); return `<tr><td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b></td><td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td><td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td>
           <td class="r">${a ? `<span class="pill info">In asta · ${fmtM(a.highBid)}</span>` : (mc || S.comm) && window_() ? `<button class="btn sm primary" data-act="auc-start" data-id="${p.id}">Avvia asta</button>` : ''}
           ${S.comm ? ` <button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button>${a ? '' : ` <button class="btn sm bad" data-act="fa-del" data-id="${p.id}">Rimuovi</button>`}` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
         : all.length ? '<p class="muted">Nessuno svincolato corrisponde alla ricerca. Prova un altro nome o un altro ruolo.</p>' : `<div class="empty"><strong>Nessuno svincolato</strong><span>${S.comm ? 'Aggiungi i giocatori svincolati della tua carriera su FC 27, uno alla volta o incollando un elenco con “Importa svincolati”.' : 'Il commissario non ha ancora inserito giocatori svincolati.'}</span></div>`}</div></div>
@@ -1342,7 +1342,7 @@ function closeSeason(){
 
 
 /* ---------- Supabase ---------- */
-const SB_URL = 'https://kqltgtdnuklvvlacqbka.supabase.co', SB_KEY = 'sb_publishable_8a5wshMCsu10jzHmFRRNNQ_3NDfzJ_o';
+const SB_URL = 'SUPABASE_URL', SB_KEY = 'SUPABASE_KEY';
 let sb = null;
 function dbErr(e){
   const m = String(e?.message || e || '');
@@ -1356,7 +1356,7 @@ function ensureChannel(){
   channel = sb.channel('lm-docs').on('postgres_changes', {event: '*', schema: 'public', table: 'docs'}, p => {
     const row = p.eventType === 'DELETE' ? p.old : p.new; const L = listeners[row?.col]; if (!L) return;
     if (p.eventType === 'DELETE') L.map.delete(row.id); else L.map.set(row.id, {id: row.id, data: row.data});
-    if (L.ready) L.emit();
+    if (L.ready){ clearTimeout(L.rt); L.rt = setTimeout(() => L.emit(), (typeof importing !== 'undefined' && importing.on) ? 3000 : 250); }
   }).subscribe(st => { if (st === 'SUBSCRIBED' && ensureChannel.was){ Object.keys(listeners).forEach(reload); } if (st === 'SUBSCRIBED') ensureChannel.was = true; });
 }
 async function reload(col){
@@ -2006,8 +2006,57 @@ const DEF_PRIZES_B = [12, 10, 8, 6, 5, 4, 3, 2].map(x => x * M);
 const prizesB = () => S.settings?.prizesB ?? DEF_PRIZES_B;
 const KIT_COST = {A: 1 * M, B: 0.5 * M};
 const kitLocked = (c, slot) => ((c.kits || {})[slot] || {}).season === season();
+/* ---------- importa svincolati da file CSV (commissario) ---------- */
+function normKey(s){ const SP = {'ł':'l','ø':'o','đ':'d','ð':'d','ı':'i','ß':'ss','æ':'ae','œ':'oe'};
+  return String(s || '').toLowerCase().replace(/[łøđðıßæœ]/g, c => SP[c]).normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, ''); }
+function parseCSV(t){ const rows = []; let row = [], cur = '', q = false;
+  t = t.replace(/^﻿/, '');
+  for (let i = 0; i < t.length; i++){ const ch = t[i];
+    if (q){ if (ch === '"'){ if (t[i + 1] === '"'){ cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === ','){ row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && t[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.length > 1 || row[0]) rows.push(row); row = []; }
+    else cur += ch; }
+  if (cur || row.length){ row.push(cur); rows.push(row); }
+  return rows; }
+function faFileImport(){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,text/csv,text/plain';
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; if (!file) return;
+    let rows; try { rows = parseCSV(await file.text()); } catch { return toast('Non riesco a leggere il file.'); }
+    const head = (rows.shift() || []).map(h => h.trim().toLowerCase()); const ix = k => head.indexOf(k);
+    if (['id','name','pos','age','ovr','value','wage'].some(k => ix(k) < 0)) return toast('File non valido: servono le colonne id, name, pos, age, ovr, value, wage.', 5000);
+    const byKey = new Map();
+    S.players.forEach(p => { const k = normKey(String(p.name || '').trim().split(/\s+/).pop()); if (!k) return;
+      if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push({a: +p.age || 0, o: +p.ovr || 0}); });
+    const ids = new Set(S.players.map(p => p.id)); const add = []; let skip = 0;
+    for (const r of rows){
+      const id = (r[ix('id')] || '').trim(); const name = (r[ix('name')] || '').trim(); if (!id || !name) continue;
+      const age = +r[ix('age')] || 0, ovr = +r[ix('ovr')] || 0;
+      if (ids.has(id)){ skip++; continue; }
+      const words = ix('keys') >= 0 ? String(r[ix('keys')] || '').trim().split(/\s+/) : [normKey(name.split(/\s+/).pop())];
+      if (words.some(w => (byKey.get(w) || []).some(e => Math.abs(e.a - age) <= 1 && Math.abs(e.o - ovr) <= 3))){ skip++; continue; }
+      ids.add(id);
+      add.push({col: 'players', id, data: {name, pos: (r[ix('pos')] || '').trim(), age, ageSeason: 1, ovr, value: +r[ix('value')] || 0, wage: +r[ix('wage')] || 0, injured: false, clubId: null, loan: null}});
+    }
+    if (!add.length) return toast(`Nessun giocatore nuovo: ${skip} erano già presenti.`, 5000);
+    confirmBox('Importa svincolati', `Nel file ci sono <b>${rows.length}</b> giocatori.<br><b>${skip}</b> sono già nel database (nelle rose o tra gli svincolati) e vengono saltati.<br><b>${add.length}</b> nuovi entrano tra gli svincolati.<br><br>Ci vuole circa un minuto: non chiudere la pagina finché non compare il messaggio finale.`, `Importa ${add.length}`, async () => {
+      importing.on = true; let done = 0;
+      try {
+        for (let i = 0; i < add.length; i += 500){
+          const {error} = await sb.from('docs').upsert(add.slice(i, i + 500), {onConflict: 'col,id', ignoreDuplicates: true});
+          if (error) throw dbErr(error);
+          done = Math.min(i + 500, add.length); toast(`Importati ${done} di ${add.length}…`, 2500);
+        }
+      } finally { importing.on = false; }
+      await reload('players'); toast(`Fatto: ${done} nuovi svincolati aggiunti, ${skip} già presenti saltati.`, 6000);
+    });
+  };
+  inp.click();
+}
+const importing = {on: false};
+
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['fa-file','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -2044,6 +2093,7 @@ document.addEventListener('click', async e => {
       case 'draw-all': await drawNext(true); break;
       case 'draw-end': confirmBox('Chiudi sorteggio', 'Il sorteggio sparisce e le panchine tornano libere da prendere per tutti.', 'Chiudi', async () => { await db.doc('league/draw').update({active: false}); }); break;
       case 'start-budgets': applyStartBudgets(); break;
+      case 'fa-file': faFileImport(); break;
       case 'users-reload': await loadUsers(true); break;
       case 'div': S.div = id; S.round = null; render(); break;
       case 'po-adv': await advancePlayoff(); break;
