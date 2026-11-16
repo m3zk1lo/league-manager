@@ -148,6 +148,35 @@ tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;borde
 .kits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:6px 0 10px}.kit{display:grid;justify-items:center;gap:6px;text-align:center;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 6px}.kit svg{max-width:100%;height:auto}
 .kitedit{display:grid;grid-template-columns:160px minmax(0,1fr);gap:14px;align-items:start}.kitprev{display:grid;place-items:center;background:var(--surface-2);border-radius:12px;padding:8px}
 @media (max-width:560px){.kitedit{grid-template-columns:minmax(0,1fr)}}
+.hhero{border-radius:18px;padding:18px;background:linear-gradient(135deg,var(--pitch),var(--pitch-2));color:var(--on-pitch);display:flex;flex-direction:column;gap:14px;margin-bottom:12px}
+.hhero h2{margin:0;font-family:var(--display);font-weight:800;font-size:28px;text-transform:uppercase;letter-spacing:.3px;line-height:1.05}
+.hwho{display:flex;align-items:center;gap:14px}.hsub{display:block;font-size:13px;color:var(--on-pitch-muted)}
+.hbtn{min-height:46px;display:grid;place-items:center;font-size:15px;font-weight:700;width:100%;box-sizing:border-box;text-decoration:none}
+.hnext{display:flex;flex-direction:column;gap:12px;border-top:1px solid rgba(255,255,255,.14);padding-top:14px}
+.hnl{display:flex;justify-content:space-between;gap:8px;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--on-pitch-muted)}.hnl .todo{color:var(--gold)}.hnl .ok{color:var(--good)}
+.hvs{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;font-family:var(--display);font-size:22px;text-transform:uppercase}
+.hvs span{display:flex;align-items:center;gap:8px;min-width:0}.hvs span.r{justify-content:flex-end}.hvs b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hvs i{font-style:normal;font-size:14px;color:var(--on-pitch-muted)}
+.hstat{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:600;margin-bottom:12px}
+.hstat .dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}.hstat.open .dot{background:var(--good)}
+.htiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:760px){.htiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.htiles a{min-height:92px;border-radius:16px;background:var(--surface);border:1px solid var(--line);padding:14px;box-sizing:border-box;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.htiles a:hover{border-color:var(--accent)}
+.htiles b{font-family:var(--display);font-weight:800;font-size:21px;text-transform:uppercase;letter-spacing:.3px}.htiles span{font-size:12.5px;color:var(--muted)}
+.bnav,.bsheet{display:none}
+@media (max-width:760px){
+  #tabs{display:none}
+  body{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+  .bnav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:40;height:66px;padding:6px;box-sizing:border-box;border-radius:20px;background:var(--surface);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .bnav a,.bnav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;background:transparent;border-radius:14px;color:var(--muted);text-decoration:none;font:600 11px var(--body);cursor:pointer;min-width:0}
+  .bnav [aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+  .bbadge{position:absolute;top:4px;right:calc(50% - 22px);min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--warn);color:#1f1400;font:700 10px var(--body);display:grid;place-items:center}
+  .bbadge[hidden]{display:none}.bbadge.in{position:static;display:inline-grid}
+  .bsheet:not([hidden]){display:flex;flex-direction:column;position:fixed;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:41;padding:8px;border-radius:18px;background:var(--surface);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .bsheet a{display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:0 14px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:600;font-size:16px}
+  .bsheet a[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+  .toast{bottom:calc(92px + env(safe-area-inset-bottom)) !important}
+}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -216,6 +245,7 @@ button.tag:hover{border-color:var(--on-pitch)}
     <div class="meta" id="meta"></div>
   </div>
   <nav class="wrap tabs" id="tabs" aria-label="Sezioni">
+    <a href="#home">Home</a>
     <a href="#classifica">Classifica</a>
     <a href="#calendario">Calendario</a>
     <a href="#societa">Società</a>
@@ -228,6 +258,19 @@ button.tag:hover{border-color:var(--on-pitch)}
 <main class="wrap" id="main">
   <div class="panel"><div class="empty"><strong>Apertura della sede</strong><span>Sto caricando società, rose e calendario della lega…</span></div></div>
 </main>
+<nav class="bnav" id="bnav" aria-label="Menu principale">
+  <a href="#home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path></svg><span>Home</span></a>
+  <a href="#classifica"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 4h10v5a5 5 0 0 1-10 0z"></path><path d="M17 5h3v2a3 3 0 0 1-3 3"></path><path d="M7 5H4v2a3 3 0 0 0 3 3"></path></svg><span>Classifica</span></a>
+  <a href="#calendario"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 11h18"></path></svg><span>Partite</span></a>
+  <a href="#mercato"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3"></path><path d="M17 17H6l3 3"></path></svg><span>Mercato</span><b class="bbadge" id="bmkt" hidden></b></a>
+  <button type="button" id="bmore" aria-expanded="false" aria-controls="bsheet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg><span>Altro</span><b class="bbadge" id="bmoreb" hidden></b></button>
+</nav>
+<div class="bsheet" id="bsheet" hidden>
+  <a href="#societa">Società e rosa</a>
+  <a href="#svincolati">Svincolati e aste <b class="bbadge in" id="bauc" hidden></b></a>
+  <a href="#statistiche">Statistiche</a>
+  <a href="#lega">Lega</a>
+</div>
 <dialog id="dlg"></dialog>
 <div id="toast" class="toast" hidden></div>
 
@@ -451,8 +494,8 @@ async function refreshProfiles(){
 }
 function render(){
   if (S.gate) return;
-  const r = (location.hash || '#classifica').slice(1);
-  S.route = ['classifica','calendario','societa','mercato','svincolati','statistiche','lega'].includes(r) ? r : 'classifica';
+  const r = (location.hash || '#home').slice(1);
+  S.route = ['home','classifica','calendario','societa','mercato','svincolati','statistiche','lega'].includes(r) ? r : 'home';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   $('#lname').textContent = S.settings?.name || 'Lega Carriera';
   const ri = roundInfo(), mc = myClub(), nl = notifs(), unread = nl.filter(n => n.unread).length;
@@ -475,8 +518,9 @@ function render(){
   const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
   const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
   restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
-  main.innerHTML = roBanner() + drawBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
+  main.innerHTML = roBanner() + drawBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
   if (restoreFocus) restoreFocus();
+  bnavSync();
 }
 let restoreFocus = null;
 function roBanner(){
@@ -2098,6 +2142,50 @@ function fxClear(){
     for (let i = 0; i < ms.length; i += 10) await Promise.all(ms.slice(i, i + 10).map(m => db.doc('matches/' + m.id).delete()));
     S.round = 1; toast('Calendario svuotato'); });
 }
+
+/* ---------- home (hub) + barra in basso ---------- */
+function viewHome(){
+  const mc = myClub(), nA = openAuctions().length, open = window_();
+  const myNext = mc ? seasonMatches().filter(m => !m.played && (m.homeId === mc.id || m.awayId === mc.id)).sort((a, b) => (a.stage ? 1 : 0) - (b.stage ? 1 : 0) || a.round - b.round)[0] : null;
+  const lu = myNext ? lineupOf(myNext.id, mc.id) : null;
+  const H = myNext && club(myNext.homeId), A = myNext && club(myNext.awayId);
+  const tiles = [
+    ['classifica', 'Classifica', hasB() ? 'Serie A e Serie B' : 'Punti e posizioni'],
+    ['calendario', 'Calendario', 'Partite e risultati'],
+    ['mercato', 'Mercato', 'Offerte e trattative'],
+    ['svincolati', 'Svincolati', nA ? `${nA} ${nA === 1 ? 'asta' : 'aste'} in corso` : 'Aste e lista giocatori'],
+    ['societa', mc ? 'La mia società' : 'Società', 'Rosa, stadio, sponsor'],
+    ['statistiche', 'Statistiche', 'Marcatori e assist'],
+    ['lega', 'Lega', S.comm ? 'Gestione commissario' : 'Regolamento e manager']];
+  return `<section class="hhero">
+      ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${hasB() ? DIVS[divOf(mc)] + ' · ' : ''}Stagione ${season()}</span></div></div>`
+        : `<div class="hwho"><div><span class="hsub">${S.me ? 'Non alleni ancora nessuna squadra' : 'Benvenuto'}</span><h2>League Manager</h2><span class="hsub">Stagione ${season()}</span></div></div>
+          <a class="btn primary hbtn" href="#lega">${S.me ? 'Prendi una panchina' : 'Vai alla Lega'}</a>`}
+      ${myNext ? `<div class="hnext"><div class="hnl"><span>Prossima · ${myNext.stage ? 'Playoff' : 'Giornata ' + myNext.round}</span><span class="${lu ? 'ok' : 'todo'}">${lu ? 'Distinta consegnata' : 'Distinta da consegnare'}</span></div>
+          <div class="hvs"><span>${crest(H)}<b>${esc(H?.name || '—')}</b></span><i>vs</i><span class="r"><b>${esc(A?.name || '—')}</b>${crest(A)}</span></div>
+          <button class="btn primary hbtn" data-act="lineup" data-id="${myNext.id}">${lu ? 'Modifica la distinta' : 'Consegna la distinta'}</button></div>` : ''}
+    </section>
+    <a class="hstat ${open ? 'open' : 'closed'}" href="#svincolati"><span class="dot"></span>Mercato ${open ? 'aperto' : 'chiuso'}${nA ? ` · ${nA} ${nA === 1 ? 'asta' : 'aste'} in corso` : ''}</a>
+    <nav class="htiles" aria-label="Sezioni">${tiles.map(([r, l, s]) => `<a href="#${r}"><b>${l}</b><span>${s}</span></a>`).join('')}</nav>`;
+}
+function bnavSync(){
+  const nav = $('#bnav'); if (!nav) return;
+  const more = ['societa', 'svincolati', 'statistiche', 'lega'].includes(S.route);
+  nav.querySelectorAll('a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  const mb = $('#bmore'); if (mb){ if (more) mb.setAttribute('aria-current', 'page'); else mb.removeAttribute('aria-current'); }
+  const sh = $('#bsheet'); if (sh){ sh.hidden = true; if (mb) mb.setAttribute('aria-expanded', 'false');
+    sh.querySelectorAll('a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }); }
+  const unread = notifs().filter(n => n.unread).length, na = openAuctions().length;
+  const b1 = $('#bmkt'); if (b1){ b1.hidden = !unread; b1.textContent = unread; }
+  const b2 = $('#bauc'); if (b2){ b2.hidden = !na; b2.textContent = na; }
+  const b3 = $('#bmoreb'); if (b3){ b3.hidden = !na; b3.textContent = na; }
+}
+document.addEventListener('click', e => {
+  const mb = e.target.closest && e.target.closest('#bmore');
+  const sh = $('#bsheet');
+  if (mb && sh){ e.preventDefault(); sh.hidden = !sh.hidden; mb.setAttribute('aria-expanded', String(!sh.hidden)); return; }
+  if (sh && !sh.hidden && !e.target.closest('#bsheet')){ sh.hidden = true; const b = $('#bmore'); if (b) b.setAttribute('aria-expanded', 'false'); }
+});
 
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
