@@ -584,6 +584,7 @@ function fixture(m){
     ${m.live || S.comm ? `<div class="fxd lurow"><span class="row">${m.live ? `<a class="btn sm livebtn" href="${esc(m.live)}" target="_blank" rel="noopener"><span class="livedot"></span>${m.played ? 'Rivedi la live' : 'Guarda la live'}</a>` : ''}</span>${S.comm ? `<button class="btn sm ghost" data-act="live" data-id="${m.id}">${m.live ? 'Modifica link live' : 'Aggiungi link live'}</button>` : ''}</div>` : ''}
     ${!m.played ? `<div class="fxd lurow"><span class="row">${luStatus(m, m.homeId)}${luStatus(m, m.awayId)}</span><span class="row">${canLu ? `<button class="btn sm" data-act="lineup" data-id="${m.id}">${[m.homeId, m.awayId].filter(canManage).some(x => lineupOf(m.id, x)) ? 'Modifica distinta' : 'Inserisci distinta'}</button>` : ''}<button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Vedi distinte</button></span></div>`
       : (luDone(m.id, m.homeId) || luDone(m.id, m.awayId)) ? `<div class="fxd lurow"><span></span><button class="btn sm ghost" data-act="lineups" data-id="${m.id}">Distinte</button></div>` : ''}
+    ${S.comm && !m.played ? `<div class="fxd lurow"><span class="sub">Giornata ${m.round}</span><span class="row"><button class="btn sm ghost" data-act="fx-edit" data-id="${m.id}">Modifica partita</button><button class="btn sm bad" data-act="fx-del" data-id="${m.id}">Elimina</button></span></div>` : ''}
   </div>`;
 }
 function transferRow(t){
@@ -593,14 +594,14 @@ function transferRow(t){
 
 function viewFixtures(){
   const ri = roundInfo();
-  if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Quando tutte le società sono iscritte, il commissario genera il calendario di andata e ritorno da Lega.', S.comm ? '<a class="btn primary" href="#lega">Vai a Lega</a>' : '');
+  if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Il commissario lo genera in automatico da Lega oppure lo crea a mano, partita per partita.', S.comm ? '<a class="btn primary" href="#lega">Genera da Lega</a> <button class="btn" data-act="fx-add">Crea a mano</button>' : '');
   const r = S.round && S.round <= ri.total ? S.round : (ri.cur || ri.total);
   const ms = leagueMatches(curDiv()).filter(m => m.round === r);
   const half = ri.total / 2;
   const chips = Array.from({length: ri.total}, (_, i) => i + 1).map(x => {
     const done = leagueMatches(curDiv()).filter(m => m.round === x).every(m => m.played);
     return `<button class="chip${done ? ' done' : ''}" aria-pressed="${x === r}" data-act="round" data-id="${x}">${x}</button>`; }).join('');
-  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="sub">Stagione ${season()} · ${ri.total} giornate</span></div>
+  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="row"><span class="sub">Stagione ${season()} · ${ri.total} giornate</span>${S.comm ? '<button class="btn sm" data-act="fx-add">Aggiungi partita</button>' : ''}</span></div>
     <div class="chips" role="group" aria-label="Scegli giornata">${chips}</div>
     <div style="margin-top:12px">${ms.map(fixture).join('')}</div>
     <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
@@ -747,8 +748,9 @@ function viewLeague(){
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
           <button class="btn sm bad" data-act="reset-league">Azzera torneo</button>
           <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
+          <button class="btn sm bad" data-act="fx-clear" ${anyPlayed || !S.matches.some(m => m.season === season() && !m.stage) ? 'disabled' : ''}>Svuota calendario</button>
           <button class="btn sm primary" data-act="close-season" ${seasonDone() ? '' : 'disabled'}>Chiudi stagione</button></div>
-          <p class="sub">${anyPlayed ? 'Il calendario non si può rigenerare dopo la prima partita giocata.' : S.clubs.length < 2 ? 'Servono almeno 2 società per il calendario.' : 'Il calendario mescola le società e crea andata e ritorno.'} La stagione si chiude quando tutte le partite sono giocate: premi di piazzamento sul budget, età +1, nuovo calendario.</p>` : '<p class="sub">Calendario, mercato e chiusura stagione li gestisce il commissario.</p>'}
+          <p class="sub">${anyPlayed ? 'Il calendario non si può rigenerare dopo la prima partita giocata.' : S.clubs.length < 2 ? 'Servono almeno 2 società per il calendario.' : 'Il calendario mescola le società e crea andata e ritorno. Puoi anche crearlo o correggerlo a mano dalla pagina Calendario.'} La stagione si chiude quando tutte le partite sono giocate: premi di piazzamento sul budget, età +1, nuovo calendario.</p>` : '<p class="sub">Calendario, mercato e chiusura stagione li gestisce il commissario.</p>'}
       </div>
       <div class="panel"><h3>Come funziona</h3>
         <p class="sub" style="max-width:60ch">Ognuno gioca la propria carriera allenatore su FC 27 e riporta qui rosa, risultati e mercato. Acquisti e prestiti tra partecipanti passano da offerte e rilanci. I giocatori svincolati si prendono all’asta: chi offre di più alla scadenza se li aggiudica. Le cessioni ai club della CPU si registrano con la cifra vista in gioco. Il budget scende e sale da solo con ogni operazione.</p></div>
@@ -2055,8 +2057,50 @@ function faFileImport(){
 }
 const importing = {on: false};
 
+/* ---------- calendario manuale (commissario) ---------- */
+function fxModal(id){
+  const m = id ? S.matches.find(x => x.id === id) : null;
+  const div0 = m ? mDiv(m) : curDiv(), ri = roundInfo(div0);
+  const r0 = m ? m.round : (S.round && S.round <= ri.total ? S.round : (ri.total || 1));
+  const opts = S.clubs.slice().sort((a, b) => (divOf(a) + a.name).localeCompare(divOf(b) + b.name)).map(c => [c.id, (hasB() ? DIVS[divOf(c)] + ' · ' : '') + c.name]);
+  const firstOf = d => (opts.find(([cid]) => divOf(club(cid)) === d) || [''])[0];
+  const h0 = m?.homeId || firstOf(div0), a0 = m?.awayId || (opts.find(([cid]) => cid !== h0 && divOf(club(cid)) === div0) || [''])[0];
+  openModal(m ? 'Modifica partita' : 'Aggiungi partita', `<div class="fgrid">
+    ${hasB() ? sel('fxdiv', 'Campionato', [['A', DIVS.A], ['B', DIVS.B]], div0) : ''}
+    ${fld('fxround', 'Giornata', `type="number" min="1" step="1" value="${r0}" required`)}
+    ${sel('fxh', 'In casa', opts, h0)}
+    ${sel('fxa', 'In trasferta', opts, a0)}</div>
+    <p class="sub">Il calendario si può costruire anche tutto a mano, una partita alla volta. Per una giornata nuova scrivi il numero dopo l’ultima.</p>`,
+    async fd => {
+      const div = hasB() ? String(fd.get('fxdiv')) : 'A', round = Math.round(num(fd, 'fxround')), h = String(fd.get('fxh') || ''), a = String(fd.get('fxa') || ''), s = m ? m.season : season();
+      if (round < 1) fail('Scegli una giornata valida (1 o più).');
+      if (!h || !a || h === a) fail('Scegli due società diverse.');
+      if (hasB() && (divOf(club(h)) !== div || divOf(club(a)) !== div)) fail(`Le due società devono essere entrambe in ${DIVS[div]}.`);
+      const others = S.matches.filter(x => x.season === s && !x.stage && mDiv(x) === div && x.id !== m?.id);
+      const busy = others.find(x => x.round === round && [x.homeId, x.awayId].some(z => z === h || z === a));
+      if (busy) fail(`Nella giornata ${round} c’è già ${club(busy.homeId)?.name || '—'} – ${club(busy.awayId)?.name || '—'}: ogni società gioca una sola partita per giornata.`);
+      if (others.some(x => x.homeId === h && x.awayId === a)) fail('Questa partita, con la stessa squadra in casa, c’è già in un’altra giornata.');
+      if (m){ await db.doc('matches/' + m.id).update({div, round, homeId: h, awayId: a}); toast('Partita aggiornata'); }
+      else { await db.doc('matches/' + `s${s}-${div}-r${round}-${h}-${a}-${Date.now().toString(36)}`).set({season: s, div, round, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []}); toast('Partita aggiunta'); }
+      S.div = div; S.round = round;
+    }, m ? 'Salva' : 'Aggiungi');
+}
+function fxDelete(id){
+  const m = S.matches.find(x => x.id === id); if (!m) return;
+  if (m.played) return toast('La partita è già stata giocata: prima togli il risultato.');
+  confirmBox('Elimina partita', `${esc(club(m.homeId)?.name || '—')} – ${esc(club(m.awayId)?.name || '—')} (giornata ${m.round}) viene tolta dal calendario.`, 'Elimina', async () => { await db.doc('matches/' + id).delete(); toast('Partita eliminata'); });
+}
+function fxClear(){
+  const ms = S.matches.filter(m => m.season === season() && !m.stage);
+  if (!ms.length) return toast('Il calendario è già vuoto.');
+  if (ms.some(m => m.played)) return toast('Ci sono partite già giocate: il calendario non si può svuotare.');
+  confirmBox('Svuota calendario', `Vengono tolte tutte le ${ms.length} partite della stagione ${season()}. Poi puoi rigenerarlo in automatico o crearlo a mano dalla pagina Calendario.`, 'Svuota', async () => {
+    for (let i = 0; i < ms.length; i += 10) await Promise.all(ms.slice(i, i + 10).map(m => db.doc('matches/' + m.id).delete()));
+    S.round = 1; toast('Calendario svuotato'); });
+}
+
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['fa-file','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -2135,6 +2179,10 @@ document.addEventListener('click', async e => {
       case 'account': if (S.me) confirmBox('Esci', 'Vuoi uscire dal tuo account?', 'Esci', async () => { await sb.auth.signOut(); location.reload(); }); else authModal(); break;
       case 'gen': confirmBox(roundInfo().total ? 'Rigenera calendario' : 'Genera calendario', `Andata e ritorno per ${S.clubs.length} società (${(S.clubs.length - 1 + S.clubs.length % 2) * 2} giornate).${roundInfo().total ? ' Il calendario attuale viene sostituito.' : ''}`, 'Genera', async () => { await generateFixtures(season()); toast('Calendario pronto'); }); break;
       case 'close-season': closeSeason(); break;
+      case 'fx-add': fxModal(); break;
+      case 'fx-edit': fxModal(id); break;
+      case 'fx-del': fxDelete(id); break;
+      case 'fx-clear': fxClear(); break;
     }
   } catch (err){ toast(err.message || 'Operazione non riuscita. Riprova.'); }
 });
