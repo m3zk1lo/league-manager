@@ -778,7 +778,8 @@ function viewLeague(){
         <div class="list">
           <div class="li"><span>Giornate</span><b class="num">${ri.total ? `${ri.played}/${ri.total}` : 'calendario da generare'}</b></div>
           <div class="li"><span>Budget di partenza</span><b class="num">A ${fmtM(divBudget('A'))} · B ${fmtM(divBudget('B'))}</b></div>
-          <div class="li"><span>Monte ingaggi</span><b>ingaggi della rosa iniziale + ${wageMargin()}%</b></div>
+          <div class="li"><span>Monte ingaggi</span><b>rosa iniziale + ${wageMarginOf('A')}% (A) · + ${wageMarginOf('B')}% (B)</b></div>
+          ${hasB() ? `<div class="li"><span>Bonus promozione</span><b class="num">${fmtM(promoBonus())} a chi sale in A</b></div>` : ''}
           <div class="li"><span>Rosa massima</span><b class="num">${s.maxSquad} giocatori</b></div>
           <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · max ${maxSubs()} cambi</b></div>
           <div class="li"><span>Squalifica</span><b>rosso o ${s.yellowLimit}° giallo</b></div>
@@ -834,7 +835,9 @@ function settingsModal(){
     ${fld('startWage', 'Monte ingaggi standard (migliaia €/settimana)', `type="number" min="0" step="10" value="${s.startWage / K}"`)}
     ${fld('budgetA', 'Budget di partenza Serie A (milioni €)', `type="number" min="0" step="0.5" value="${divBudget('A') / M}"`)}
     ${fld('budgetB', 'Budget di partenza Serie B (milioni €)', `type="number" min="0" step="0.5" value="${divBudget('B') / M}"`)}
-    ${fld('wageMargin', 'Margine monte ingaggi (%)', `type="number" min="0" max="100" step="1" value="${wageMargin()}"`, 'Monte ingaggi = ingaggi della rosa iniziale + questa percentuale.')}
+    ${fld('wageMargin', 'Margine monte ingaggi Serie A (%)', `type="number" min="0" max="100" step="1" value="${wageMargin()}"`, 'Monte ingaggi = ingaggi della rosa iniziale + questa percentuale.')}
+    ${fld('wageMarginB', 'Margine monte ingaggi Serie B (%)', `type="number" min="0" max="100" step="1" value="${wageMarginOf('B')}"`)}
+    ${fld('promoBonus', 'Bonus promozione in Serie A (milioni €)', `type="number" min="0" step="0.5" value="${promoBonus() / M}"`)}
     ${fld('maxSquad', 'Rosa massima', `type="number" min="11" max="52" value="${s.maxSquad}"`)}
     ${fld('yellowLimit', 'Gialli per la squalifica', `type="number" min="1" max="10" value="${s.yellowLimit}"`)}
     ${fld('maxSubs', 'Cambi massimi in distinta', `type="number" min="0" max="11" value="${s.maxSubs ?? 5}"`)}
@@ -852,7 +855,7 @@ function settingsModal(){
         prizesB: String(fd.get('prizesB') || '').split(';').map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
         prizes: String(fd.get('prizes')).split(/[,;]/).map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
         rules: String(fd.get('rules')).slice(0, 8000),
-        budgetA: num(fd, 'budgetA') * M, budgetB: num(fd, 'budgetB') * M, wageMargin: Math.max(0, Math.min(100, num(fd, 'wageMargin')))};
+        budgetA: num(fd, 'budgetA') * M, budgetB: num(fd, 'budgetB') * M, wageMargin: Math.max(0, Math.min(100, num(fd, 'wageMargin'))), wageMarginB: Math.max(0, Math.min(100, num(fd, 'wageMarginB'))), promoBonus: Math.max(0, num(fd, 'promoBonus')) * M};
       if (S.settings) await db.doc('league/settings').update(data);
       else await db.doc('league/settings').set({...data, season: 1, windowOpen: true, createdAt: now()});
       toast('Impostazioni salvate');
@@ -1368,7 +1371,7 @@ function closeSeason(){
   const rowsB = hasB() ? standings(season(), 'B') : [], down = hasB() ? rows.slice(-RELEG).map(x => x.c) : [];
   const upIds = hasB() ? [...rowsB.slice(0, PROMO).map(x => x.c.id), playoffWinner()].filter(Boolean) : [], up = upIds.map(club).filter(Boolean);
   confirmBox(`Chiudi la stagione ${season()}`, `Classifica finale: ${rows.slice(0, 3).map((x, i) => `${i+1}° ${esc(x.c.name)}`).join(', ')}.<br>
-    ${hasB() ? `<b>Retrocedono in Serie B:</b> ${down.map(c => esc(c.name)).join(', ')}.<br><b>Salgono in Serie A:</b> ${up.map(c => esc(c.name)).join(', ')}.<br>` : ''}
+    ${hasB() ? `<b>Retrocedono in Serie B:</b> ${down.map(c => esc(c.name)).join(', ')}.<br><b>Salgono in Serie A:</b> ${up.map(c => esc(c.name)).join(', ')}${promoBonus() ? ` (bonus promozione ${fmtM(promoBonus())} ciascuna)` : ''}.<br>` : ''}
     Si pagano anche bonus sponsor raggiunti, manutenzione stadi e costo annuo dello staff medico.<br>
     Verranno accreditati i premi di piazzamento in Serie A (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
     'Chiudi stagione', async () => {
@@ -1378,7 +1381,7 @@ function closeSeason(){
       await settleLoans(s);
       await seasonEndFinance(s, upIds);
       for (const c of down){ await db.doc('clubs/' + c.id).update({div: 'B'}); c.div = 'B'; }
-      for (const c of up){ await db.doc('clubs/' + c.id).update({div: 'A'}); c.div = 'A'; }
+      for (const c of up){ await db.doc('clubs/' + c.id).update({div: 'A'}); c.div = 'A'; if (promoBonus()) await ledger(c.id, promoBonus(), `Bonus promozione in Serie A (stagione ${s})`); }
       await db.doc('league/settings').update({season: s + 1, windowOpen: true, champions: {...(S.settings.champions || {}), ['s' + s]: rows[0]?.c.id || null}});
       S.settings = {...S.settings, season: s + 1};
       await generateFixtures(s + 1);
@@ -1667,7 +1670,7 @@ function startPresence(){
   ch.subscribe(async st => { if (st === 'SUBSCRIBED') await ch.track({name: S.myName || '', at: Date.now()}); });
 }
 /* ================= GESTIONE SOCIETÀ: budget, sponsor, stadio, staff medico, sorteggio ================= */
-const DEF_BUDGET = {A: 50 * M, B: 20 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K};
+const DEF_BUDGET = {A: 50 * M, B: 30 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K};
 const divBudget = d => S.settings?.['budget' + d] ?? DEF_BUDGET[d];
 const divWage = d => S.settings?.['wage' + d] ?? DEF_WAGE[d];
 const divPlayed = d => roundInfo(d).played || 0;
@@ -1886,11 +1889,13 @@ async function autoHeal(){
 /* ---------- BUDGET DI PARTENZA PER DIVISIONE ---------- */
 const wageMargin = () => S.settings?.wageMargin ?? 10;
 const rosterWages = cid => roster(cid).reduce((a, p) => a + (p.loan ? Math.round((p.wage || 0) * (p.loan.wagePct ?? 100) / 100) : (p.wage || 0)), 0);
-const startWageOf = c => Math.round(rosterWages(c.id) * (1 + wageMargin() / 100) / 1000) * 1000;
+const wageMarginOf = d => d === 'B' ? (S.settings?.wageMarginB ?? 25) : wageMargin();
+const promoBonus = () => S.settings?.promoBonus ?? 15 * M;
+const startWageOf = c => Math.round(rosterWages(c.id) * (1 + wageMarginOf(divOf(c)) / 100) / 1000) * 1000;
 function applyStartBudgets(){
   const ex = S.clubs.slice(0, 4).map(c => `${esc(c.name)}: ${fmtW(startWageOf(c))}`).join(' · ');
   confirmBox('Budget di partenza', `<b>Budget trasferimenti</b> uguale per serie: Serie A ${fmtM(divBudget('A'))} · Serie B ${fmtM(divBudget('B'))}.<br>
-    <b>Monte ingaggi</b> di ogni società = ingaggi della sua rosa iniziale${wageMargin() ? ` + ${wageMargin()}% di margine` : ''}.${ex ? `<br><span class="sub">Esempio: ${ex}${S.clubs.length > 4 ? ' …' : ''}</span>` : ''}<br>
+    <b>Monte ingaggi</b> di ogni società = ingaggi della sua rosa iniziale + ${wageMarginOf('A')}% di margine in Serie A, + ${wageMarginOf('B')}% in Serie B.${ex ? `<br><span class="sub">Esempio: ${ex}${S.clubs.length > 4 ? ' …' : ''}</span>` : ''}<br>
     Fallo dopo aver messo le rose e prima che parta il torneo: sovrascrive budget e monte ingaggi di tutte le società.`, 'Applica a tutte', async () => {
     for (const c of S.clubs) await db.doc('clubs/' + c.id).update({budget0: divBudget(divOf(c)), wage0: startWageOf(c)});
     toast('Budget e monte ingaggi applicati'); });
