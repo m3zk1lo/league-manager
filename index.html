@@ -178,6 +178,10 @@ tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;borde
   .toast{bottom:calc(92px + env(safe-area-inset-bottom)) !important}
 }
 .drawhid{opacity:.55}.drawhid b{letter-spacing:3px}
+.prgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media (max-width:760px){.prgrid{grid-template-columns:minmax(0,1fr)}}
+.prg.mine{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.prt{display:flex;align-items:center;gap:8px;min-width:0}.prt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prfree{border-style:dashed !important;opacity:.7}.preprize{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);font-size:14px}
+.prms{display:flex;flex-direction:column;gap:6px;margin-top:10px}.prm{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto;align-items:center;gap:8px;font-size:13.5px}.prm .r{text-align:right}.prm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -253,6 +257,7 @@ button.tag:hover{border-color:var(--on-pitch)}
     <a href="#mercato">Mercato<span class="badge" id="mktbadge" hidden></span></a>
     <a href="#svincolati">Svincolati<span class="badge" id="aucbadge" hidden></span></a>
     <a href="#statistiche">Statistiche</a>
+    <a href="#precampionato">Precampionato</a>
     <a href="#lega">Lega</a>
   </nav>
 </header>
@@ -270,6 +275,7 @@ button.tag:hover{border-color:var(--on-pitch)}
   <a href="#societa">Società e rosa</a>
   <a href="#svincolati">Svincolati e aste <b class="bbadge in" id="bauc" hidden></b></a>
   <a href="#statistiche">Statistiche</a>
+  <a href="#precampionato">Precampionato</a>
   <a href="#lega">Lega</a>
 </div>
 <dialog id="dlg"></dialog>
@@ -496,7 +502,7 @@ async function refreshProfiles(){
 function render(){
   if (S.gate) return;
   const r = (location.hash || '#home').slice(1);
-  S.route = ['home','classifica','calendario','societa','mercato','svincolati','statistiche','lega'].includes(r) ? r : 'home';
+  S.route = ['home','classifica','calendario','societa','mercato','svincolati','statistiche','lega','precampionato'].includes(r) ? r : 'home';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   $('#lname').textContent = S.settings?.name || 'Lega Carriera';
   const ri = roundInfo(), mc = myClub(), nl = notifs(), unread = nl.filter(n => n.unread).length;
@@ -519,7 +525,7 @@ function render(){
   const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
   const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
   restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
-  main.innerHTML = roBanner() + drawBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague})[S.route]();
+  main.innerHTML = roBanner() + drawBanner() + preBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, svincolati:viewFree, statistiche:viewStats, lega:viewLeague, precampionato:viewPre})[S.route]();
   if (restoreFocus) restoreFocus();
   bnavSync();
 }
@@ -2213,6 +2219,7 @@ function viewHome(){
     ['svincolati', 'Svincolati', nA ? `${nA} ${nA === 1 ? 'asta' : 'aste'} in corso` : 'Aste e lista giocatori'],
     ['societa', mc ? 'La mia società' : 'Società', 'Rosa, stadio, sponsor'],
     ['statistiche', 'Statistiche', 'Marcatori e assist'],
+    ['precampionato', 'Precampionato', preOn() ? (S.pre.done ? 'Concluso' : preAllIn() ? 'Partite in corso' : 'Scelta dei gironi') : '4 gironi, premi per il mercato'],
     ['lega', 'Lega', S.comm ? 'Gestione commissario' : 'Regolamento e manager']];
   return `<section class="hhero">
       ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${hasB() ? DIVS[divOf(mc)] + ' · ' : ''}Stagione ${season()}</span></div></div>`
@@ -2227,7 +2234,7 @@ function viewHome(){
 }
 function bnavSync(){
   const nav = $('#bnav'); if (!nav) return;
-  const more = ['societa', 'svincolati', 'statistiche', 'lega'].includes(S.route);
+  const more = ['societa', 'svincolati', 'statistiche', 'lega', 'precampionato'].includes(S.route);
   nav.querySelectorAll('a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const mb = $('#bmore'); if (mb){ if (more) mb.setAttribute('aria-current', 'page'); else mb.removeAttribute('aria-current'); }
   const sh = $('#bsheet'); if (sh){ sh.hidden = true; if (mb) mb.setAttribute('aria-expanded', 'false');
@@ -2243,6 +2250,145 @@ document.addEventListener('click', e => {
   if (mb && sh){ e.preventDefault(); sh.hidden = !sh.hidden; mb.setAttribute('aria-expanded', String(!sh.hidden)); return; }
   if (sh && !sh.hidden && !e.target.closest('#bsheet')){ sh.hidden = true; const b = $('#bmore'); if (b) b.setAttribute('aria-expanded', 'false'); }
 });
+
+/* ---------- PRECAMPIONATO: 4 gironi da 4, scelta a turni, premio in base agli avversari ---------- */
+const PRE_G = ['A', 'B', 'C', 'D'], PRE_HOURS = 12;
+const preOn = () => !!(S.pre && S.pre.active && S.pre.season === season());
+const preOf = c => c && c.pre && S.pre && c.pre.season === S.pre.season && c.pre.startedAt === S.pre.startedAt ? c.pre.g : null;
+const preMembers = g => (S.pre?.order || []).map(club).filter(c => c && preOf(c) === g);
+const preAllIn = () => preOn() && (S.pre.order || []).every(id => preOf(club(id)));
+const prePicker = () => { if (!preOn()) return null; const sk = S.pre.skipped || [];
+  return (S.pre.order || []).find(id => !sk.includes(id) && club(id) && !preOf(club(id))) || null; };
+const preCanPick = cid => !!cid && preOn() && !preAllIn() && !preOf(club(cid)) && (prePicker() === cid || (S.pre.skipped || []).includes(cid));
+function prePrize(c, opp){
+  if (!c || !opp.length) return 0;
+  const diff = opp.reduce((a, o) => a + clubStrength(o), 0) / opp.length - clubStrength(c);
+  return Math.min(15 * M, Math.max(1 * M, roundM(5 * M * Math.exp(0.1 * diff))));
+}
+const preOvr = c => nf(Math.round(clubStrength(c) * 10) / 10);
+function preDeadline(){
+  const pk = prePicker(); if (!pk) return null;
+  const order = S.pre.order || [], i = order.indexOf(pk);
+  let t = S.pre.startedAt || 0;
+  order.slice(0, i).forEach(id => { const c = club(id); if (c?.pre?.at && preOf(c)) t = Math.max(t, c.pre.at); });
+  t = Math.max(t, S.pre.skipAt || 0);
+  return t + PRE_HOURS * 3600e3;
+}
+const preWhen = t => new Date(t).toLocaleString('it-IT', {weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+/* partite: per ogni girone 3 giornate, solo andata */
+function preMatches(g){
+  const t = preMembers(g).map(c => c.id); if (t.length < 4) return [];
+  return [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]].map(([a, b], i) => {
+    const k = `${g}|${t[a]}|${t[b]}`, r = (S.pre.results || {})[k];
+    return {k, g, round: Math.floor(i / 2) + 1, h: t[a], a: t[b], played: !!r, hg: r?.hg ?? 0, ag: r?.ag ?? 0};
+  });
+}
+function preTable(g){
+  const ms = preMatches(g), rows = preMembers(g).map(c => ({c, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0}));
+  const R = id => rows.find(r => r.c.id === id);
+  ms.filter(m => m.played).forEach(m => { const h = R(m.h), a = R(m.a); if (!h || !a) return;
+    h.p++; a.p++; h.gf += m.hg; h.ga += m.ag; a.gf += m.ag; a.ga += m.hg;
+    if (m.hg > m.ag){ h.w++; a.l++; h.pts += 3; } else if (m.hg < m.ag){ a.w++; h.l++; a.pts += 3; } else { h.d++; a.d++; h.pts++; a.pts++; } });
+  const h2h = (x, y) => { const m = ms.find(m => m.played && ((m.h === x.c.id && m.a === y.c.id) || (m.h === y.c.id && m.a === x.c.id))); if (!m) return 0;
+    const xg = m.h === x.c.id ? m.hg : m.ag, yg = m.h === x.c.id ? m.ag : m.hg; return yg - xg; };
+  return rows.sort((x, y) => y.pts - x.pts || h2h(x, y) || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf);
+}
+const preWinner = g => { const w = S.pre?.winners?.[g]; return w ? club(w) : (preTable(g)[0]?.c || null); };
+function preTie(g){ const t = preTable(g); if (t.length < 2) return false; const [a, b] = t;
+  if (a.pts !== b.pts || (a.gf - a.ga) !== (b.gf - b.ga) || a.gf !== b.gf) return false;
+  const m = preMatches(g).find(m => (m.h === a.c.id && m.a === b.c.id) || (m.h === b.c.id && m.a === a.c.id)); return !m || m.hg === m.ag; }
+
+async function preStart(){
+  if (S.clubs.length < 16) fail(`Servono 16 società: ora sono ${S.clubs.length}.`);
+  const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const B = shuffle(S.clubs.filter(c => divOf(c) === 'B').map(c => c.id)), A = shuffle(S.clubs.filter(c => divOf(c) !== 'B').map(c => c.id));
+  const order = []; while (B.length || A.length){ if (B.length) order.push(B.shift()); if (A.length) order.push(A.shift()); }
+  confirmBox('Avvia precampionato', `Il sito estrae a caso l’ordine di scelta alternando una squadra di Serie B e una di Serie A (si parte dalla B). Ognuno ha ${PRE_HOURS} ore per entrare in un girone. Il premio di ogni squadra dipende da quanto sono forti le avversarie rispetto a lei: più sono forti, più si guadagna.`, 'Avvia', async () => {
+    await db.doc('league/preseason').set({active: true, season: season(), startedAt: now(), order, skipped: [], results: {}, winners: {}, done: false});
+    toast('Precampionato avviato: ordine estratto'); });
+}
+async function preJoin(g){
+  const mc = myClub(); if (!mc) fail('Devi allenare una squadra.');
+  if (!preCanPick(mc.id)) fail('Non è il tuo turno di scelta.');
+  if (preMembers(g).length >= 4) fail('Questo girone è già pieno.');
+  const opp = preMembers(g), pz = prePrize(mc, opp);
+  confirmBox(`Entra nel Girone ${g}`, `${opp.length ? `Avversarie già dentro: <b>${opp.map(c => esc(c.name)).join(', ')}</b>.` : 'Il girone è ancora vuoto: le avversarie arriveranno con i prossimi turni.'}<br>${opp.length ? `Con le avversarie di adesso, se arrivi primo vinci <b>${fmtM(pz)}</b>. Il premio finale si calcola a girone completo.` : ''}<br><br>La scelta non si può cambiare.`, 'Conferma', async () => {
+    const fresh = preMembers(g); if (fresh.length >= 4) fail('Questo girone si è appena riempito: scegline un altro.');
+    await db.doc('clubs/' + mc.id).update({pre: {season: S.pre.season, startedAt: S.pre.startedAt, g, at: now()}});
+    toast(`Sei nel Girone ${g}`); });
+}
+async function preSkip(){
+  const pk = prePicker(); if (!pk) fail('Nessun turno da saltare.');
+  confirmBox('Salta turno', `${esc(club(pk)?.name || '')} non ha ancora scelto. Saltando il turno tocca alla squadra successiva; potrà comunque scegliere appena entra, tra i posti rimasti.`, 'Salta turno', async () => {
+    await db.doc('league/preseason').update({skipped: [...(S.pre.skipped || []), pk], skipAt: now()}); toast('Turno saltato'); });
+}
+async function preFill(){
+  const left = (S.pre.order || []).filter(id => !preOf(club(id)));
+  confirmBox('Completa i gironi', `Le squadre che non hanno scelto (${left.map(id => esc(club(id)?.name || '')).join(', ')}) vengono messe a caso nei posti liberi.`, 'Completa', async () => {
+    const free = []; PRE_G.forEach(g => { for (let i = preMembers(g).length; i < 4; i++) free.push(g); });
+    for (const id of left){ const k = Math.floor(Math.random() * free.length), g = free.splice(k, 1)[0];
+      await db.doc('clubs/' + id).update({pre: {season: S.pre.season, startedAt: S.pre.startedAt, g, at: now(), auto: true}}); }
+    toast('Gironi completati'); });
+}
+function preResult(k){
+  const m = PRE_G.flatMap(preMatches).find(x => x.k === k); if (!m) return;
+  const H = club(m.h), A = club(m.a);
+  openModal(`Girone ${m.g} · Giornata ${m.round}`, `<p class="sub">Risultato dell’amichevole giocata su FC 27 (CPU contro CPU). Non conta per statistiche e cartellini del campionato.</p>
+    <div class="fgrid"><div class="f"><label for="phg">${esc(H.name)}</label><input id="phg" name="phg" type="number" min="0" max="20" value="${m.played ? m.hg : ''}" required></div>
+    <div class="f"><label for="pag">${esc(A.name)}</label><input id="pag" name="pag" type="number" min="0" max="20" value="${m.played ? m.ag : ''}" required></div></div>`,
+    async fd => { const hg = Math.max(0, Math.round(+fd.get('phg'))), ag = Math.max(0, Math.round(+fd.get('pag')));
+      if (!Number.isFinite(hg) || !Number.isFinite(ag)) fail('Inserisci i gol di entrambe le squadre.');
+      await db.doc('league/preseason').update({results: {...(S.pre.results || {}), [k]: {hg, ag}}}); toast('Risultato salvato'); },
+    m.played ? 'Aggiorna' : 'Salva');
+}
+async function preClose(){
+  const ms = PRE_G.flatMap(preMatches); if (ms.some(m => !m.played)) fail('Mancano ancora dei risultati.');
+  const sel = g => { const t = preTable(g); return `<div class="f"><label for="pw${g}">Vincitore Girone ${g}${preTie(g) ? ' · <b>parità perfetta: scegli tu (rigori)</b>' : ''}</label><select id="pw${g}" name="pw${g}">${t.map((r, i) => `<option value="${r.c.id}"${i === 0 ? ' selected' : ''}>${esc(r.c.name)} · ${r.pts} pt</option>`).join('')}</select></div>`; };
+  openModal('Chiudi precampionato', `<p class="sub">Il premio va a chi arriva primo nel proprio girone e viene accreditato subito nel budget. Controlla i vincitori: in caso di parità perfetta decide il commissario (per esempio con i rigori).</p>${PRE_G.map(sel).join('')}`,
+    async fd => { const winners = {}; PRE_G.forEach(g => winners[g] = String(fd.get('pw' + g)));
+      for (const g of PRE_G){ const c = club(winners[g]); if (!c) continue; const opp = preMembers(g).filter(x => x.id !== c.id), pz = prePrize(c, opp);
+        await ledger(c.id, pz, `Precampionato: vittoria del Girone ${g}`); }
+      await db.doc('league/preseason').update({winners, done: true, closedAt: now()}); toast('Premi accreditati'); }, 'Paga i premi');
+}
+async function preReset(){
+  confirmBox('Annulla precampionato', 'Il precampionato sparisce: scelte e risultati vengono cancellati. I premi già pagati restano nel budget.', 'Annulla precampionato', async () => {
+    await db.doc('league/preseason').update({active: false}); toast('Precampionato annullato'); });
+}
+
+function preGroupCard(g, mc){
+  const mem = preMembers(g), full = mem.length >= 4, can = mc && preCanPick(mc.id), done = S.pre.done, all = preAllIn();
+  const mine = mc && preOf(mc) === g;
+  const prizeFor = c => prePrize(c, mem.filter(x => x.id !== c.id));
+  let my = '';
+  if (mc && !preOf(mc) && !all){ const pz = prePrize(mc, mem);
+    my = `<div class="preprize">${mem.length ? `Se entri e arrivi primo: <b>${fmtM(pz)}</b>${full ? '' : ' <span class="sub">(con le avversarie di ora)</span>'}` : '<span class="sub">Girone vuoto: il premio dipende da chi entrerà</span>'}</div>`; }
+  const tbl = all ? preTable(g) : null, win = done ? preWinner(g) : null;
+  return `<div class="panel prg${mine ? ' mine' : ''}"><div class="ph"><h3>Girone ${g}</h3><span class="pill ${full ? 'good' : 'info'}">${mem.length}/4</span></div>
+    ${all ? `<table class="tbl"><thead><tr><th style="text-align:left">Squadra</th><th>G</th><th>DR</th><th>Pt</th><th>Premio 1°</th></tr></thead><tbody>${tbl.map((r, i) => `<tr${win && win.id === r.c.id ? ' class="z-top"' : ''}><td><span class="prt">${crest(r.c)}<b>${esc(r.c.name)}</b>${win && win.id === r.c.id ? ' 🏆' : ''}</span></td><td class="num">${r.p}</td><td class="num">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="num"><b>${r.pts}</b></td><td class="num">${fmtM(prizeFor(r.c))}</td></tr>`).join('')}</tbody></table>
+      <div class="prms">${preMatches(g).map(m => `<div class="prm"><span class="sub">G${m.round}</span><span class="r">${esc(club(m.h)?.name)}</span><b class="num">${m.played ? `${m.hg} – ${m.ag}` : '–'}</b><span>${esc(club(m.a)?.name)}</span>${S.comm && !done ? `<button class="btn sm ghost" data-act="pre-res" data-id="${m.k}">${m.played ? 'Modifica' : 'Risultato'}</button>` : ''}</div>`).join('')}</div>`
+    : `<div class="list">${mem.map(c => `<div class="li"><span class="prt">${crest(c)}<b>${esc(c.name)}</b></span><span class="sub" style="margin-left:auto">${DIVS[divOf(c)] || ''} · forza ${preOvr(c)}</span></div>`).join('') || '<p class="sub">Ancora nessuna squadra.</p>'}
+      ${Array.from({length: 4 - mem.length}, () => '<div class="li prfree"><span class="sub">Posto libero</span></div>').join('')}</div>${my}
+      ${can && !full ? `<button class="btn primary hbtn" data-act="pre-join" data-id="${g}" style="margin-top:10px">Entra nel Girone ${g}</button>` : ''}`}
+  </div>`;
+}
+function viewPre(){
+  const mc = myClub();
+  if (!preOn()) return `<div class="panel"><div class="ph"><h2>Precampionato</h2></div>
+    <p class="sub">Prima del campionato si gioca un precampionato: <b>4 gironi da 4 squadre</b>, solo andata. Chi arriva primo nel suo girone vince un premio in milioni per il mercato. Si sceglie il girone a turni, alternando una squadra di Serie B e una di Serie A; più le avversarie sono forti rispetto alla tua squadra, più alto è il premio.</p>
+    ${S.comm ? '<button class="btn primary" data-act="pre-start">Avvia precampionato</button>' : '<p class="sub">Il commissario non l’ha ancora avviato.</p>'}</div>`;
+  const P = S.pre, order = P.order || [], pk = prePicker(), all = preAllIn(), dl = preDeadline(), sk = P.skipped || [];
+  const step = P.done ? 'Concluso: premi accreditati.' : all ? 'Gironi completi: si giocano le partite (CPU contro CPU su FC 27).' : pk ? `Tocca a <b>${esc(club(pk)?.name || '')}</b> (${esc(mgrName(club(pk)))})${dl ? `, entro ${preWhen(dl)}` : ''}.` : 'In attesa delle squadre che hanno saltato il turno.';
+  const myTurn = mc && preCanPick(mc.id);
+  return `<div class="panel"><div class="ph"><h2>Precampionato · stagione ${P.season}</h2>${S.comm ? `<div class="row">${pk && !all ? '<button class="btn sm" data-act="pre-skip">Salta turno</button>' : ''}${!all ? '<button class="btn sm" data-act="pre-fill">Completa a caso</button>' : ''}${all && !P.done ? '<button class="btn sm primary" data-act="pre-close">Chiudi e paga premi</button>' : ''}<button class="btn sm ghost" data-act="pre-reset">Annulla</button></div>` : ''}</div>
+    <p class="sub">4 gironi da 4, solo andata (3 partite a testa). Vince il premio <b>solo chi arriva primo</b>. Il premio dipende da quanto sono forti le avversarie rispetto alla tua squadra (forza = media dei 16 migliori della rosa): da ${fmtM(1 * M)} a ${fmtM(15 * M)}. Le partite non contano per statistiche, cartellini e squalifiche del campionato.</p>
+    ${myTurn ? `<div class="notice">⏱️ <b>Tocca a te!</b> Scegli il girone in cui entrare${dl ? ` entro ${preWhen(dl)}` : ''}.</div>` : ''}
+    <p>${step}</p>
+    ${!all ? `<details><summary class="sub">Ordine di scelta (B e A alternate)</summary><ol class="drawlist">${order.map((id, i) => { const c = club(id), g = preOf(c);
+      return `<li class="${id === pk ? 'drawturn' : ''}"><span class="dn">${i + 1}</span><b>${esc(c?.name || '?')}</b><span class="sub" style="margin-left:auto">${g ? 'Girone ' + g : id === pk ? 'sta scegliendo…' : sk.includes(id) ? 'turno saltato' : 'in attesa'}</span></li>`; }).join('')}</ol></details>` : ''}
+  </div>
+  <section class="prgrid">${PRE_G.map(g => preGroupCard(g, mc)).join('')}</section>`;
+}
+const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
@@ -2278,6 +2424,13 @@ document.addEventListener('click', async e => {
       case 'med-up': await medUpgrade(id); break;
       case 'med-cure': await medCure(id); break;
       case 'draw-new': await drawNew(); break;
+      case 'pre-start': await preStart(); break;
+      case 'pre-join': if (!S.me) return authModal(); await preJoin(id); break;
+      case 'pre-skip': await preSkip(); break;
+      case 'pre-fill': await preFill(); break;
+      case 'pre-res': preResult(id); break;
+      case 'pre-close': await preClose(); break;
+      case 'pre-reset': await preReset(); break;
       case 'draw-next': await drawNext(false); break;
       case 'draw-all': await drawNext(true); break;
       case 'draw-skip': await drawSkip(); break;
@@ -2357,7 +2510,7 @@ async function boot(){
     fn(snap.docs.map(d => ({id: d.id, ...d.data()}))); S.loaded[name] = true;
     if (name === 'league' && !snap.metadata.fromCache){ clearTimeout(slow); S.state = 'ready'; }
     schedule(); }, err => { clearTimeout(slow); toast('Dati non disponibili: ' + err.code); });
-  subscribe('league', d => { S.settings = d.find(x => x.id === 'settings') || null; S.draw = d.find(x => x.id === 'draw') || null; });
+  subscribe('league', d => { S.settings = d.find(x => x.id === 'settings') || null; S.draw = d.find(x => x.id === 'draw') || null; S.pre = d.find(x => x.id === 'preseason') || null; });
   subscribe('clubs', d => S.clubs = d.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
   subscribe('players', d => S.players = d);
   subscribe('matches', d => S.matches = d);
