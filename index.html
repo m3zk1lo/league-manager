@@ -1960,7 +1960,8 @@ async function seasonEndFinance(s, upIds){
 }
 /* ---------- SARTORIA: divise della società ---------- */
 const KIT_SLOTS = {home: 'Prima divisa', away: 'Seconda divisa', third: 'Terza divisa'};
-const KIT_PAT = {plain: 'Tinta unita', vstripes: 'Strisce verticali', pin: 'Gessato (righe sottili)', hoops: 'Strisce orizzontali', halves: 'Metà e metà', sash: 'Banda diagonale', sleeves: 'Maniche a contrasto', chest: 'Fascia sul petto'};
+const KIT_PAT = {plain: 'Tinta unita', vstripes: 'Strisce verticali', pin: 'Gessato (righe sottili)', hoops: 'Strisce orizzontali', halves: 'Metà e metà', sash: 'Banda diagonale', sleeves: 'Maniche a contrasto', chest: 'Fascia sul petto', wide: 'Strisce larghe', side: 'Bande laterali', fade: 'Sfumato'};
+const KIT_COLLAR = {crew: 'Girocollo', v: 'Scollo a V', polo: 'Polo'};
 const hexK = v => /^#[0-9a-f]{6}$/i.test(v || '') ? v : null;
 function kitDefault(c, slot){
   const col = hexOk(c.color), on = textOn(col) === '#ffffff' ? '#ffffff' : '#111111';
@@ -1972,32 +1973,64 @@ const kitOf = (c, slot) => ({...kitDefault(c, slot), ...((c.kits || {})[slot] ||
 const titlesOf = c => Object.entries(S.settings?.champions || {}).filter(([, id]) => id === c.id).map(([k]) => +k.slice(1));
 const isChampion = c => (S.settings?.champions || {})['s' + (season() - 1)] === c.id;
 function kitSVG(c, k, size = 120){
-  const id = 'k' + Math.random().toString(36).slice(2, 8), c1 = hexK(k.c1) || '#ccc', c2 = hexK(k.c2) || '#fff', c3 = hexK(k.c3) || c2;
-  const body = 'M62,22 L82,10 Q100,24 118,10 L138,22 L186,48 L170,88 L150,78 L150,202 L50,202 L50,78 L30,88 L14,48 Z';
-  const lsl = 'M62,22 L14,48 L30,88 L50,78 Z', rsl = 'M138,22 L186,48 L170,88 L150,78 Z';
+  const id = 'k' + Math.random().toString(36).slice(2, 8), c1 = hexK(k.c1) || '#cccccc', c2 = hexK(k.c2) || '#ffffff', c3 = hexK(k.c3) || c2;
+  const sh = hexK(k.shorts) || c1, so = hexK(k.socks) || c1, col = k.collar || 'crew';
+  const body = 'M78,12 C70,16 58,20 48,26 L16,70 L34,86 L54,66 C56,100 55,150 53,196 Q100,206 147,196 C145,150 144,100 146,66 L166,86 L184,70 L152,26 C142,20 130,16 122,12 Q100,24 78,12 Z';
+  const lsl = 'M48,26 L16,70 L34,86 L54,66 Q52,44 48,26 Z', rsl = 'M152,26 L184,70 L166,86 L146,66 Q148,44 152,26 Z';
   let pat = '';
-  if (k.pat === 'vstripes') for (let x = 58; x < 150; x += 28) pat += `<rect x="${x}" y="0" width="14" height="210" fill="${c2}"/>`;
-  if (k.pat === 'pin') for (let x = 54; x < 150; x += 10) pat += `<rect x="${x}" y="0" width="2" height="210" fill="${c2}"/>`;
-  if (k.pat === 'hoops') for (let y = 30; y < 210; y += 32) pat += `<rect x="0" y="${y}" width="200" height="16" fill="${c2}"/>`;
+  if (k.pat === 'vstripes') for (let x = 22; x < 180; x += 24) pat += `<rect x="${x}" y="0" width="12" height="210" fill="${c2}"/>`;
+  if (k.pat === 'wide') for (let x = 30; x < 180; x += 40) pat += `<rect x="${x}" y="0" width="20" height="210" fill="${c2}"/>`;
+  if (k.pat === 'pin') for (let x = 25; x < 180; x += 10) pat += `<rect x="${x}" y="0" width="1.6" height="210" fill="${c2}"/>`;
+  if (k.pat === 'hoops') for (let y = 34; y < 210; y += 30) pat += `<rect x="0" y="${y}" width="200" height="15" fill="${c2}"/>`;
   if (k.pat === 'halves') pat = `<rect x="100" y="0" width="100" height="210" fill="${c2}"/>`;
-  if (k.pat === 'sash') pat = `<polygon points="40,40 70,40 170,200 140,200" fill="${c2}"/>`;
+  if (k.pat === 'sash') pat = `<polygon points="44,22 70,22 164,200 138,200" fill="${c2}"/>`;
   if (k.pat === 'sleeves') pat = `<path d="${lsl}" fill="${c2}"/><path d="${rsl}" fill="${c2}"/>`;
-  if (k.pat === 'chest') pat = `<rect x="0" y="92" width="200" height="26" fill="${c2}"/>`;
-  const txt = textOn(c1), sp = curSponsors(c), main = sp.main?.brand || '', tech = sp.tech?.brand || '';
-  const logo = c.logo && /^data:image\/(png|jpeg|webp);base64,/.test(c.logo) ? `<image href="${c.logo}" x="114" y="46" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>` : '';
-  const scu = isChampion(c) ? `<g transform="translate(118,30)"><path d="M0,0 h18 v9 q0,8 -9,12 q-9,-4 -9,-12 Z" fill="#fff" stroke="#333" stroke-width=".8"/><rect x="0" y="0" width="6" height="16" fill="#009246"/><rect x="12" y="0" width="6" height="16" fill="#ce2b37"/></g>` : '';
+  if (k.pat === 'chest') pat = `<rect x="0" y="86" width="200" height="26" fill="${c2}"/>`;
+  if (k.pat === 'side') pat = `<rect x="44" y="60" width="16" height="150" fill="${c2}"/><rect x="140" y="60" width="16" height="150" fill="${c2}"/>`;
+  if (k.pat === 'fade') pat = `<rect x="0" y="0" width="200" height="210" fill="url(#${id}f)"/>`;
+  const busy = ['vstripes', 'wide', 'pin', 'hoops', 'halves', 'sash'].includes(k.pat);
+  const onChest = k.pat === 'chest' ? c2 : c1, txt = busy ? (textOn(c1) !== '#ffffff' && textOn(c2) !== '#ffffff' ? '#101a15' : '#ffffff') : textOn(onChest), halo = txt === '#ffffff' ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.6)';
+  const sp = curSponsors(c), main = sp.main?.brand || '', tech = sp.tech?.brand || '';
+  const logo = c.logo && /^data:image\/(png|jpeg|webp);base64,/.test(c.logo) ? `<image href="${c.logo}" x="113" y="42" width="20" height="20" preserveAspectRatio="xMidYMid meet"/>` : `<path d="M115,42 h16 v9 q0,8 -8,11 q-8,-3 -8,-11 Z" fill="${c3}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>`;
+  const scu = isChampion(c) ? `<g transform="translate(92,30) scale(.9)"><path d="M0,0 h18 v9 q0,8 -9,12 q-9,-4 -9,-12 Z" fill="#fff" stroke="rgba(0,0,0,.4)" stroke-width=".8"/><rect x="0" y="0" width="6" height="15" fill="#009246"/><rect x="12" y="0" width="6" height="15" fill="#ce2b37"/></g>` : '';
+  const neck = col === 'v'
+    ? `<path d="M80,12 Q100,6 120,12 L100,32 Z" fill="${c3}"/><path d="M83,13 Q100,9 117,13 L100,28 Z" fill="rgba(0,0,0,.45)"/><path d="M78,12 L100,34 L122,12" fill="none" stroke="${c3}" stroke-width="4.5" stroke-linejoin="round"/>`
+    : col === 'polo'
+    ? `<path d="M80,12 Q100,7 120,12 Q100,20 80,12 Z" fill="rgba(0,0,0,.45)"/><rect x="96" y="16" width="8" height="22" rx="1.5" fill="${c3}"/><circle cx="100" cy="23" r="1.3" fill="rgba(0,0,0,.45)"/><circle cx="100" cy="31" r="1.3" fill="rgba(0,0,0,.45)"/>
+       <path d="M78,11 Q88,10 99,17 L92,27 Q84,22 74,18 Z" fill="${c3}" stroke="rgba(0,0,0,.3)" stroke-width=".8"/><path d="M122,11 Q112,10 101,17 L108,27 Q116,22 126,18 Z" fill="${c3}" stroke="rgba(0,0,0,.3)" stroke-width=".8"/>`
+    : `<path d="M80,12 Q100,6 120,12 Q100,21 80,12 Z" fill="rgba(0,0,0,.45)"/><path d="M78,12 Q100,25 122,12" fill="none" stroke="${c3}" stroke-width="4.5" stroke-linecap="round"/>`;
+  const shade = `url(#${id}s)`;
   return `<svg viewBox="0 0 200 300" width="${size}" height="${size * 1.5}" role="img" aria-label="Divisa ${esc(c.name)}">
-    <defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>
-    <g clip-path="url(#${id})"><rect x="0" y="0" width="200" height="210" fill="${c1}"/>${pat}
-      <path d="M50,196 L150,196 L150,202 L50,202 Z" fill="${c3}"/><path d="M30,88 L14,48 L19,45 L35,85 Z" fill="${c3}"/><path d="M170,88 L186,48 L181,45 L165,85 Z" fill="${c3}"/></g>
-    <path d="${body}" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
-    <path d="M82,10 Q100,30 118,10 Q100,22 82,10 Z" fill="${c3}" stroke="${c3}" stroke-width="3"/>
-    ${scu}${logo}
-    ${tech ? `<text x="72" y="62" font-size="9" font-weight="700" fill="${txt}" text-anchor="middle" font-family="Arial,sans-serif">${esc(tech.toUpperCase())}</text>` : ''}
-    ${main ? `<text x="100" y="${k.pat === 'chest' ? 110 : 124}" font-size="${main.length > 12 ? 13 : 17}" font-weight="800" fill="${k.pat === 'chest' ? textOn(c2) : txt}" text-anchor="middle" font-family="Arial,sans-serif">${esc(main.toUpperCase())}</text>` : ''}
-    <path d="M52,208 L148,208 L144,252 L104,252 L100,236 L96,252 L56,252 Z" fill="${hexK(k.shorts) || c1}" stroke="rgba(0,0,0,.3)"/>
-    <rect x="60" y="258" width="26" height="38" rx="4" fill="${hexK(k.socks) || c1}" stroke="rgba(0,0,0,.3)"/><rect x="114" y="258" width="26" height="38" rx="4" fill="${hexK(k.socks) || c1}" stroke="rgba(0,0,0,.3)"/>
-    <rect x="60" y="262" width="26" height="5" fill="${c3}"/><rect x="114" y="262" width="26" height="5" fill="${c3}"/>
+    <defs><clipPath id="${id}"><path d="${body}"/></clipPath>
+      <linearGradient id="${id}s" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".38"/><stop offset=".2" stop-color="#000" stop-opacity=".06"/><stop offset=".42" stop-color="#fff" stop-opacity=".12"/><stop offset=".58" stop-color="#fff" stop-opacity=".05"/><stop offset=".8" stop-color="#000" stop-opacity=".08"/><stop offset="1" stop-color="#000" stop-opacity=".42"/></linearGradient>
+      <linearGradient id="${id}v" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient>
+      <linearGradient id="${id}f" x1="0" x2="0" y1="0" y2="1"><stop offset=".15" stop-color="${c2}" stop-opacity="0"/><stop offset="1" stop-color="${c2}"/></linearGradient>
+      <pattern id="${id}t" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="3" fill="none"/><circle cx="1.5" cy="1.5" r=".55" fill="#000" fill-opacity=".09"/></pattern>
+      <filter id="${id}b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.4"/></filter>
+      <filter id="${id}d" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".35"/></filter></defs>
+    <g filter="url(#${id}d)"><path d="${body}" fill="${c1}"/></g>
+    <g clip-path="url(#${id})">${pat}
+      <path d="M16,70 L34,86 L38,81 L20,65 Z" fill="${c3}"/><path d="M184,70 L166,86 L162,81 L180,65 Z" fill="${c3}"/>
+      <rect x="0" y="0" width="200" height="210" fill="url(#${id}t)"/>
+      <rect x="0" y="0" width="200" height="210" fill="${shade}"/><rect x="0" y="0" width="200" height="210" fill="url(#${id}v)"/>
+      <g filter="url(#${id}b)" fill="none" stroke-linecap="round">
+        <path d="M54,70 Q66,92 62,120" stroke="#000" stroke-opacity=".22" stroke-width="5"/><path d="M146,70 Q134,92 138,120" stroke="#000" stroke-opacity=".22" stroke-width="5"/>
+        <path d="M72,150 Q80,172 74,198" stroke="#000" stroke-opacity=".13" stroke-width="6"/><path d="M128,140 Q120,168 126,198" stroke="#000" stroke-opacity=".12" stroke-width="6"/>
+        <path d="M84,140 Q90,165 86,196" stroke="#fff" stroke-opacity=".14" stroke-width="4"/><path d="M60,40 Q78,34 92,40" stroke="#fff" stroke-opacity=".2" stroke-width="5"/>
+        <path d="M26,58 Q36,62 44,74" stroke="#000" stroke-opacity=".2" stroke-width="4"/><path d="M174,58 Q164,62 156,74" stroke="#000" stroke-opacity=".2" stroke-width="4"/></g>
+      <path d="M48,26 Q52,46 54,66 M152,26 Q148,46 146,66" fill="none" stroke="#000" stroke-opacity=".25" stroke-width="1.1"/>
+      <path d="M53,193 Q100,203 147,193" fill="none" stroke="#000" stroke-opacity=".22" stroke-width="1" stroke-dasharray="2 2"/></g>
+    <path d="${body}" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="1.2" stroke-linejoin="round"/>
+    ${neck}${scu}${logo}
+    ${tech ? `<text x="78" y="56" font-size="7.5" font-weight="800" letter-spacing=".4" fill="${txt}" ${busy ? `stroke="${halo}" stroke-width="1.6" paint-order="stroke"` : ''} text-anchor="middle" font-family="Arial,Helvetica,sans-serif">${esc(tech.toUpperCase())}</text>` : ''}
+    ${main ? `<text x="100" y="${k.pat === 'chest' ? 104 : 112}" font-size="${main.length > 12 ? 12 : main.length > 8 ? 15 : 18}" font-weight="900" letter-spacing=".5" fill="${txt}" ${busy ? `stroke="${halo}" stroke-width="2.6" paint-order="stroke"` : ''} text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif">${esc(main.toUpperCase())}</text>` : ''}
+    <g filter="url(#${id}d)"><path d="M58,214 L142,214 L148,254 Q126,258 106,256 L100,242 L94,256 Q74,258 52,254 Z" fill="${sh}"/></g>
+    <path d="M58,214 L142,214 L143,220 L57,220 Z" fill="${c3}" opacity=".9"/>
+    <path d="M58,214 L142,214 L148,254 Q126,258 106,256 L100,242 L94,256 Q74,258 52,254 Z" fill="${shade}"/>
+    <path d="M100,222 L100,240" stroke="#000" stroke-opacity=".2"/><path d="M52,254 Q74,258 94,256 M106,256 Q126,258 148,254" fill="none" stroke="${c3}" stroke-width="2"/>
+    <path d="M58,214 L142,214 L148,254 Q126,258 106,256 L100,242 L94,256 Q74,258 52,254 Z" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="1"/>
+    ${[66, 112].map(x => `<g filter="url(#${id}d)"><path d="M${x},262 h22 l-1,26 q0,8 -8,8 h-9 q-5,0 -5,-5 Z" fill="${so}"/></g>
+      <rect x="${x}" y="262" width="22" height="7" fill="${c3}"/><path d="M${x},262 h22 l-1,26 q0,8 -8,8 h-9 q-5,0 -5,-5 Z" fill="${shade}" stroke="rgba(0,0,0,.45)" stroke-width="1"/>`).join('')}
   </svg>`;
 }
 function kitPanel(c){
@@ -2012,17 +2045,17 @@ function kitModal(cid, slot){
   const cost = KIT_COST[divOf(c)];
   const k = kitOf(c, slot), col = (n, l, v) => `<div class="f"><label for="${n}">${l}</label><input type="color" id="${n}" name="${n}" value="${hexK(v) || '#ffffff'}"></div>`;
   const f = openModal(`${KIT_SLOTS[slot]} · ${c.name}`, `<div class="kitedit"><div id="kitprev" class="kitprev"></div><div class="fgrid">
-    ${sel('kpat', 'Disegno', Object.entries(KIT_PAT), k.pat, true)}
+    ${sel('kpat', 'Disegno', Object.entries(KIT_PAT), k.pat, true)}${sel('kcol', 'Colletto', Object.entries(KIT_COLLAR), k.collar || 'crew', true)}
     ${col('kc1', 'Colore principale', k.c1)}${col('kc2', 'Colore secondario', k.c2)}${col('kc3', 'Colletto e bordi', k.c3)}
     ${col('ksh', 'Pantaloncini', k.shorts)}${col('kso', 'Calzettoni', k.socks)}</div></div>
     <p class="sub">Costo ${fmtM(cost)}. Dopo il salvataggio questa divisa non si può più cambiare fino alla prossima stagione.</p>`,
-    async fd => { const v = {pat: String(fd.get('kpat')), c1: String(fd.get('kc1')), c2: String(fd.get('kc2')), c3: String(fd.get('kc3')), shorts: String(fd.get('ksh')), socks: String(fd.get('kso')), season: season()};
+    async fd => { const v = {pat: String(fd.get('kpat')), collar: String(fd.get('kcol') || 'crew'), c1: String(fd.get('kc1')), c2: String(fd.get('kc2')), c3: String(fd.get('kc3')), shorts: String(fd.get('ksh')), socks: String(fd.get('kso')), season: season()};
       const cur = club(cid); if (kitLocked(cur, slot)) fail('Questa divisa è già stata cambiata in questa stagione.');
       if (budget(cur) < cost) fail(`Budget insufficiente: servono ${fmtM(cost)}.`);
       await db.doc('clubs/' + cid).update({kits: {...(cur.kits || {}), [slot]: v}});
       await ledger(cid, -cost, `Sartoria: nuova ${KIT_SLOTS[slot].toLowerCase()}`);
       toast(`${KIT_SLOTS[slot]} salvata`); }, `Paga ${fmtM(cost)} e salva`);
-  const upd = () => { const v = {pat: f.querySelector('#kpat').value, c1: f.querySelector('#kc1').value, c2: f.querySelector('#kc2').value, c3: f.querySelector('#kc3').value, shorts: f.querySelector('#ksh').value, socks: f.querySelector('#kso').value};
+  const upd = () => { const v = {pat: f.querySelector('#kpat').value, collar: f.querySelector('#kcol').value, c1: f.querySelector('#kc1').value, c2: f.querySelector('#kc2').value, c3: f.querySelector('#kc3').value, shorts: f.querySelector('#ksh').value, socks: f.querySelector('#kso').value};
     $('#kitprev').innerHTML = kitSVG(c, v, 150); };
   f.querySelectorAll('select,input').forEach(x => x.oninput = x.onchange = upd); upd();
 }
