@@ -1272,7 +1272,7 @@ const ROLES = {
 };
 const roleKey = pos => ({TD: 'FB', TS: 'FB', ED: 'EM', ES: 'EM', AD: 'AW', AS: 'AW'})[pos] || pos;
 const rolesFor = pos => ROLES[roleKey(pos)] || ROLES.CC;
-const maxBench = () => S.settings?.maxBench ?? 12;
+const maxBench = () => S.settings?.maxBench ?? 9;
 const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
 
 function luSummary(L, compact){
