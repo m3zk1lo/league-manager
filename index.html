@@ -2415,13 +2415,41 @@ function preDeadline(){
 }
 const preWhen = t => new Date(t).toLocaleString('it-IT', {weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
 /* partite: per ogni girone 3 giornate, solo andata */
+const PRE_PAIRS = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]];
+function preSched(g){
+  const t = preMembers(g).map(c => c.id); if (t.length < 4) return null;
+  const def = PRE_PAIRS.map(([a, b], i) => ({h: t[a], a: t[b], round: Math.floor(i / 2) + 1}));
+  const sc = S.pre?.sched?.[g]; if (!Array.isArray(sc) || sc.length !== 6) return def;
+  const key = x => [x.h, x.a].sort().join('|'), all = new Set(def.map(key));
+  const ok = sc.every(x => t.includes(x.h) && t.includes(x.a) && x.h !== x.a && [1, 2, 3].includes(+x.round)) && new Set(sc.map(key)).size === 6 && sc.every(x => all.has(key(x)))
+    && [1, 2, 3].every(r => { const ids = sc.filter(x => +x.round === r).flatMap(x => [x.h, x.a]); return ids.length === 4 && new Set(ids).size === 4; });
+  return ok ? sc.map(x => ({h: x.h, a: x.a, round: +x.round})) : def;
+}
 function preMatches(g){
-  const t = preMembers(g).map(c => c.id); if (t.length < 4) return [];
-  return [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]].map(([a, b], i) => {
-    const k = `${g}|${t[a]}|${t[b]}`, r = (S.pre.results || {})[k];
-    return {k, g, round: Math.floor(i / 2) + 1, h: t[a], a: t[b], played: !!r, hg: r?.hg ?? 0, ag: r?.ag ?? 0,
-      id: `pre${(S.pre.startedAt || 0).toString(36)}-${g}-${t[a]}-${t[b]}`, homeId: t[a], awayId: t[b], season: S.pre.season, pre: true};
-  });
+  const t = preMembers(g).map(c => c.id), sc = preSched(g); if (!sc) return [];
+  return sc.map(e => {
+    const [x, y] = t.indexOf(e.h) < t.indexOf(e.a) ? [e.h, e.a] : [e.a, e.h], sw = e.h !== x;
+    const k = `${g}|${x}|${y}`, r = (S.pre.results || {})[k];
+    return {k, g, round: e.round, h: e.h, a: e.a, sw, played: !!r, hg: r ? (sw ? r.ag : r.hg) : 0, ag: r ? (sw ? r.hg : r.ag) : 0,
+      id: `pre${(S.pre.startedAt || 0).toString(36)}-${g}-${x}-${y}`, homeId: e.h, awayId: e.a, season: S.pre.season, pre: true};
+  }).sort((p, q) => p.round - q.round);
+}
+function preSchedEdit(g){
+  const mem = preMembers(g), cur = preMatches(g); if (mem.length < 4) return;
+  const opts = v => mem.map(c => `<option value="${c.id}"${c.id === v ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+  const row = (m, i) => `<div class="subrow" style="grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)"><select id="ph${i}" aria-label="Casa">${opts(m.h)}</select><span class="sub">vs</span><select id="pa${i}" aria-label="Trasferta">${opts(m.a)}</select></div>`;
+  const f = openModal(`Giornate · Girone ${g}`, `<p class="sub">Scegli tu chi gioca contro chi in ogni giornata e chi gioca in casa. Ogni squadra gioca una volta per giornata e ogni sfida si gioca una sola volta. I risultati già inseriti restano.</p>
+    ${[1, 2, 3].map(r => `<div class="ph" style="margin-top:10px"><h3>Giornata ${r}</h3></div><div class="lulist">${cur.filter(m => m.round === r).map((m, j) => row(m, (r - 1) * 2 + j)).join('')}</div>`).join('')}
+    <div class="row" style="margin-top:12px"><button type="button" class="btn sm ghost" id="psreset">Ripristina giornate automatiche</button></div>`,
+    async () => {
+      const sc = []; for (let i = 0; i < 6; i++) sc.push({h: f.querySelector('#ph' + i).value, a: f.querySelector('#pa' + i).value, round: Math.floor(i / 2) + 1});
+      const name = id => club(id)?.name || '';
+      sc.forEach(x => { if (x.h === x.a) fail(`Giornata ${x.round}: ${name(x.h)} non può giocare contro sé stessa.`); });
+      [1, 2, 3].forEach(r => { const ids = sc.filter(x => x.round === r).flatMap(x => [x.h, x.a]); if (new Set(ids).size !== 4) fail(`Giornata ${r}: ogni squadra deve giocare una sola volta.`); });
+      const key = x => [x.h, x.a].sort().join('|'); if (new Set(sc.map(key)).size !== 6) fail('Una sfida è ripetuta: ogni coppia di squadre deve giocare una sola volta.');
+      await db.doc('league/preseason').update({sched: {...(S.pre.sched || {}), [g]: sc}}); toast(`Giornate del Girone ${g} aggiornate`);
+    }, 'Salva giornate');
+  f.querySelector('#psreset').onclick = async () => { try { await db.doc('league/preseason').update({sched: {...(S.pre.sched || {}), [g]: null}}); dlg.close(); toast('Giornate automatiche ripristinate'); } catch (e){ toast(e.message || 'Non riuscito'); } };
 }
 function preTable(g){
   const ms = preMatches(g), rows = preMembers(g).map(c => ({c, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0}));
@@ -2481,7 +2509,7 @@ function preResult(k){
     async fd => { const hg = Math.max(0, Math.round(+fd.get('phg'))), ag = Math.max(0, Math.round(+fd.get('pag')));
       if (!Number.isFinite(hg) || !Number.isFinite(ag)) fail('Inserisci i gol di entrambe le squadre.');
       if (!m.played) await luFreeze(m);
-      await db.doc('league/preseason').update({results: {...(S.pre.results || {}), [k]: {hg, ag}}}); toast('Risultato salvato'); },
+      await db.doc('league/preseason').update({results: {...(S.pre.results || {}), [k]: m.sw ? {hg: ag, ag: hg} : {hg, ag}}}); toast('Risultato salvato'); },
     m.played ? 'Aggiorna' : 'Salva');
 }
 async function preClose(){
@@ -2508,7 +2536,7 @@ function preGroupCard(g, mc){
   else if (mc && !preOf(mc) && !all){ const pz = prePrize(mc, mem);
     my = `<div class="preprize">${mem.length ? `Se entri e arrivi primo: <b>${fmtM(pz)}</b>${full ? '' : ' <span class="sub">(con le avversarie di ora)</span>'}` : '<span class="sub">Girone vuoto: il premio dipende da chi entrerà</span>'}</div>`; }
   const tbl = all ? preTable(g) : null, win = done ? preWinner(g) : null;
-  return `<div class="panel prg${mine ? ' mine' : ''}"><div class="ph"><h3>Girone ${g}</h3><span class="pill ${full ? 'good' : 'info'}">${mem.length}/4</span></div>
+  return `<div class="panel prg${mine ? ' mine' : ''}"><div class="ph"><h3>Girone ${g}</h3><div class="row">${S.comm && all && !done ? `<button class="btn sm ghost" data-act="pre-sched" data-id="${g}">Modifica giornate</button>` : ''}<span class="pill ${full ? 'good' : 'info'}">${mem.length}/4</span></div></div>
     ${all ? `<table class="tbl"><thead><tr><th style="text-align:left">Squadra</th><th>G</th><th>DR</th><th>Pt</th><th>Premio 1°</th></tr></thead><tbody>${tbl.map((r, i) => `<tr${win && win.id === r.c.id ? ' class="z-top"' : ''}><td><span class="prt">${crest(r.c)}<b>${esc(r.c.name)}</b>${win && win.id === r.c.id ? ' 🏆' : ''}</span></td><td class="num">${r.p}</td><td class="num">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="num"><b>${r.pts}</b></td><td class="num">${preReady() ? fmtM(prizeFor(r.c)) : '…'}</td></tr>`).join('')}</tbody></table>
       <div class="prms">${preMatches(g).map(m => `<div class="prm"><span class="sub">G${m.round}</span><span class="r">${esc(club(m.h)?.name)}</span><b class="num">${m.played ? `${m.hg} – ${m.ag}` : '–'}</b><span>${esc(club(m.a)?.name)}</span><span class="prbt">${!m.played && (canManage(m.h) || canManage(m.a)) ? `<button class="btn sm${[m.h, m.a].filter(canManage).every(c => luDone(m.id, c)) ? ' ghost' : ' primary'}" data-act="pre-lu" data-id="${m.k}">Distinta</button>` : ''}${S.comm || m.played ? `<button class="btn sm ghost" data-act="pre-lus" data-id="${m.k}" title="Distinte delle due squadre">${(luDone(m.id, m.h) ? 1 : 0) + (luDone(m.id, m.a) ? 1 : 0)}/2</button>` : ''}${S.comm && !done ? `<button class="btn sm ghost" data-act="pre-res" data-id="${m.k}">${m.played ? 'Modifica' : 'Risultato'}</button>` : ''}</span></div>`).join('')}</div>`
     : `<div class="list">${mem.map(c => `<div class="li"><span class="prt">${crest(c)}<b>${esc(c.name)}</b></span><span class="sub" style="margin-left:auto">${DIVS[divOf(c)] || ''} · forza ${preOvr(c)}</span></div>`).join('') || '<p class="sub">Ancora nessuna squadra.</p>'}
@@ -2574,6 +2602,7 @@ document.addEventListener('click', async e => {
       case 'pre-skip': await preSkip(); break;
       case 'pre-fill': await preFill(); break;
       case 'pre-res': preResult(id); break;
+      case 'pre-sched': preSchedEdit(id); break;
       case 'tpl-edit': tplEdit(id); break;
       case 'pre-lu': lineupPick(preM(id)); break;
       case 'pre-lus': viewLineups(preM(id)); break;
