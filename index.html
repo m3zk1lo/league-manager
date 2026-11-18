@@ -687,6 +687,7 @@ function viewClub(){
   <section class="grid2">
     <section class="grid2">${stadiumPanel(c)}${medicalPanel(c)}</section>
     ${sponsorPanel(c)}
+    ${tplPanel(c)}
     ${kitPanel(c)}
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#svincolati">Svincolati e aste</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
@@ -1188,6 +1189,7 @@ function resultModal(m){
         if (as && as.value){ e.a = as.value; e.an = as.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, ''); } events.push(e); });
       const gh = events.filter(e => e.t === 'g' && e.c === H.id).length, ga = events.filter(e => e.t === 'g' && e.c === A.id).length;
       if (gh > hg || ga > ag) fail('Ci sono più marcatori che gol nel punteggio.');
+      if (!m.played) await luFreeze(m);
       await db.doc('matches/' + m.id).update({hg, ag, events, played: true, playedAt: now(), by: S.me || null});
       if (!m.played && !m.gate) await creditGate(m);
       toast('Risultato salvato');
@@ -1210,32 +1212,48 @@ function resultModal(m){
 /* ---------- distinte di gara ---------- */
 /* reparti per modulo, da sinistra a destra (POR → attacco) */
 const D4 = ['TS','DC','DC','TD'], D3 = ['DC','DC','DC'], D5 = ['TS','DC','DC','DC','TD'];
-const LINES = {
-  '4-3-3': [D4, ['CC','CC','CC'], ['AS','ATT','AD']],
-  '4-3-3 (difensivo)': [D4, ['CDC'], ['CC','CC'], ['AS','ATT','AD']],
-  '4-3-3 (offensivo)': [D4, ['CC','CC'], ['COC'], ['AS','ATT','AD']],
-  '4-4-2': [D4, ['ES','CC','CC','ED'], ['ATT','ATT']],
-  '4-4-1-1': [D4, ['ES','CC','CC','ED'], ['COC'], ['ATT']],
-  '4-2-3-1': [D4, ['CDC','CDC'], ['ES','COC','ED'], ['ATT']],
-  '4-2-2-2': [D4, ['CDC','CDC'], ['COC','COC'], ['ATT','ATT']],
-  '4-1-2-1-2': [D4, ['CDC'], ['CC','CC'], ['COC'], ['ATT','ATT']],
-  '4-1-4-1': [D4, ['CDC'], ['ES','CC','CC','ED'], ['ATT']],
-  '4-3-2-1': [D4, ['CC','CC','CC'], ['COC','COC'], ['ATT']],
-  '4-5-1': [D4, ['ES','CC','CC','CC','ED'], ['ATT']],
-  '3-5-2': [D3, ['CDC','CDC'], ['ES','COC','ED'], ['ATT','ATT']],
-  '3-4-3': [D3, ['ES','CC','CC','ED'], ['AS','ATT','AD']],
-  '3-4-2-1': [D3, ['ES','CC','CC','ED'], ['COC','COC'], ['ATT']],
-  '3-4-1-2': [D3, ['ES','CC','CC','ED'], ['COC'], ['ATT','ATT']],
-  '5-3-2': [D5, ['CDC'], ['CC','CC'], ['ATT','ATT']],
-  '5-2-3': [D5, ['CC','CC'], ['AS','ATT','AD']],
-  '5-4-1': [D5, ['ES','CC','CC','ED'], ['ATT']]};
+const FC_MOD = [
+  ['3-1-4-2', [D3, ['CDC'], ['ES','CC','CC','ED'], ['ATT','ATT']], ''],
+  ['3-4-1-2', [D3, ['ES','CC','CC','ED'], ['COC'], ['ATT','ATT']], ''],
+  ['3-4-2-1', [D3, ['ES','CC','CC','ED'], ['COC','COC'], ['ATT']], ''],
+  ['3-4-3', [D3, ['ES','CC','CC','ED'], ['AS','ATT','AD']], ''],
+  ['3-5-2', [D3, ['CDC','CDC'], ['ES','COC','ED'], ['ATT','ATT']], ''],
+  ['4-1-2-1-2', [D4, ['CDC'], ['CC','CC'], ['COC'], ['ATT','ATT']], 'stretto'],
+  ['4-1-2-1-2 (2)', [D4, ['CDC'], ['ES','ED'], ['COC'], ['ATT','ATT']], 'largo'],
+  ['4-1-3-2', [D4, ['CDC'], ['ES','CC','ED'], ['ATT','ATT']], ''],
+  ['4-1-4-1', [D4, ['CDC'], ['ES','CC','CC','ED'], ['ATT']], ''],
+  ['4-2-1-3', [D4, ['CDC','CDC'], ['COC'], ['AS','ATT','AD']], ''],
+  ['4-2-2-2', [D4, ['CDC','CDC'], ['COC','COC'], ['ATT','ATT']], ''],
+  ['4-2-3-1', [D4, ['CDC','CDC'], ['ES','COC','ED'], ['ATT']], 'largo'],
+  ['4-2-3-1 (2)', [D4, ['CDC','CDC'], ['COC','COC','COC'], ['ATT']], 'stretto'],
+  ['4-2-4', [D4, ['CC','CC'], ['AS','ATT','ATT','AD']], ''],
+  ['4-3-1-2', [D4, ['CC','CC','CC'], ['COC'], ['ATT','ATT']], ''],
+  ['4-3-2-1', [D4, ['CC','CC','CC'], ['COC','COC'], ['ATT']], ''],
+  ['4-3-3', [D4, ['CC','CC','CC'], ['AS','ATT','AD']], 'piatto'],
+  ['4-3-3 (2)', [D4, ['CDC'], ['CC','CC'], ['AS','ATT','AD']], 'con mediano'],
+  ['4-3-3 (3)', [D4, ['CDC','CDC'], ['CC'], ['AS','ATT','AD']], 'difensivo'],
+  ['4-3-3 (4)', [D4, ['CC','CC'], ['COC'], ['AS','ATT','AD']], 'offensivo'],
+  ['4-3-3 (5)', [D4, ['CDC'], ['CC','CC'], ['AS','ATT','AD']], 'falso 9'],
+  ['4-4-1-1', [D4, ['ES','CC','CC','ED'], ['COC'], ['ATT']], ''],
+  ['4-4-1-1 (2)', [D4, ['ES','CDC','CDC','ED'], ['COC'], ['ATT']], 'con due mediani'],
+  ['4-4-2', [D4, ['ES','CC','CC','ED'], ['ATT','ATT']], 'piatto'],
+  ['4-4-2 (2)', [D4, ['ES','CDC','CDC','ED'], ['ATT','ATT']], 'con due mediani'],
+  ['4-5-1', [D4, ['CC'], ['ES','COC','COC','ED'], ['ATT']], 'offensivo'],
+  ['4-5-1 (2)', [D4, ['ES','CC','CC','CC','ED'], ['ATT']], 'piatto'],
+  ['5-2-1-2', [D5, ['CC','CC'], ['COC'], ['ATT','ATT']], ''],
+  ['5-2-3', [D5, ['CC','CC'], ['AS','ATT','AD']], ''],
+  ['5-3-2', [D5, ['CDC'], ['CC','CC'], ['ATT','ATT']], ''],
+  ['5-4-1', [D5, ['ES','CC','CC','ED'], ['ATT']], '']];
+const LINES = Object.fromEntries(FC_MOD.map(x => [x[0], x[1]]));
+LINES['4-3-3 (difensivo)'] = LINES['4-3-3 (2)']; LINES['4-3-3 (offensivo)'] = LINES['4-3-3 (4)'];
+const MODULI_SEL = FC_MOD.map(([k, , d]) => [k, d ? `${k} · ${d}` : k]);
 const MODULI = Object.keys(LINES);
 const lineLabel = l => l.includes('POR') ? 'Portiere' : l.some(r => ['DC','TD','TS'].includes(r)) ? 'Difesa' : l.every(r => r === 'CDC') ? 'Mediana'
   : l.every(r => r === 'COC') ? 'Trequarti' : l.some(r => ['ATT','AD','AS'].includes(r)) ? 'Attacco' : 'Centrocampo';
 const linesOf = mod => [['POR'], ...(LINES[mod] || LINES['4-3-3'])];
 const slotsOf = mod => linesOf(mod).flat();
 const luId = (mid, cid) => `${mid}__${cid}`;
-const lineupOf = (mid, cid) => S.lineups.find(l => l.id === luId(mid, cid)) || null;
+const lineupOf = (mid, cid) => S.lineups.find(l => l.id === luId(mid, cid)) || luTpl(mid, cid);
 const luDone = (mid, cid) => { const L = lineupOf(mid, cid); return L && !L.draft ? L : null; };
 const maxSubs = () => S.settings?.maxSubs ?? 5;
 const luRequired = () => S.settings?.lineupRequired !== false;
@@ -1247,8 +1265,8 @@ function canSeeLineup(m, cid){
   return canManage(oid) ? !!luDone(m.id, oid) : !!(luDone(m.id, m.homeId) && luDone(m.id, m.awayId));
 }
 function luStatus(m, cid){
-  const L = lineupOf(m.id, cid), c = club(cid), st = !L ? 'mancante' : L.draft ? (canManage(cid) ? 'bozza' : 'mancante') : '✓';
-  return `<span class="pill ${st === '✓' ? 'good' : st === 'bozza' ? 'info' : 'warn'}" title="${esc(c?.name || '')}">${esc(c?.short || c?.name || '—')}: distinta ${st}</span>`;
+  const L = lineupOf(m.id, cid), c = club(cid), st = !L ? 'mancante' : L.draft ? (canManage(cid) ? 'bozza' : 'mancante') : L.tpl ? 'tipo ✓' : '✓';
+  return `<span class="pill ${st.endsWith('✓') ? 'good' : st === 'bozza' ? 'info' : 'warn'}" title="${esc(c?.name || '')}">${esc(c?.short || c?.name || '—')}: distinta ${st}</span>`;
 }
 function viewLineups(m){
   const H = club(m.homeId), A = club(m.awayId);
@@ -1275,6 +1293,35 @@ const rolesFor = pos => ROLES[roleKey(pos)] || ROLES.CC;
 const maxBench = () => S.settings?.maxBench ?? 9;
 const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
 
+/* formazione tipo: si imposta una volta e vale per tutte le partite finché non la cambi */
+function luMatch(mid){ return S.matches.find(x => x.id === mid) || (typeof preOn === 'function' && preOn() ? PRE_G.flatMap(preMatches).find(x => x.id === mid) : null) || null; }
+function tplFor(cid, m){
+  const c = club(cid), T = c?.tpl; if (!T || !Array.isArray(T.xi) || T.xi.length !== 11) return null;
+  const rs = roster(cid), out = m?.pre ? new Set() : suspended(), ok = id => { const p = rs.find(x => x.id === id); return p && !p.injured && !out.has(p.id); };
+  if (!T.xi.every(ok)) return null;
+  const bench = (T.bench || []).filter(ok).slice(0, maxBench()), setp = {}; Object.entries(T.setp || {}).forEach(([k, v]) => { if (T.xi.includes(v)) setp[k] = v; });
+  const subs = (T.subs || []).filter(x => bench.includes(x.in));
+  return {...T, bench, subs, setp};
+}
+function luTpl(mid, cid){
+  const m = luMatch(mid); if (!m || m.played || ![m.homeId, m.awayId].includes(cid)) return null;
+  const T = tplFor(cid, m); return T ? {...T, matchId: mid, clubId: cid, round: m.round, season: m.season, tpl: true, draft: false} : null;
+}
+async function luFreeze(m){
+  for (const cid of [m.homeId, m.awayId]){
+    if (S.lineups.some(l => l.id === luId(m.id, cid))) continue;
+    const T = luTpl(m.id, cid); if (!T) continue;
+    const {tpl, ...rest} = T; await db.doc('lineups/' + luId(m.id, cid)).set({...rest, auto: true, ts: now()});
+  }
+}
+function tplPanel(c){
+  const can = canManage(c.id), T = c.tpl, ok = T && tplFor(c.id, null);
+  return `<div class="panel"><div class="ph"><h3>Formazione tipo</h3>${can ? `<button class="btn sm ${T ? '' : 'primary'}" data-act="tpl-edit" data-id="${c.id}">${T ? 'Modifica' : 'Imposta'}</button>` : ''}</div>
+    <p class="sub">La formazione tipo (modulo, tattica, ruoli, panchina, cambi e calci piazzati) vale in automatico come distinta per <b>tutte le partite</b>, precampionato compreso. Se per una partita vuoi cambiare qualcosa, apri la sua distinta e modificala: le altre restano con la formazione tipo.</p>
+    ${T ? (ok ? '' : '<p class="notice">⚠️ Un titolare della formazione tipo non è più disponibile (ceduto, infortunato o squalificato): finché non la sistemi, le partite risultano senza distinta.</p>') + (can || S.comm ? luSummary(T, true) : '<p class="sub">Impostata ✓</p>') : '<p class="sub">Non ancora impostata.</p>'}</div>`;
+}
+function tplEdit(cid){ lineupModal({id: 'tpl', round: '', season: season(), homeId: cid, awayId: null, tplOnly: true}, cid); }
+
 function luSummary(L, compact){
   if (!L) return '<p class="muted">Distinta non consegnata.</p>';
   const subs = (L.subs || []).slice().sort((a, b) => a.min - b.min), T = L.tactic, R = L.roles || [];
@@ -1294,20 +1341,23 @@ function luSummary(L, compact){
 
 function lineupModal(m, cid){
   if (m.played) return toast('La partita è già stata giocata: la distinta è chiusa.');
+  const only = !!m.tplOnly;
   if (!canManage(cid)) return toast('Solo l’allenatore di questa società può consegnare la distinta.');
-  const c = club(cid), L = lineupOf(m.id, cid) || {}, rs = roster(cid), out = m.pre ? new Set() : suspended();
+  const c = club(cid), L = (only ? club(cid)?.tpl : lineupOf(m.id, cid)) || club(cid)?.tpl || {}, rs = roster(cid), out = m.pre || only ? new Set() : suspended();
   const okP = p => !p.injured && !out.has(p.id);
   if (rs.filter(okP).length < 11) return toast(`${c.name} non ha 11 giocatori disponibili: controlla infortuni e squalifiche in rosa.`);
   const tag = p => `${p.pos} · ${p.name}${p.ovr ? ' ' + p.ovr : ''}${p.injured ? ' (infortunato)' : out.has(p.id) ? ' (squalificato)' : ''}`;
   const pName = id => S.players.find(p => p.id === id)?.name || 'Giocatore';
   const opp = club(m.homeId === cid ? m.awayId : m.homeId), xi = L.xi || [], T = L.tactic || {build: 'Equilibrato', def: 'Equilibrato', line: 50};
   const prevRoles = {}; (L.slots || []).forEach((pos, i) => { if (L.xi?.[i] && L.roles?.[i]) prevRoles[L.xi[i] + '|' + pos] = L.roles[i]; });
-  const title = m.pre ? `Precampionato · Girone ${m.g} · Giornata ${m.round}` : `Giornata ${m.round}`;
-  const f = openModal(`Distinta · ${c.name}`, `<p class="sub">${title} contro ${esc(opp?.name || '—')}. Come su FC 27: modulo, tattica di squadra, 11 titolari con ruolo e compito, panchina (massimo ${maxBench()}), cambi programmati (massimo ${maxSubs()}) e calci piazzati.</p>
-    ${L.draft ? '<p class="notice">Questa è una bozza: non è ancora consegnata.</p>' : ''}
-    <div class="row" style="margin-top:6px"><button type="button" class="btn sm ghost" id="lureset">Azzera distinta</button><button type="button" class="btn sm" id="ludraft">Salva bozza</button>${L.id && !L.draft ? '<button type="button" class="btn sm bad" id="ludel">Ritira distinta</button>' : ''}</div>
+  const title = only ? 'Formazione tipo, valida per tutte le partite' : m.pre ? `Precampionato · Girone ${m.g} · Giornata ${m.round}` : `Giornata ${m.round}`;
+  const f = openModal(`${only ? 'Formazione tipo' : 'Distinta'} · ${c.name}`, `<p class="sub">${title}${only ? '' : ` contro ${esc(opp?.name || '—')}`}. Come su FC 27: modulo, tattica di squadra, 11 titolari con ruolo e compito, panchina (massimo ${maxBench()}), cambi programmati (massimo ${maxSubs()}) e calci piazzati.</p>
+    ${L.draft && !only ? '<p class="notice">Questa è una bozza: non è ancora consegnata.</p>' : ''}
+    ${!only && L.tpl ? '<p class="notice">Questa partita usa già la tua <b>formazione tipo</b>: non devi fare niente. Modificala solo se per questa gara vuoi cambiare qualcosa.</p>' : ''}
+    ${!only && !L.xi?.length && !club(cid)?.tpl ? '<p class="notice">Consiglio: con la casella in fondo la salvi anche come <b>formazione tipo</b>, così vale per tutte le partite successive.</p>' : ''}
+    <div class="row" style="margin-top:6px"><button type="button" class="btn sm ghost" id="lureset">Azzera</button>${only ? '' : `<button type="button" class="btn sm" id="ludraft">Salva bozza</button>${L.id && !L.draft ? '<button type="button" class="btn sm bad" id="ludel">Ritira distinta</button>' : ''}`}</div>
     <div class="ph" style="margin-top:12px"><h3>Impostazione tattica</h3></div>
-    <div class="fgrid">${sel('lumod', 'Modulo', MODULI, L.module || '4-3-3')}${sel('lubuild', 'Stile costruzione manovra', TACT_BUILD, T.build)}
+    <div class="fgrid">${sel('lumod', 'Modulo', MODULI_SEL, L.module || '4-3-3')}${sel('lubuild', 'Stile costruzione manovra', TACT_BUILD, T.build)}
       ${sel('ludef', 'Approccio difensivo', Object.keys(TACT_DEF), T.def)}<div class="f"><label for="luline">Altezza linea difensiva <b id="lulinev">${T.line}</b></label><input id="luline" name="luline" type="range" step="1" value="${T.line}"></div></div>
     <div class="ph" style="margin-top:14px"><h3>Titolari, ruoli e compiti</h3><span class="sub" id="lucount"></span></div>
     <div id="luxi"></div>
@@ -1317,7 +1367,8 @@ function lineupModal(m, cid){
     <div class="lulist" id="lusubs"></div>
     <p class="sub">Esce: un giocatore in campo in quel momento (anche uno entrato prima). Entra: solo un giocatore della panchina non ancora usato. Minuto da 1 a 120.</p>
     <div class="ph" style="margin-top:14px"><h3>Calci piazzati</h3></div>
-    <div class="fgrid" id="lusetp"></div>`,
+    <div class="fgrid" id="lusetp"></div>
+    ${only ? '' : `<label class="lubp" style="margin-top:14px;white-space:normal"><input type="checkbox" id="lutpl"${club(cid)?.tpl ? '' : ' checked'}> Salva anche come <b>formazione tipo</b> (vale in automatico per tutte le partite)</label>`}`,
     async () => {
       const d = collect();
       if (d.xi.some(v => !v)) fail('Scegli tutti gli 11 titolari.');
@@ -1335,9 +1386,11 @@ function lineupModal(m, cid){
         if (used.has(s.in)) fail(`${pName(s.in)} è già in campo o già usato: non può entrare al ${s.min}'.`);
         onPitch.delete(s.out); onPitch.add(s.in); used.add(s.in); });
       Object.entries(d.setp).forEach(([k, id]) => { if (id && !d.xi.includes(id)) fail(`${SETP.find(x => x[0] === k)[1]}: scegli un titolare.`); });
+      if (only || f.querySelector('#lutpl')?.checked){ const {matchId, clubId, season: _s, round, pre, draft, by, ...T} = doc(d, subs, false); await db.doc('clubs/' + cid).update({tpl: T}); }
+      if (only) return toast('Formazione tipo salvata: vale per tutte le partite');
       await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, false));
-      toast('Distinta consegnata');
-    }, 'Consegna distinta');
+      toast(f.querySelector('#lutpl')?.checked ? 'Distinta consegnata e salvata come formazione tipo' : 'Distinta consegnata');
+    }, only ? 'Salva formazione tipo' : 'Consegna distinta');
   const doc = (d, subs, draft) => { const names = {}; [...d.xi, ...d.bench, ...subs.map(s => s.in), ...subs.map(s => s.out)].filter(Boolean).forEach(id => names[id] = pName(id));
     return {matchId: m.id, clubId: cid, season: m.season, round: m.round, ...(m.pre ? {pre: true} : {}), module: d.module, tactic: d.tactic, xi: d.xi, slots: d.slots, roles: d.roles,
       bench: d.bench, subs: subs.sort((a, b) => a.min - b.min), setp: d.setp, names, draft, ts: now(), by: S.me || null}; };
@@ -1409,7 +1462,7 @@ function lineupModal(m, cid){
   $('#luadd').onclick = () => addSub();
   (L.subs || []).forEach(addSub);
   $('#lureset').onclick = () => { f.querySelectorAll('.luxi').forEach(s => s.value = ''); benchSet = new Set(); $('#lusubs').innerHTML = ''; refresh(); toast('Distinta azzerata: ricomincia o salva la bozza'); };
-  $('#ludraft').onclick = async () => { try { const d = collect(), subs = d.subs.filter(s => s.out || s.in || s.min);
+  if ($('#ludraft')) $('#ludraft').onclick = async () => { try { const d = collect(), subs = d.subs.filter(s => s.out || s.in || s.min);
       await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, true)); dlg.close(); toast('Bozza salvata: la puoi completare e consegnare più tardi');
     } catch (err){ toast(err.message || 'Bozza non salvata. Riprova.'); } };
   const del = $('#ludel'); if (del) del.onclick = async () => { try { await db.doc('lineups/' + luId(m.id, cid)).delete(); dlg.close(); toast('Distinta ritirata: risulta di nuovo mancante'); } catch (err){ toast(err.message || 'Operazione non riuscita.'); } };
@@ -2427,6 +2480,7 @@ function preResult(k){
     <div class="f"><label for="pag">${esc(A.name)}</label><input id="pag" name="pag" type="number" min="0" max="20" value="${m.played ? m.ag : ''}" required></div></div>`,
     async fd => { const hg = Math.max(0, Math.round(+fd.get('phg'))), ag = Math.max(0, Math.round(+fd.get('pag')));
       if (!Number.isFinite(hg) || !Number.isFinite(ag)) fail('Inserisci i gol di entrambe le squadre.');
+      if (!m.played) await luFreeze(m);
       await db.doc('league/preseason').update({results: {...(S.pre.results || {}), [k]: {hg, ag}}}); toast('Risultato salvato'); },
     m.played ? 'Aggiorna' : 'Salva');
 }
@@ -2520,6 +2574,7 @@ document.addEventListener('click', async e => {
       case 'pre-skip': await preSkip(); break;
       case 'pre-fill': await preFill(); break;
       case 'pre-res': preResult(id); break;
+      case 'tpl-edit': tplEdit(id); break;
       case 'pre-lu': lineupPick(preM(id)); break;
       case 'pre-lus': viewLineups(preM(id)); break;
       case 'pre-close': await preClose(); break;
