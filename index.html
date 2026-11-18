@@ -205,6 +205,7 @@ dialog form{display:grid;gap:14px;padding:20px}
 .scorebox input{font-family:var(--display);font-size:1.8rem;font-weight:700;text-align:center}
 .scorebox .dash{font-family:var(--display);font-size:1.8rem;padding-bottom:6px}
 .evcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.evcols.lu2{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:10px;font-size:13px}.evcols.lu2 .evhead{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}.evcols.lu2 .luP{margin-left:0}.evcols.lu2 .posb{font-size:10px}
 @media (max-width:560px){.evcols{grid-template-columns:minmax(0,1fr)}}
 .evcol{display:grid;gap:8px;align-content:start;min-width:0}
 .evhead{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center}
@@ -1270,9 +1271,14 @@ function luStatus(m, cid){
 }
 function viewLineups(m){
   const H = club(m.homeId), A = club(m.awayId);
-  const block = c => `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b></div>${canSeeLineup(m, c.id) ? (canManage(c.id) && lineupOf(m.id, c.id)?.draft ? '<p class="muted">Bozza salvata, non ancora consegnata.</p>' : luSummary(luDone(m.id, c.id))) : `<p class="muted">${luDone(m.id, c.id) ? 'Consegnata. La vedrai dopo aver consegnato la tua distinta.' : 'Non ancora consegnata.'}</p>`}</div>`;
-  openModal(`Distinte · Giornata ${m.round}`, `<div class="evcols">${block(H)}${block(A)}</div>`, async () => {}, 'Chiudi');
+  const block = c => { const L = lineupOf(m.id, c.id), can = canManage(c.id) && !m.played;
+    const body = canSeeLineup(m, c.id) || canManage(c.id) ? (L ? (L.draft ? '<p class="muted">Bozza salvata, non ancora consegnata.</p>' + luSummary(L, true) : (L.tpl ? '<p class="sub">Formazione tipo</p>' : '') + luSummary(L, true)) : '<p class="muted">Non ancora consegnata.</p>')
+      : `<p class="muted">${luDone(m.id, c.id) ? 'Consegnata. La vedrai dopo aver consegnato la tua distinta.' : 'Non ancora consegnata.'}</p>`;
+    return `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b>${can ? ` <button type="button" class="btn sm" data-luedit="${c.id}">Modifica</button>` : ''}</div>${body}</div>`; };
+  const title = m.pre ? `Distinte · Girone ${m.g} · Giornata ${m.round}` : `Distinte · Giornata ${m.round}`;
+  openModal(title, `<div class="evcols lu2">${block(H)}${block(A)}</div>`, async () => {}, 'Chiudi');
   $('#mcancel').hidden = true;
+  dlg.querySelectorAll('[data-luedit]').forEach(b => b.onclick = () => { dlg.close(); lineupModal(m, b.dataset.luedit); });
 }
 /* ---------- TATTICHE FC 27: costruzione, approccio difensivo, ruoli con compito, panchina, calci piazzati ---------- */
 const TACT_BUILD = ['Passaggi corti', 'Equilibrato', 'Contropiede'];
@@ -1290,7 +1296,7 @@ const ROLES = {
 };
 const roleKey = pos => ({TD: 'FB', TS: 'FB', ED: 'EM', ES: 'EM', AD: 'AW', AS: 'AW'})[pos] || pos;
 const rolesFor = pos => ROLES[roleKey(pos)] || ROLES.CC;
-const maxBench = () => S.settings?.maxBench ?? 9;
+const maxBench = () => S.settings?.maxBench ?? 5;
 const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
 
 /* formazione tipo: si imposta una volta e vale per tutte le partite finché non la cambi */
@@ -1471,8 +1477,7 @@ function lineupModal(m, cid){
 function lineupPick(m){
   const mine = [m.homeId, m.awayId].filter(canManage);
   if (mine.length === 1) return lineupModal(m, mine[0]);
-  openModal(`Distinta · Giornata ${m.round}`, `<p class="sub">Per quale squadra vuoi inserire la distinta?</p><div class="row">${mine.map(id => `<button type="button" class="btn" data-lupick="${id}">${esc(club(id).name)}</button>`).join('')}</div>`, async () => {}, 'Chiudi');
-  dlg.querySelectorAll('[data-lupick]').forEach(b => b.onclick = () => { dlg.close(); lineupModal(m, b.dataset.lupick); });
+  viewLineups(m);
 }
 
 function objModal(c){
