@@ -181,7 +181,7 @@ tr.z-po .pos{color:#2f6fdb}.zl{display:inline-block;width:10px;height:10px;borde
 .prgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media (max-width:760px){.prgrid{grid-template-columns:minmax(0,1fr)}}
 .prg.mine{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.prt{display:flex;align-items:center;gap:8px;min-width:0}.prt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .prfree{border-style:dashed !important;opacity:.7}.preprize{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);font-size:14px}
-.prms{display:flex;flex-direction:column;gap:6px;margin-top:10px}.prm{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto;align-items:center;gap:8px;font-size:13.5px}.prm .r{text-align:right}.prm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prms{display:flex;flex-direction:column;gap:6px;margin-top:10px}.prm{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto;align-items:center;gap:8px;font-size:13.5px}.prm .r{text-align:right}.prbt{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}@media (max-width:760px){.prbt{grid-column:1/-1;justify-content:flex-end}}.prm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rules{white-space:pre-wrap;max-width:68ch;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140'%3E%3Ctext x='10' y='90' transform='rotate(-18 130 70)' font-family='Arial' font-weight='700' font-size='22' fill='%23888' fill-opacity='0.13'%3ELEAGUE MANAGER%3C/text%3E%3C/svg%3E")}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-weight:600;font-size:.9rem}
 select.inl{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;font-weight:600}
@@ -213,6 +213,13 @@ dialog form{display:grid;gap:14px;padding:20px}
 .evrow select{padding:5px 7px;font-size:.85rem;background:var(--surface)}
 .lurow{align-items:center;margin-top:4px}
 .lugrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.luslot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px}
+.luslot .lurf{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:6px}
+.luslot select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 9px;font-size:16px;width:100%;min-width:0}
+.lubench{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.lubp{display:flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);font-size:14px;cursor:pointer;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.lubp.off{opacity:.5}
+.lubp input{width:18px;height:18px;flex:none}.luL{margin:4px 0}.luP{margin:2px 0 2px 8px}
+#luline{width:100%}
+@media (max-width:560px){.lubench{grid-template-columns:minmax(0,1fr)}}
 .lugrid select,.subrow select,.subrow input{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 9px;font-size:16px;width:100%;min-width:0}
 .subrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 76px auto;gap:6px;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px}
 .subrow select,.subrow input{background:var(--surface)}
@@ -1243,93 +1250,171 @@ function luStatus(m, cid){
   const L = lineupOf(m.id, cid), c = club(cid), st = !L ? 'mancante' : L.draft ? (canManage(cid) ? 'bozza' : 'mancante') : '✓';
   return `<span class="pill ${st === '✓' ? 'good' : st === 'bozza' ? 'info' : 'warn'}" title="${esc(c?.name || '')}">${esc(c?.short || c?.name || '—')}: distinta ${st}</span>`;
 }
-function luSummary(L, compact){
-  if (!L) return '<p class="muted">Distinta non consegnata.</p>';
-  const subs = (L.subs || []).slice().sort((a, b) => a.min - b.min);
-  return `<div class="lulist"><div><b>Modulo</b> ${esc(L.module || '—')}</div>
-    ${L.slots && L.slots.length === (L.xi || []).length ? (() => { let k = 0; return linesOf(L.module).map(l => { const part = l.map(r => `<span class="posb ${GRP[r] || 'mid'}">${r}</span> ${esc(luName(L, L.xi[k++]))}`).join(' · ');
-        return `<div><b>${lineLabel(l)}</b> ${part}</div>`; }).join(''); })() : `<div><b>Titolari</b> ${(L.xi || []).map(id => esc(luName(L, id))).join(', ')}</div>`}
-    ${subs.length ? `<div><b>Cambi</b></div>${subs.map(s => `<div class="subli"><span class="num">${s.min}'</span> <span class="evt r">esce</span> ${esc(luName(L, s.out))} <span class="evt g">entra</span> ${esc(luName(L, s.in))}</div>`).join('')}` : '<div class="muted">Nessun cambio programmato.</div>'}
-    ${compact ? '' : `<div class="sub">Consegnata il ${day(L.ts)}</div>`}</div>`;
-}
 function viewLineups(m){
   const H = club(m.homeId), A = club(m.awayId);
   const block = c => `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b></div>${canSeeLineup(m, c.id) ? (canManage(c.id) && lineupOf(m.id, c.id)?.draft ? '<p class="muted">Bozza salvata, non ancora consegnata.</p>' : luSummary(luDone(m.id, c.id))) : `<p class="muted">${luDone(m.id, c.id) ? 'Consegnata. La vedrai dopo aver consegnato la tua distinta.' : 'Non ancora consegnata.'}</p>`}</div>`;
   openModal(`Distinte · Giornata ${m.round}`, `<div class="evcols">${block(H)}${block(A)}</div>`, async () => {}, 'Chiudi');
   $('#mcancel').hidden = true;
 }
+/* ---------- TATTICHE FC 27: costruzione, approccio difensivo, ruoli con compito, panchina, calci piazzati ---------- */
+const TACT_BUILD = ['Passaggi corti', 'Equilibrato', 'Contropiede'];
+const TACT_DEF = {Basso: [1, 30, 25], Equilibrato: [31, 60, 50], Alto: [61, 90, 70], Aggressivo: [91, 100, 95]};
+const ROLES = {
+  POR: {'Portiere': ['Difesa', 'Equilibrata'], 'Portiere libero': ['Equilibrata', 'Costruisci manovra'], 'Portiere regista': ['Costruisci manovra']},
+  DC: {'Difensore': ['Difesa', 'Equilibrata'], 'Stopper': ['Equilibrata', 'Aggressiva'], 'Difensore palla al piede': ['Difesa', 'Costruisci manovra'], 'Difensore largo': ['Difesa', 'Aggressiva', 'Supporto']},
+  FB: {'Terzino': ['Difesa', 'Equilibrata', 'Completa'], 'Falso terzino': ['Difesa', 'Equilibrata'], 'Esterno': ['Equilibrata', 'Completa'], 'Tornante offensivo': ['Supporto', 'Attacco'], 'Esterno invertito': ['Costruisci manovra', 'Attacco']},
+  CDC: {'Contenimento': ['Difesa', 'Svaria'], 'Centromediano': ['Difesa'], 'Regista arretrato': ['Difesa', 'Svaria'], 'Mediano largo': ['Costruisci manovra', 'Difesa'], 'Incursore': ['Equilibrata']},
+  CC: {'Box-to-box': ['Equilibrata', 'Recupero palla'], 'Contenimento': ['Difesa'], 'Regista arretrato': ['Difesa'], 'Regista': ['Attacco', 'Svaria'], 'Mezzala': ['Supporto', 'Equilibrata', 'Attacco'], 'Incursore': ['Equilibrata']},
+  COC: {'Regista': ['Equilibrata', 'Svaria'], 'Attaccante ombra': ['Attacco'], 'Mezzala': ['Svaria', 'Equilibrata', 'Attacco'], 'Numero 10 classico': ['Completa', 'Larga', 'Attacco']},
+  EM: {'Ala': ['Equilibrata', 'Attacco'], 'Centrocampista laterale': ['Difesa', 'Supporto', 'Costruisci manovra'], 'Regista largo': ['Attacco'], 'Attaccante interno': ['Equilibrata', 'Attacco']},
+  AW: {'Ala': ['Equilibrata', 'Attacco', 'Completa'], 'Attaccante interno': ['Equilibrata', 'Attacco', 'Svaria'], 'Regista largo': ['Attacco']},
+  ATT: {'Attaccante avanzato': ['Attacco', 'Completa'], 'Rapace': ['Attacco', 'Completa'], 'Falso 9': ['Costruisci manovra', 'Attacco'], 'Torre': ['Equilibrata', 'Attacco', 'Larga']}
+};
+const roleKey = pos => ({TD: 'FB', TS: 'FB', ED: 'EM', ES: 'EM', AD: 'AW', AS: 'AW'})[pos] || pos;
+const rolesFor = pos => ROLES[roleKey(pos)] || ROLES.CC;
+const maxBench = () => S.settings?.maxBench ?? 12;
+const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
+
+function luSummary(L, compact){
+  if (!L) return '<p class="muted">Distinta non consegnata.</p>';
+  const subs = (L.subs || []).slice().sort((a, b) => a.min - b.min), T = L.tactic, R = L.roles || [];
+  const roleTxt = i => R[i]?.r ? ` <span class="sub">(${esc(R[i].r)}${R[i].f ? ' · ' + esc(R[i].f) : ''})</span>` : '';
+  const pitch = L.slots && L.slots.length === (L.xi || []).length ? (() => { let k = 0; return linesOf(L.module).map(l => { const part = l.map(r => { const i = k++;
+      return `<div class="luP"><span class="posb ${GRP[r] || 'mid'}">${r}</span> ${esc(luName(L, L.xi[i]))}${roleTxt(i)}</div>`; }).join('');
+    return `<div class="luL"><b>${lineLabel(l)}</b>${part}</div>`; }).join(''); })() : `<div><b>Titolari</b> ${(L.xi || []).map(id => esc(luName(L, id))).join(', ')}</div>`;
+  const sp = L.setp || {}, spTxt = SETP.filter(([k]) => sp[k]).map(([k, l]) => `${l}: <b>${esc(luName(L, sp[k]))}</b>`).join(' · ');
+  return `<div class="lulist"><div><b>Modulo</b> ${esc(L.module || '—')}</div>
+    ${T ? `<div><b>Tattica</b> Costruzione manovra: ${esc(T.build)} · Approccio difensivo: ${esc(T.def)} (linea ${T.line})</div>` : ''}
+    ${pitch}
+    ${L.bench ? `<div><b>Panchina</b> ${L.bench.length ? L.bench.map(id => esc(luName(L, id))).join(', ') : '<span class="muted">nessuno</span>'}</div>` : ''}
+    ${subs.length ? `<div><b>Cambi</b></div>${subs.map(s => `<div class="subli"><span class="num">${s.min}'</span> <span class="evt r">esce</span> ${esc(luName(L, s.out))} <span class="evt g">entra</span> ${esc(luName(L, s.in))}</div>`).join('')}` : '<div class="muted">Nessun cambio programmato.</div>'}
+    ${spTxt ? `<div><b>Calci piazzati</b> ${spTxt}</div>` : ''}
+    ${compact ? '' : `<div class="sub">Consegnata il ${day(L.ts)}</div>`}</div>`;
+}
+
 function lineupModal(m, cid){
   if (m.played) return toast('La partita è già stata giocata: la distinta è chiusa.');
   if (!canManage(cid)) return toast('Solo l’allenatore di questa società può consegnare la distinta.');
-  const c = club(cid), L = lineupOf(m.id, cid) || {}, rs = roster(cid), out = suspended();
+  const c = club(cid), L = lineupOf(m.id, cid) || {}, rs = roster(cid), out = m.pre ? new Set() : suspended();
   const okP = p => !p.injured && !out.has(p.id);
   if (rs.filter(okP).length < 11) return toast(`${c.name} non ha 11 giocatori disponibili: controlla infortuni e squalifiche in rosa.`);
   const tag = p => `${p.pos} · ${p.name}${p.ovr ? ' ' + p.ovr : ''}${p.injured ? ' (infortunato)' : out.has(p.id) ? ' (squalificato)' : ''}`;
-  const opts = (val, empty) => `<option value="">${empty}</option>` + rs.map(p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}${okP(p) ? '' : ' disabled'}>${esc(tag(p))}</option>`).join('');
-  const opp = club(m.homeId === cid ? m.awayId : m.homeId), xi = L.xi || [];
-  const f = openModal(`Distinta · ${c.name}`, `<p class="sub">Giornata ${m.round} contro ${esc(opp?.name || '—')}. Scegli modulo e 11 titolari, poi programma i cambi con il minuto in cui farli (massimo ${maxSubs()}). Infortunati e squalificati non si possono schierare.</p>
-    <div class="fgrid">${sel('lumod', 'Modulo', MODULI, L.module || '4-3-3', true)}</div>
+  const pName = id => S.players.find(p => p.id === id)?.name || 'Giocatore';
+  const opp = club(m.homeId === cid ? m.awayId : m.homeId), xi = L.xi || [], T = L.tactic || {build: 'Equilibrato', def: 'Equilibrato', line: 50};
+  const prevRoles = {}; (L.slots || []).forEach((pos, i) => { if (L.xi?.[i] && L.roles?.[i]) prevRoles[L.xi[i] + '|' + pos] = L.roles[i]; });
+  const title = m.pre ? `Precampionato · Girone ${m.g} · Giornata ${m.round}` : `Giornata ${m.round}`;
+  const f = openModal(`Distinta · ${c.name}`, `<p class="sub">${title} contro ${esc(opp?.name || '—')}. Come su FC 27: modulo, tattica di squadra, 11 titolari con ruolo e compito, panchina (massimo ${maxBench()}), cambi programmati (massimo ${maxSubs()}) e calci piazzati.</p>
     ${L.draft ? '<p class="notice">Questa è una bozza: non è ancora consegnata.</p>' : ''}
-    <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" id="lureset">Azzera distinta</button><button type="button" class="btn sm" id="ludraft">Salva bozza</button>${L.id && !L.draft ? '<button type="button" class="btn sm bad" id="ludel">Ritira distinta</button>' : ''}</div>
-    <div class="ph" style="margin-top:12px"><h3>Titolari</h3><span class="sub" id="lucount"></span></div>
+    <div class="row" style="margin-top:6px"><button type="button" class="btn sm ghost" id="lureset">Azzera distinta</button><button type="button" class="btn sm" id="ludraft">Salva bozza</button>${L.id && !L.draft ? '<button type="button" class="btn sm bad" id="ludel">Ritira distinta</button>' : ''}</div>
+    <div class="ph" style="margin-top:12px"><h3>Impostazione tattica</h3></div>
+    <div class="fgrid">${sel('lumod', 'Modulo', MODULI, L.module || '4-3-3')}${sel('lubuild', 'Stile costruzione manovra', TACT_BUILD, T.build)}
+      ${sel('ludef', 'Approccio difensivo', Object.keys(TACT_DEF), T.def)}<div class="f"><label for="luline">Altezza linea difensiva <b id="lulinev">${T.line}</b></label><input id="luline" name="luline" type="range" step="1" value="${T.line}"></div></div>
+    <div class="ph" style="margin-top:14px"><h3>Titolari, ruoli e compiti</h3><span class="sub" id="lucount"></span></div>
     <div id="luxi"></div>
+    <div class="ph" style="margin-top:14px"><h3>Panchina</h3><span class="sub" id="lubcount"></span></div>
+    <div class="lubench" id="lubench"></div>
     <div class="ph" style="margin-top:14px"><h3>Cambi programmati</h3><button type="button" class="btn sm" id="luadd">+ Cambio</button></div>
     <div class="lulist" id="lusubs"></div>
-    <p class="sub">Esce: un giocatore in campo in quel momento (anche uno entrato prima). Entra: un giocatore non titolare e non già usato. Minuto da 1 a 120.</p>`,
+    <p class="sub">Esce: un giocatore in campo in quel momento (anche uno entrato prima). Entra: solo un giocatore della panchina non ancora usato. Minuto da 1 a 120.</p>
+    <div class="ph" style="margin-top:14px"><h3>Calci piazzati</h3></div>
+    <div class="fgrid" id="lusetp"></div>`,
     async () => {
-      const xiSel = [...f.querySelectorAll('.luxi')].map(s => s.value);
-      if (xiSel.some(v => !v)) fail('Scegli tutti gli 11 titolari.');
-      if (new Set(xiSel).size !== 11) fail('Lo stesso giocatore è stato scelto due volte tra i titolari.');
-      const subs = [...f.querySelectorAll('.subrow')].map(r => ({out: r.querySelector('.sout').value, in: r.querySelector('.sin').value, min: Math.round(+r.querySelector('.smin').value || 0)}))
-        .filter(s => s.out || s.in);
+      const d = collect();
+      if (d.xi.some(v => !v)) fail('Scegli tutti gli 11 titolari.');
+      if (new Set(d.xi).size !== 11) fail('Lo stesso giocatore è stato scelto due volte tra i titolari.');
+      if (d.bench.length > maxBench()) fail(`In panchina puoi portare al massimo ${maxBench()} giocatori.`);
+      if (d.bench.some(id => d.xi.includes(id))) fail('Un giocatore è sia titolare sia in panchina.');
+      const subs = d.subs.filter(s => s.out || s.in);
       if (subs.length > maxSubs()) fail(`Puoi programmare al massimo ${maxSubs()} cambi.`);
       subs.forEach((s, i) => { if (!s.out || !s.in) fail(`Cambio ${i + 1}: scegli chi esce e chi entra.`);
-        if (!(s.min >= 1 && s.min <= 120)) fail(`Cambio ${i + 1}: il minuto deve essere tra 1 e 120.`); });
-      const onPitch = new Set(xiSel), used = new Set(xiSel);
+        if (!(s.min >= 1 && s.min <= 120)) fail(`Cambio ${i + 1}: il minuto deve essere tra 1 e 120.`);
+        if (!d.bench.includes(s.in)) fail(`Cambio ${i + 1}: ${pName(s.in)} non è in panchina. Aggiungilo alla panchina per farlo entrare.`); });
+      const onPitch = new Set(d.xi), used = new Set(d.xi);
       subs.slice().sort((a, b) => a.min - b.min).forEach(s => {
-        if (!onPitch.has(s.out)) fail(`Al ${s.min}' ${luName(null, s.out)} non è in campo, quindi non può uscire.`);
-        if (used.has(s.in)) fail(`${luName(null, s.in)} è già in campo o già usato: non può entrare al ${s.min}'.`);
+        if (!onPitch.has(s.out)) fail(`Al ${s.min}' ${pName(s.out)} non è in campo, quindi non può uscire.`);
+        if (used.has(s.in)) fail(`${pName(s.in)} è già in campo o già usato: non può entrare al ${s.min}'.`);
         onPitch.delete(s.out); onPitch.add(s.in); used.add(s.in); });
-      const names = {}; [...xiSel, ...subs.map(s => s.in)].forEach(id => names[id] = luName(null, id));
-      await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, season: m.season, round: m.round, module: String(new FormData(f).get('lumod')),
-        draft: false, xi: xiSel, slots: [...f.querySelectorAll('.luxi')].map(s => s.dataset.pos), subs: subs.sort((a, b) => a.min - b.min), names, ts: now(), by: S.me || null});
+      Object.entries(d.setp).forEach(([k, id]) => { if (id && !d.xi.includes(id)) fail(`${SETP.find(x => x[0] === k)[1]}: scegli un titolare.`); });
+      await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, false));
       toast('Distinta consegnata');
     }, 'Consegna distinta');
-  const count = () => { const n = [...f.querySelectorAll('.luxi')].filter(s => s.value).length; $('#lucount').textContent = `${n}/11`; };
+  const doc = (d, subs, draft) => { const names = {}; [...d.xi, ...d.bench, ...subs.map(s => s.in), ...subs.map(s => s.out)].filter(Boolean).forEach(id => names[id] = pName(id));
+    return {matchId: m.id, clubId: cid, season: m.season, round: m.round, ...(m.pre ? {pre: true} : {}), module: d.module, tactic: d.tactic, xi: d.xi, slots: d.slots, roles: d.roles,
+      bench: d.bench, subs: subs.sort((a, b) => a.min - b.min), setp: d.setp, names, draft, ts: now(), by: S.me || null}; };
+  const collect = () => {
+    const xs = [...f.querySelectorAll('.luxi')];
+    const setp = {}; SETP.forEach(([k]) => { const v = f.querySelector('#sp-' + k)?.value; if (v) setp[k] = v; });
+    return {module: f.querySelector('#lumod').value, tactic: {build: f.querySelector('#lubuild').value, def: f.querySelector('#ludef').value, line: +f.querySelector('#luline').value},
+      xi: xs.map(s => s.value), slots: xs.map(s => s.dataset.pos),
+      roles: xs.map((s, i) => ({r: f.querySelector('#lurole-' + i).value, f: f.querySelector('#lufoc-' + i).value})),
+      bench: [...f.querySelectorAll('.lubench input:checked')].map(x => x.value),
+      subs: [...f.querySelectorAll('.subrow')].map(r => ({out: r.querySelector('.sout').value, in: r.querySelector('.sin').value, min: Math.round(+r.querySelector('.smin').value || 0)})),
+      setp};
+  };
+  /* linea difensiva legata all'approccio */
+  const lineIn = f.querySelector('#luline'), defSel = f.querySelector('#ludef');
+  const setRange = keep => { const [a, b, def] = TACT_DEF[defSel.value]; lineIn.min = a; lineIn.max = b; const v = +lineIn.value;
+    lineIn.value = keep && v >= a && v <= b ? v : def; $('#lulinev').textContent = lineIn.value; };
+  defSel.onchange = () => setRange(false); lineIn.oninput = () => $('#lulinev').textContent = lineIn.value; setRange(true);
+  /* titolari con ruolo e compito */
   const slotOpts = (pos, val) => { const o = p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}${okP(p) ? '' : ' disabled'}>${esc(tag(p))}</option>`;
     const nat = rs.filter(p => p.pos === pos), rep_ = rs.filter(p => p.pos !== pos && GRP[p.pos] === GRP[pos]), oth = rs.filter(p => GRP[p.pos] !== GRP[pos]);
     return `<option value="">Scegli ${pos}</option>` + [[`Ruolo ${pos}`, nat], ['Stesso reparto', rep_], ['Altri ruoli', oth]].filter(g => g[1].length).map(([l, ps]) => `<optgroup label="${l}">${ps.map(o).join('')}</optgroup>`).join(''); };
-  const drawSlots = (mod, chosen) => {
-    const slots = slotsOf(mod), pick = Array(11).fill(''), left = chosen.filter(Boolean);
-    slots.forEach((pos, i) => { const j = left.findIndex(id => S.players.find(p => p.id === id)?.pos === pos); if (j >= 0) pick[i] = left.splice(j, 1)[0]; });
-    slots.forEach((pos, i) => { if (!pick[i] && left.length) pick[i] = left.shift(); });
+  const roleOpts = (pos, r) => Object.keys(rolesFor(pos)).map(x => `<option${x === r ? ' selected' : ''}>${esc(x)}</option>`).join('');
+  const focOpts = (pos, r, fo) => (rolesFor(pos)[r] || []).map(x => `<option${x === fo ? ' selected' : ''}>${esc(x)}</option>`).join('');
+  const drawSlots = (mod, chosen, roles) => {
+    const slots = slotsOf(mod), pick = Array(11).fill(''), left = chosen.map((id, i) => ({id, r: roles[i]})).filter(x => x.id), rl = Array(11).fill(null);
+    slots.forEach((pos, i) => { const j = left.findIndex(x => S.players.find(p => p.id === x.id)?.pos === pos); if (j >= 0){ const x = left.splice(j, 1)[0]; pick[i] = x.id; rl[i] = x.r; } });
+    slots.forEach((pos, i) => { if (!pick[i] && left.length){ const x = left.shift(); pick[i] = x.id; rl[i] = x.r; } });
     let k = 0;
     $('#luxi').innerHTML = linesOf(mod).map(l => `<div class="luline"><span class="lbl">${lineLabel(l)}</span><div class="lugrid">${l.map(pos => { const i = k++;
-      return `<label class="luslot"><span class="posb ${GRP[pos] || 'mid'}">${pos}</span><select class="luxi" id="luxi-${i}" data-pos="${pos}" aria-label="${pos}">${slotOpts(pos, pick[i])}</select></label>`; }).join('')}</div></div>`).join('');
-    f.querySelectorAll('.luxi').forEach(s => s.onchange = count); count();
+      const keep = rl[i] && rolesFor(pos)[rl[i].r] ? rl[i] : (prevRoles[pick[i] + '|' + pos] && rolesFor(pos)[prevRoles[pick[i] + '|' + pos].r] ? prevRoles[pick[i] + '|' + pos] : null);
+      const r = keep?.r || Object.keys(rolesFor(pos))[0], fo = (rolesFor(pos)[r] || []).includes(keep?.f) ? keep.f : (rolesFor(pos)[r] || [])[0];
+      return `<div class="luslot"><span class="posb ${GRP[pos] || 'mid'}">${pos}</span><select class="luxi" id="luxi-${i}" data-pos="${pos}" aria-label="${pos}">${slotOpts(pos, pick[i])}</select>
+        <div class="lurf"><select class="lurole" id="lurole-${i}" data-i="${i}" aria-label="Ruolo ${pos}">${roleOpts(pos, r)}</select><select class="lufoc" id="lufoc-${i}" aria-label="Compito ${pos}">${focOpts(pos, r, fo)}</select></div></div>`; }).join('')}</div></div>`).join('');
+    f.querySelectorAll('.luxi').forEach(s => s.onchange = refresh);
+    f.querySelectorAll('.lurole').forEach(s => s.onchange = () => { const i = s.dataset.i, pos = f.querySelector('#luxi-' + i).dataset.pos; f.querySelector('#lufoc-' + i).innerHTML = focOpts(pos, s.value, ''); });
+    refresh();
   };
-  drawSlots(L.module && LINES[L.module] ? L.module : '4-3-3', L.slots ? xi : xi);
-  $('#lumod').onchange = e => drawSlots(e.target.value, [...f.querySelectorAll('.luxi')].map(s => s.value));
+  /* panchina */
+  let benchSet = new Set(L.bench || []);
+  const drawBench = () => { const xiNow = new Set([...f.querySelectorAll('.luxi')].map(s => s.value).filter(Boolean));
+    [...benchSet].forEach(id => { if (xiNow.has(id)) benchSet.delete(id); });
+    $('#lubench').innerHTML = rs.filter(p => !xiNow.has(p.id)).map(p => `<label class="lubp${okP(p) ? '' : ' off'}"><input type="checkbox" value="${p.id}"${benchSet.has(p.id) ? ' checked' : ''}${okP(p) ? '' : ' disabled'}> <span class="posb ${GRP[p.pos] || 'mid'}">${p.pos}</span> ${esc(p.name)}${p.ovr ? ` <span class="sub">${p.ovr}</span>` : ''}</label>`).join('') || '<p class="sub">Nessun altro giocatore in rosa.</p>';
+    f.querySelectorAll('.lubench input').forEach(x => x.onchange = () => { if (x.checked && benchSet.size >= maxBench()){ x.checked = false; return toast(`Massimo ${maxBench()} in panchina.`); }
+      x.checked ? benchSet.add(x.value) : benchSet.delete(x.value); $('#lubcount').textContent = `${benchSet.size}/${maxBench()}`; refreshSubs(); });
+    $('#lubcount').textContent = `${benchSet.size}/${maxBench()}`; };
+  /* cambi: esce = titolari o panchina, entra = solo panchina */
+  const subOpts = (ids, val, empty) => `<option value="">${empty}</option>` + ids.map(id => `<option value="${id}"${id === val ? ' selected' : ''}>${esc(tag(rs.find(p => p.id === id) || {pos: '', name: pName(id)}))}</option>`).join('');
+  const refreshSubs = () => { const xiNow = [...f.querySelectorAll('.luxi')].map(s => s.value).filter(Boolean), b = [...benchSet];
+    f.querySelectorAll('.subrow').forEach(r => { const o = r.querySelector('.sout'), n = r.querySelector('.sin'), ov = o.value, nv = n.value;
+      o.innerHTML = subOpts([...xiNow, ...b], ov, 'Esce…'); n.innerHTML = subOpts(b, nv, b.length ? 'Entra…' : 'Prima scegli la panchina'); }); };
   const addSub = (s = {}) => {
     if (f.querySelectorAll('.subrow').length >= maxSubs()) return toast(`Massimo ${maxSubs()} cambi.`);
     const div = document.createElement('div'); div.className = 'subrow';
-    div.innerHTML = `<select class="sout" aria-label="Esce">${opts(s.out, 'Esce…')}</select><select class="sin" aria-label="Entra">${opts(s.in, 'Entra…')}</select>
+    div.innerHTML = `<select class="sout" aria-label="Esce"></select><select class="sin" aria-label="Entra"></select>
       <input class="smin" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="Min" aria-label="Minuto" value="${s.min || ''}"><button type="button" class="x" aria-label="Rimuovi cambio">×</button>`;
     div.querySelector('.x').onclick = () => div.remove();
-    $('#lusubs').appendChild(div);
+    $('#lusubs').appendChild(div); refreshSubs(); div.querySelector('.sout').value = s.out || ''; div.querySelector('.sin').value = s.in || '';
   };
+  /* calci piazzati: solo titolari */
+  const sp0 = {...(L.setp || {})};
+  const drawSetp = () => { const cur = {}; SETP.forEach(([k]) => { const e = f.querySelector('#sp-' + k); cur[k] = e ? e.value : sp0[k] || ''; });
+    const xiNow = [...f.querySelectorAll('.luxi')].map(s => s.value).filter(Boolean);
+    $('#lusetp').innerHTML = SETP.map(([k, l]) => `<div class="f"><label for="sp-${k}">${l}</label><select id="sp-${k}"><option value="">Scelta automatica</option>${xiNow.map(id => `<option value="${id}"${id === cur[k] ? ' selected' : ''}>${esc(pName(id))}</option>`).join('')}</select></div>`).join(''); };
+  const refresh = () => { const n = [...f.querySelectorAll('.luxi')].filter(s => s.value).length; $('#lucount').textContent = `${n}/11`; drawBench(); refreshSubs(); drawSetp(); };
+  drawSlots(L.module && LINES[L.module] ? L.module : '4-3-3', xi, L.roles || []);
+  f.querySelector('#lumod').onchange = e => { const xs = [...f.querySelectorAll('.luxi')], cur = xs.map(s => s.value), rr = xs.map((s, i) => ({r: f.querySelector('#lurole-' + i).value, f: f.querySelector('#lufoc-' + i).value}));
+    drawSlots(e.target.value, cur, rr); };
   $('#luadd').onclick = () => addSub();
-  $('#lureset').onclick = () => { f.querySelectorAll('.luxi').forEach(s => s.value = ''); $('#lusubs').innerHTML = ''; count(); toast('Distinta azzerata: ricomincia o salva la bozza'); };
-  $('#ludraft').onclick = async () => { try {
-      const xiD = [...f.querySelectorAll('.luxi')].map(s => s.value), subsD = [...f.querySelectorAll('.subrow')].map(r => ({out: r.querySelector('.sout').value, in: r.querySelector('.sin').value, min: Math.round(+r.querySelector('.smin').value || 0)})).filter(s => s.out || s.in || s.min);
-      const names = {}; [...xiD, ...subsD.map(s => s.in), ...subsD.map(s => s.out)].filter(Boolean).forEach(id => names[id] = luName(null, id));
-      await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, season: m.season, round: m.round, module: String(new FormData(f).get('lumod')),
-        xi: xiD, slots: [...f.querySelectorAll('.luxi')].map(s => s.dataset.pos), subs: subsD, names, draft: true, ts: now(), by: S.me || null});
-      dlg.close(); toast('Bozza salvata: la puoi completare e consegnare più tardi');
+  (L.subs || []).forEach(addSub);
+  $('#lureset').onclick = () => { f.querySelectorAll('.luxi').forEach(s => s.value = ''); benchSet = new Set(); $('#lusubs').innerHTML = ''; refresh(); toast('Distinta azzerata: ricomincia o salva la bozza'); };
+  $('#ludraft').onclick = async () => { try { const d = collect(), subs = d.subs.filter(s => s.out || s.in || s.min);
+      await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, true)); dlg.close(); toast('Bozza salvata: la puoi completare e consegnare più tardi');
     } catch (err){ toast(err.message || 'Bozza non salvata. Riprova.'); } };
   const del = $('#ludel'); if (del) del.onclick = async () => { try { await db.doc('lineups/' + luId(m.id, cid)).delete(); dlg.close(); toast('Distinta ritirata: risulta di nuovo mancante'); } catch (err){ toast(err.message || 'Operazione non riuscita.'); } };
-  (L.subs || []).forEach(addSub);
 }
+
 function lineupPick(m){
   const mine = [m.homeId, m.awayId].filter(canManage);
   if (mine.length === 1) return lineupModal(m, mine[0]);
@@ -1418,7 +1503,7 @@ function ensureChannel(){
 async function reload(col){
   const L = listeners[col]; if (!L) return;
   const fresh = new Map(); let from = 0;
-  for (;;){ const {data, error} = await sb.from('docs').select('id,data').eq('col', col).range(from, from + 999);
+  for (;;){ const {data, error} = await sb.from('docs').select('id,data').eq('col', col).order('id').range(from, from + 999);
     if (error){ L.onErr && L.onErr({code: error.message}); return; }
     data.forEach(r => fresh.set(r.id, r)); if (data.length < 1000) break; from += 1000; }
   L.map = fresh; L.ready = true; L.emit();
@@ -2265,7 +2350,8 @@ function prePrize(c, opp){
   const diff = opp.reduce((a, o) => a + clubStrength(o), 0) / opp.length - clubStrength(c);
   return Math.min(15 * M, Math.max(1 * M, roundM(5 * M * Math.exp(0.1 * diff))));
 }
-const preOvr = c => nf(Math.round(clubStrength(c) * 10) / 10);
+const preReady = () => !!S.loaded.players;
+const preOvr = c => preReady() ? nf(Math.round(clubStrength(c) * 10) / 10) : '…';
 function preDeadline(){
   const pk = prePicker(); if (!pk) return null;
   const order = S.pre.order || [], i = order.indexOf(pk);
@@ -2280,7 +2366,8 @@ function preMatches(g){
   const t = preMembers(g).map(c => c.id); if (t.length < 4) return [];
   return [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]].map(([a, b], i) => {
     const k = `${g}|${t[a]}|${t[b]}`, r = (S.pre.results || {})[k];
-    return {k, g, round: Math.floor(i / 2) + 1, h: t[a], a: t[b], played: !!r, hg: r?.hg ?? 0, ag: r?.ag ?? 0};
+    return {k, g, round: Math.floor(i / 2) + 1, h: t[a], a: t[b], played: !!r, hg: r?.hg ?? 0, ag: r?.ag ?? 0,
+      id: `pre${(S.pre.startedAt || 0).toString(36)}-${g}-${t[a]}-${t[b]}`, homeId: t[a], awayId: t[b], season: S.pre.season, pre: true};
   });
 }
 function preTable(g){
@@ -2293,6 +2380,7 @@ function preTable(g){
     const xg = m.h === x.c.id ? m.hg : m.ag, yg = m.h === x.c.id ? m.ag : m.hg; return yg - xg; };
   return rows.sort((x, y) => y.pts - x.pts || h2h(x, y) || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf);
 }
+const preM = k => PRE_G.flatMap(preMatches).find(m => m.k === k);
 const preWinner = g => { const w = S.pre?.winners?.[g]; return w ? club(w) : (preTable(g)[0]?.c || null); };
 function preTie(g){ const t = preTable(g); if (t.length < 2) return false; const [a, b] = t;
   if (a.pts !== b.pts || (a.gf - a.ga) !== (b.gf - b.ga) || a.gf !== b.gf) return false;
@@ -2309,6 +2397,7 @@ async function preStart(){
 }
 async function preJoin(g){
   const mc = myClub(); if (!mc) fail('Devi allenare una squadra.');
+  if (!preReady()) fail('Sto ancora caricando i giocatori: riprova tra qualche secondo.');
   if (!preCanPick(mc.id)) fail('Non è il tuo turno di scelta.');
   if (preMembers(g).length >= 4) fail('Questo girone è già pieno.');
   const opp = preMembers(g), pz = prePrize(mc, opp);
@@ -2342,6 +2431,7 @@ function preResult(k){
     m.played ? 'Aggiorna' : 'Salva');
 }
 async function preClose(){
+  if (!preReady()) fail('Sto ancora caricando i giocatori: riprova tra qualche secondo.');
   const ms = PRE_G.flatMap(preMatches); if (ms.some(m => !m.played)) fail('Mancano ancora dei risultati.');
   const sel = g => { const t = preTable(g); return `<div class="f"><label for="pw${g}">Vincitore Girone ${g}${preTie(g) ? ' · <b>parità perfetta: scegli tu (rigori)</b>' : ''}</label><select id="pw${g}" name="pw${g}">${t.map((r, i) => `<option value="${r.c.id}"${i === 0 ? ' selected' : ''}>${esc(r.c.name)} · ${r.pts} pt</option>`).join('')}</select></div>`; };
   openModal('Chiudi precampionato', `<p class="sub">Il premio va a chi arriva primo nel proprio girone e viene accreditato subito nel budget. Controlla i vincitori: in caso di parità perfetta decide il commissario (per esempio con i rigori).</p>${PRE_G.map(sel).join('')}`,
@@ -2360,12 +2450,13 @@ function preGroupCard(g, mc){
   const mine = mc && preOf(mc) === g;
   const prizeFor = c => prePrize(c, mem.filter(x => x.id !== c.id));
   let my = '';
-  if (mc && !preOf(mc) && !all){ const pz = prePrize(mc, mem);
+  if (mc && !preOf(mc) && !all && !preReady()) my = '<div class="preprize"><span class="sub">Calcolo del premio… (sto caricando le rose)</span></div>';
+  else if (mc && !preOf(mc) && !all){ const pz = prePrize(mc, mem);
     my = `<div class="preprize">${mem.length ? `Se entri e arrivi primo: <b>${fmtM(pz)}</b>${full ? '' : ' <span class="sub">(con le avversarie di ora)</span>'}` : '<span class="sub">Girone vuoto: il premio dipende da chi entrerà</span>'}</div>`; }
   const tbl = all ? preTable(g) : null, win = done ? preWinner(g) : null;
   return `<div class="panel prg${mine ? ' mine' : ''}"><div class="ph"><h3>Girone ${g}</h3><span class="pill ${full ? 'good' : 'info'}">${mem.length}/4</span></div>
-    ${all ? `<table class="tbl"><thead><tr><th style="text-align:left">Squadra</th><th>G</th><th>DR</th><th>Pt</th><th>Premio 1°</th></tr></thead><tbody>${tbl.map((r, i) => `<tr${win && win.id === r.c.id ? ' class="z-top"' : ''}><td><span class="prt">${crest(r.c)}<b>${esc(r.c.name)}</b>${win && win.id === r.c.id ? ' 🏆' : ''}</span></td><td class="num">${r.p}</td><td class="num">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="num"><b>${r.pts}</b></td><td class="num">${fmtM(prizeFor(r.c))}</td></tr>`).join('')}</tbody></table>
-      <div class="prms">${preMatches(g).map(m => `<div class="prm"><span class="sub">G${m.round}</span><span class="r">${esc(club(m.h)?.name)}</span><b class="num">${m.played ? `${m.hg} – ${m.ag}` : '–'}</b><span>${esc(club(m.a)?.name)}</span>${S.comm && !done ? `<button class="btn sm ghost" data-act="pre-res" data-id="${m.k}">${m.played ? 'Modifica' : 'Risultato'}</button>` : ''}</div>`).join('')}</div>`
+    ${all ? `<table class="tbl"><thead><tr><th style="text-align:left">Squadra</th><th>G</th><th>DR</th><th>Pt</th><th>Premio 1°</th></tr></thead><tbody>${tbl.map((r, i) => `<tr${win && win.id === r.c.id ? ' class="z-top"' : ''}><td><span class="prt">${crest(r.c)}<b>${esc(r.c.name)}</b>${win && win.id === r.c.id ? ' 🏆' : ''}</span></td><td class="num">${r.p}</td><td class="num">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="num"><b>${r.pts}</b></td><td class="num">${preReady() ? fmtM(prizeFor(r.c)) : '…'}</td></tr>`).join('')}</tbody></table>
+      <div class="prms">${preMatches(g).map(m => `<div class="prm"><span class="sub">G${m.round}</span><span class="r">${esc(club(m.h)?.name)}</span><b class="num">${m.played ? `${m.hg} – ${m.ag}` : '–'}</b><span>${esc(club(m.a)?.name)}</span><span class="prbt">${!m.played && (canManage(m.h) || canManage(m.a)) ? `<button class="btn sm${[m.h, m.a].filter(canManage).every(c => luDone(m.id, c)) ? ' ghost' : ' primary'}" data-act="pre-lu" data-id="${m.k}">Distinta</button>` : ''}${S.comm || m.played ? `<button class="btn sm ghost" data-act="pre-lus" data-id="${m.k}" title="Distinte delle due squadre">${(luDone(m.id, m.h) ? 1 : 0) + (luDone(m.id, m.a) ? 1 : 0)}/2</button>` : ''}${S.comm && !done ? `<button class="btn sm ghost" data-act="pre-res" data-id="${m.k}">${m.played ? 'Modifica' : 'Risultato'}</button>` : ''}</span></div>`).join('')}</div>`
     : `<div class="list">${mem.map(c => `<div class="li"><span class="prt">${crest(c)}<b>${esc(c.name)}</b></span><span class="sub" style="margin-left:auto">${DIVS[divOf(c)] || ''} · forza ${preOvr(c)}</span></div>`).join('') || '<p class="sub">Ancora nessuna squadra.</p>'}
       ${Array.from({length: 4 - mem.length}, () => '<div class="li prfree"><span class="sub">Posto libero</span></div>').join('')}</div>${my}
       ${can && !full ? `<button class="btn primary hbtn" data-act="pre-join" data-id="${g}" style="margin-top:10px">Entra nel Girone ${g}</button>` : ''}`}
@@ -2383,7 +2474,7 @@ function viewPre(){
     <p class="sub">4 gironi da 4, solo andata (3 partite a testa). Vince il premio <b>solo chi arriva primo</b>. Il premio dipende da quanto sono forti le avversarie rispetto alla tua squadra (forza = media dei 16 migliori della rosa): da ${fmtM(1 * M)} a ${fmtM(15 * M)}. Le partite non contano per statistiche, cartellini e squalifiche del campionato.</p>
     ${myTurn ? `<div class="notice">⏱️ <b>Tocca a te!</b> Scegli il girone in cui entrare${dl ? ` entro ${preWhen(dl)}` : ''}.</div>` : ''}
     <p>${step}</p>
-    ${!all ? `<details><summary class="sub">Ordine di scelta (B e A alternate)</summary><ol class="drawlist">${order.map((id, i) => { const c = club(id), g = preOf(c);
+    ${!all ? `<details><summary class="sub">Ordine di scelta (B e A alternate)${pk ? ` · gli altri nomi si scoprono turno dopo turno` : ''}</summary><ol class="drawlist">${(S.comm || !pk ? order : order.slice(0, order.indexOf(pk) + 1)).map((id, i) => { const c = club(id), g = preOf(c);
       return `<li class="${id === pk ? 'drawturn' : ''}"><span class="dn">${i + 1}</span><b>${esc(c?.name || '?')}</b><span class="sub" style="margin-left:auto">${g ? 'Girone ' + g : id === pk ? 'sta scegliendo…' : sk.includes(id) ? 'turno saltato' : 'in attesa'}</span></li>`; }).join('')}</ol></details>` : ''}
   </div>
   <section class="prgrid">${PRE_G.map(g => preGroupCard(g, mc)).join('')}</section>`;
@@ -2429,6 +2520,8 @@ document.addEventListener('click', async e => {
       case 'pre-skip': await preSkip(); break;
       case 'pre-fill': await preFill(); break;
       case 'pre-res': preResult(id); break;
+      case 'pre-lu': lineupPick(preM(id)); break;
+      case 'pre-lus': viewLineups(preM(id)); break;
       case 'pre-close': await preClose(); break;
       case 'pre-reset': await preReset(); break;
       case 'draw-next': await drawNext(false); break;
