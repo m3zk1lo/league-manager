@@ -1274,11 +1274,18 @@ function viewLineups(m){
   const block = c => { const L = lineupOf(m.id, c.id), can = canManage(c.id) && !m.played;
     const body = canSeeLineup(m, c.id) || canManage(c.id) ? (L ? (L.draft ? '<p class="muted">Bozza salvata, non ancora consegnata.</p>' + luSummary(L, true) : (L.tpl ? '<p class="sub">Formazione tipo</p>' : '') + luSummary(L, true)) : '<p class="muted">Non ancora consegnata.</p>')
       : `<p class="muted">${luDone(m.id, c.id) ? 'Consegnata. La vedrai dopo aver consegnato la tua distinta.' : 'Non ancora consegnata.'}</p>`;
-    return `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b>${can ? ` <button type="button" class="btn sm" data-luedit="${c.id}">Modifica</button>` : ''}</div>${body}</div>`; };
+    const def = S.comm && !m.played && !luDone(m.id, c.id), mc = missCount(c.id);
+    const undo = S.comm && !m.played && L?.def;
+    return `<div class="evcol"><div class="evhead"><b>${esc(c.name)}</b>${can ? ` <button type="button" class="btn sm" data-luedit="${c.id}">${L?.def ? 'Inserisci distinta' : 'Modifica'}</button>` : ''}</div>${body}
+      ${def ? `<button type="button" class="btn sm ghost" data-ludef="${c.id}" style="margin-top:8px">Non consegnata: default FC 27</button>` : ''}
+      ${undo ? `<button type="button" class="btn sm ghost" data-luundo="${c.id}" style="margin-top:8px">Annulla default</button>` : ''}
+      ${S.comm && mc ? `<p class="sub" style="margin-top:6px">Distinte mancate: <b>${mc}/${MISS_MAX}</b></p>` : ''}</div>`; };
   const title = m.pre ? `Distinte · Girone ${m.g} · Giornata ${m.round}` : `Distinte · Giornata ${m.round}`;
   openModal(title, `<div class="evcols lu2">${block(H)}${block(A)}</div>`, async () => {}, 'Chiudi');
   $('#mcancel').hidden = true;
   dlg.querySelectorAll('[data-luedit]').forEach(b => b.onclick = () => { dlg.close(); lineupModal(m, b.dataset.luedit); });
+  dlg.querySelectorAll('[data-ludef]').forEach(b => b.onclick = () => { dlg.close(); luDefault(m, b.dataset.ludef); });
+  dlg.querySelectorAll('[data-luundo]').forEach(b => b.onclick = async () => { dlg.close(); await db.doc('lineups/' + luId(m.id, b.dataset.luundo)).delete(); toast('Distinta di default annullata'); });
 }
 /* ---------- TATTICHE FC 27: costruzione, approccio difensivo, ruoli con compito, panchina, calci piazzati ---------- */
 const TACT_BUILD = ['Passaggi corti', 'Equilibrato', 'Contropiede'];
@@ -1321,14 +1328,27 @@ async function luFreeze(m){
   }
 }
 function tplPanel(c){
-  const can = canManage(c.id), T = c.tpl, ok = T && tplFor(c.id, null);
-  return `<div class="panel"><div class="ph"><h3>Formazione tipo</h3>${can ? `<button class="btn sm ${T ? '' : 'primary'}" data-act="tpl-edit" data-id="${c.id}">${T ? 'Modifica' : 'Imposta'}</button>` : ''}</div>
+  const can = canManage(c.id), T = c.tpl, ok = T && tplFor(c.id, null), mc = missCount(c.id);
+  return `${mc && (can || S.comm) ? `<p class="notice">⚠️ Distinte non consegnate: <b>${mc}/${MISS_MAX}</b>. Alla ${MISS_MAX}ª l’allenatore perde la panchina. Imposta la formazione tipo per non saltarne più.</p>` : ''}<div class="panel"><div class="ph"><h3>Formazione tipo</h3>${can ? `<button class="btn sm ${T ? '' : 'primary'}" data-act="tpl-edit" data-id="${c.id}">${T ? 'Modifica' : 'Imposta'}</button>` : ''}</div>
     <p class="sub">La formazione tipo (modulo, tattica, ruoli, panchina, cambi e calci piazzati) vale in automatico come distinta per <b>tutte le partite</b>, precampionato compreso. Se per una partita vuoi cambiare qualcosa, apri la sua distinta e modificala: le altre restano con la formazione tipo.</p>
     ${T ? (ok ? '' : '<p class="notice">⚠️ Un titolare della formazione tipo non è più disponibile (ceduto, infortunato o squalificato): finché non la sistemi, le partite risultano senza distinta.</p>') + (can || S.comm ? luSummary(T, true) : '<p class="sub">Impostata ✓</p>') : '<p class="sub">Non ancora impostata.</p>'}</div>`;
 }
 function tplEdit(cid){ lineupModal({id: 'tpl', round: '', season: season(), homeId: cid, awayId: null, tplOnly: true}, cid); }
 
+const MISS_MAX = 5;
+const missCount = cid => { const c = club(cid); return c?.managerId ? S.lineups.filter(l => l.clubId === cid && l.missed && l.mgr === c.managerId).length : 0; };
+function luDefault(m, cid){
+  const c = club(cid), n = missCount(cid) + 1, who = c.managerId ? esc(mgrName(c)) : 'nessun allenatore';
+  confirmBox('Distinta non consegnata', `<b>${esc(c.name)}</b> giocherà con la <b>formazione di default di FC 27</b>.<br>Per ${who} è la distinta mancata numero <b>${n}</b> di ${MISS_MAX}${n >= MISS_MAX ? ': alla conferma perde la panchina.' : '.'}`, 'Conferma', async () => {
+    await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, round: m.round, season: m.season, def: true, missed: true, mgr: c.managerId || null, xi: [], draft: false, ts: now(), by: S.me || null});
+    if (c.managerId && n >= MISS_MAX){
+      await db.doc('clubs/' + cid).update({managerId: null});
+      toast(`${mgrName(c)} ha saltato ${MISS_MAX} distinte: tolto dalla panchina di ${c.name}`, 7000);
+    } else toast(`Distinta di default inserita · mancate ${n}/${MISS_MAX}`, 5000);
+  });
+}
 function luSummary(L, compact){
+  if (L?.def) return '<p class="notice">Distinta non consegnata: gioca con la <b>formazione di default di FC 27</b>.</p>';
   if (!L) return '<p class="muted">Distinta non consegnata.</p>';
   const subs = (L.subs || []).slice().sort((a, b) => a.min - b.min), T = L.tactic, R = L.roles || [];
   const roleTxt = i => R[i]?.r ? ` <span class="sub">(${esc(R[i].r)}${R[i].f ? ' · ' + esc(R[i].f) : ''})</span>` : '';
