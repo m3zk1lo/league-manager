@@ -550,7 +550,7 @@ function viewFree(){
   const mc = myClub(), all = freeAgents(), fa = faFilter(all), {mins, step} = AUC();
   const au = openAuctions().sort((a, b) => a.endsAt - b.endsAt);
   const done = S.auctions.filter(a => a.status !== 'open').sort((a, b) => (b.closedTs || 0) - (a.closedTs || 0)).slice(0, 12);
-  return `${window_() ? '' : '<div class="notice">Mercato chiuso: niente nuove aste né rilanci finché il commissario non lo riapre.</div>'}
+  return `${window_() ? mkNotice() : '<div class="notice">Mercato chiuso: niente nuove aste né rilanci finché il commissario non lo riapre.</div>'}
   <section class="grid2"><div class="stack">
     <div class="panel"><div class="ph"><h2>Aste in corso</h2><span class="sub">Durata ${mins} minuti · rilancio minimo ${fmtM(step)}</span></div>
       ${au.length ? `<div class="list">${au.map(a => auctionRow(a, mc)).join('')}</div>` : '<p class="muted">Nessuna asta aperta. Scegli uno svincolato qui sotto e avvia un’asta con la tua offerta di partenza.</p>'}</div>
@@ -733,7 +733,7 @@ function viewMarket(){
   const closed = S.offers.filter(o => o.status !== 'open').sort((a, b) => b.ts - a.ts).slice(0, 10);
   const pool = S.players.filter(p => p.clubId && p.clubId !== mid && !p.loan && (S.mktPos === 'all' || GRP[p.pos] === S.mktPos)).sort((a, b) => (b.ovr||0) - (a.ovr||0)).slice(0, 40);
   const tr = [...S.transfers].sort((a, b) => b.ts - a.ts);
-  return `${window_() ? '' : '<div class="notice">Sessione di mercato chiusa: le trattative ripartono quando il commissario riapre la finestra.</div>'}
+  return `${window_() ? mkNotice() : '<div class="notice">Sessione di mercato chiusa: le trattative ripartono quando il commissario riapre la finestra.</div>'}
   <section class="grid2">
     <div class="stack">
       <div class="panel"><div class="ph"><h3>Le tue trattative</h3><span class="sub">${mc ? esc(mc.name) : 'Non alleni nessuna società'}</span></div>
@@ -804,6 +804,8 @@ function viewLeague(){
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
+          <button class="btn sm" data-act="mkt-edit">Mercato equilibrato A/B${MK().on ? ' · attivo' : ''}</button>
+          ${MK().on ? '<button class="btn sm" data-act="mkt-start">Avvia sessione di mercato</button>' : ''}
           <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
           <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
@@ -983,12 +985,14 @@ function cpuBuy(cid){
       if (!window_()) fail('Il mercato è chiuso.');
       const p = readPlayer(fd), L = readLoan(fd), fee = num(fd, 'fee') * M, from = String(fd.get('from')).trim() || fail('Indica il club di provenienza.');
       if (fee > budget(c)) fail('Budget insufficiente per questa operazione.');
+      mkGuard(c, p.ovr, fee);
       if (wageUsed(cid) + p.wage * (isLoan(L.type) ? L.wagePct : 100) / 100 > (c.wage0 || 0)) fail('L’ingaggio supera il monte ingaggi disponibile.');
       squadRoom(cid);
       const loan = isLoan(L.type) ? loanDoc(L, null, from) : null;
       const ref = await db.collection('players').add({...p, clubId: cid, injured: false, ...(loan ? {loan} : {})});
       await Promise.all([fee ? ledger(cid, -fee, `${loan ? 'Prestito' : 'Acquisto'} ${p.name} da ${from}`) : null,
-        logTransfer({playerId: ref.id, playerName: p.name, fromLabel: from, toLabel: c.name, fromClubId: null, toClubId: cid, fee, kind: 'cpu-in', mode: L.type, buyout: loan?.buyout || 0})]);
+        logTransfer({playerId: ref.id, playerName: p.name, fromLabel: from, toLabel: c.name, fromClubId: null, toClubId: cid, fee, kind: 'cpu-in', mode: L.type, buyout: loan?.buyout || 0, ovr: p.ovr || 0})]);
+      await mkTax(c, fee, p.name);
       toast(loan ? `${p.name} arriva in prestito al ${c.name}` : `${p.name} è un nuovo giocatore del ${c.name}`);
     }, 'Registra operazione');
   wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo pagato (milioni €)');
@@ -1017,6 +1021,61 @@ function sellPlayer(p){
     }, 'Conferma', true);
   wireLoan(f, 'Incasso dal prestito (milioni €)', 'Incasso (milioni €)');
 }
+/* ---------- mercato equilibrato ---------- */
+const MK = () => { const m = S.settings?.mkt || {}; return {on: !!m.on, bonusB: m.bonusB ?? 10 * M, tax: m.tax ?? 20, prio: m.prio ?? 48, maxTop: m.maxTop ?? 2, topOvr: m.topOvr ?? 82, start: m.start || 0}; };
+const mkHasB = () => S.clubs.some(c => divOf(c) === 'B');
+const mkLeft = () => { const k = MK(); return k.on && k.start ? k.start + k.prio * 36e5 - now() : 0; };
+const mkOvr = id => S.players.find(p => p.id === id)?.ovr || 0;
+function mkTop(cid, exceptAuc){
+  const k = MK();
+  return S.transfers.filter(t => t.toClubId === cid && (t.ts || 0) >= k.start && (t.ovr ?? mkOvr(t.playerId)) >= k.topOvr).length
+    + openAuctions().filter(a => a.id !== exceptAuc && a.highClubId === cid && mkOvr(a.playerId) >= k.topOvr).length;
+}
+function mkGuard(c, ovr, fee, exceptAuc){
+  const k = MK(); if (!c || !k.on || divOf(c) !== 'A' || !mkHasB()) return;
+  const left = mkLeft();
+  if (left > 0) fail(`Mercato equilibrato: nelle prime ${k.prio} ore comprano solo le squadre di Serie B. La Serie A potrà muoversi tra ${timeLeft(left)}.`);
+  if ((ovr || 0) >= k.topOvr && mkTop(c.id, exceptAuc) >= k.maxTop) fail(`Mercato equilibrato: in questa sessione la Serie A può prendere al massimo ${k.maxTop} giocatori con overall ${k.topOvr} o più, e ${c.name} li ha già presi.`);
+  if (fee && fee * (1 + k.tax / 100) > budget(c)) fail(`Con la tassa Serie A del ${k.tax}% questo acquisto ti costa ${fmtM(fee * (1 + k.tax / 100))}: budget insufficiente.`);
+}
+async function mkTax(c, fee, what){
+  const k = MK(); if (!c || !k.on || divOf(c) !== 'A' || !fee || !mkHasB()) return;
+  const tax = Math.round(fee * k.tax / 100), bs = S.clubs.filter(x => divOf(x) === 'B'); if (!tax || !bs.length) return;
+  const share = Math.floor(tax / bs.length);
+  await Promise.all([ledger(c.id, -tax, `Tassa mercato Serie A (${k.tax}%) su ${what}`), ...bs.map(b => ledger(b.id, share, `Fondo Serie B: quota tassa ${c.name} su ${what}`))]);
+}
+function mkNotice(){
+  const k = MK(); if (!k.on || !mkHasB()) return '';
+  const left = mkLeft();
+  return `<div class="notice"><b>Mercato equilibrato</b> · la Serie A paga una tassa del <b>${k.tax}%</b> su ogni acquisto, che va al Fondo della Serie B · max <b>${k.maxTop}</b> acquisti con overall ${k.topOvr}+ per squadra di A a sessione${k.bonusB ? ` · bonus Serie B di <b>${fmtM(k.bonusB)}</b> a inizio sessione` : ''}${left > 0 ? `<br>⏳ <b>Priorità Serie B</b>: la Serie A potrà comprare tra <b>${timeLeft(left)}</b>.` : ''}</div>`;
+}
+function mkModal(){
+  const k = MK();
+  openModal('Mercato equilibrato A/B', `<p class="sub">Regole per riequilibrare il mercato tra Serie A e Serie B. Valgono solo se ci sono squadre in Serie B.</p>
+    <div class="fgrid">
+    <div class="f full"><label><input type="checkbox" name="on"${k.on ? ' checked' : ''}> Attiva il mercato equilibrato</label></div>
+    ${fld('bonus', 'Bonus Serie B a inizio sessione (milioni €)', `type="number" min="0" step="0.5" value="${k.bonusB / M}"`)}
+    ${fld('tax', 'Tassa sugli acquisti della Serie A (%)', `type="number" min="0" max="100" step="1" value="${k.tax}"`)}
+    ${fld('prio', 'Ore di priorità alla Serie B', `type="number" min="0" max="240" step="1" value="${k.prio}"`)}
+    ${fld('maxTop', 'Max acquisti “top” per squadra di A', `type="number" min="0" max="20" step="1" value="${k.maxTop}"`)}
+    ${fld('topOvr', 'Un giocatore è “top” da overall', `type="number" min="50" max="99" step="1" value="${k.topOvr}"`)}
+    </div>
+    <p class="sub">«Avvia sessione» riapre il mercato, fa partire le ore di priorità, azzera il conteggio dei “top” e accredita il bonus a ogni squadra di Serie B.</p>`,
+    async fd => {
+      const mkt = {on: fd.get('on') === 'on', bonusB: Math.max(0, num(fd, 'bonus')) * M, tax: Math.min(100, Math.max(0, num(fd, 'tax'))), prio: Math.max(0, num(fd, 'prio')),
+        maxTop: Math.max(0, Math.round(num(fd, 'maxTop'))), topOvr: Math.round(num(fd, 'topOvr')) || 82, start: k.start || 0};
+      await db.doc('league/settings').update({mkt}); toast('Regole del mercato salvate');
+    }, 'Salva');
+}
+function mkStart(){
+  const k = MK(), bs = S.clubs.filter(c => divOf(c) === 'B');
+  if (!k.on) return toast('Prima attiva il mercato equilibrato.');
+  confirmBox('Avvia sessione di mercato', `Il mercato si apre. Per ${k.prio} ore comprano solo le ${bs.length} squadre di Serie B${k.bonusB ? `, che ricevono un bonus di ${fmtM(k.bonusB)} a testa` : ''}.`, 'Avvia', async () => {
+    await db.doc('league/settings').update({windowOpen: true, mkt: {...(S.settings.mkt || {}), start: now()}});
+    if (k.bonusB) await Promise.all(bs.map(b => ledger(b.id, k.bonusB, 'Bonus mercato Serie B')));
+    toast('Sessione di mercato avviata');
+  });
+}
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -1029,6 +1088,7 @@ function makeOffer(p){
       if (!window_()) fail('Il mercato è chiuso.');
       const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd);
       if (fee > budget(mc)) fail('Non hai budget sufficiente per questa offerta.');
+      mkGuard(mc, p.ovr, fee);
       if (S.offers.some(o => o.status === 'open' && o.playerId === p.id && o.buyerId === mc.id)) fail('Hai già una trattativa aperta per questo giocatore.');
       await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
       toast('Offerta inviata');
@@ -1078,6 +1138,7 @@ async function acceptOffer(o){
     if (!window_()) fail('Il mercato è chiuso.');
     if (!p || p.clubId !== o.sellerId || !B || !Se) { await db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null}); fail('Il giocatore non è più disponibile: trattativa scaduta.'); }
     if (o.fee > budget(B)) fail(`${B.name} non ha più budget sufficiente.`);
+    if (MK().on && divOf(B) === 'A' && mkLeft() > 0) fail('Mercato equilibrato: la Serie A non può ancora concludere acquisti (priorità Serie B).');
     const loan = isLoan(o.type);
     if (p.loan) fail('Il giocatore è già in prestito: trattativa non valida.');
     if (wageUsed(B.id) + o.wage * (loan ? (o.wagePct ?? 100) : 100) / 100 > (B.wage0 || 0)) fail(`L’ingaggio supera il monte ingaggi di ${B.name}.`);
@@ -1088,6 +1149,7 @@ async function acceptOffer(o){
       o.fee ? ledger(B.id, -o.fee, `${what} ${p.name} da ${Se.name}`) : null, o.fee ? ledger(Se.id, o.fee, `${whatS} ${p.name} a ${B.name}`) : null,
       logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: B.name, fromClubId: Se.id, toClubId: B.id, fee: o.fee, kind: 'user', mode: o.type || 'transfer', buyout: o.buyout || 0}),
       ...S.offers.filter(x => x.id !== o.id && x.playerId === p.id && x.status === 'open').map(x => db.doc('offers/' + x.id).update({status: 'expired', ts: now(), actorClub: null}))]);
+    await mkTax(B, o.fee, p.name);
     toast(`Affare fatto: ${p.name} al ${B.name}${loan ? ' in prestito' : ''}`);
   } catch (e){ toast(e.message || 'Operazione non riuscita.'); }
 }
@@ -1111,7 +1173,7 @@ function startAuction(p){
       const amt = Math.max(0, num(fd, 'amt') * M), t = now();
       if (amt < (p.value || 0) - 1) fail(`L’offerta di partenza non può essere sotto il valore del giocatore (${fmtM(p.value || 0)}).`);
       const join = !!mc && (!S.comm || fd.get('join') === 'on');
-      if (join) canAfford(mc, amt, p.wage);
+      if (join){ canAfford(mc, amt, p.wage); mkGuard(mc, p.ovr, amt); }
       await db.doc(`auctions/${p.id}-${t}`).set({playerId: p.id, playerName: p.name, startedBy: join ? mc.id : null, startTs: t, endsAt: t + mins * 6e4, base: amt,
         highBid: amt, highClubId: join ? mc.id : null, bids: join ? [{c: mc.id, amt, ts: t}] : [], status: 'open', season: season()});
       toast(`Asta avviata: ${p.name}, termina tra ${timeLeft(mins * 6e4)}`);
@@ -1136,6 +1198,7 @@ function bidAuction(a){
       if (cur.sellerClubId === mc.id) fail('Non puoi fare offerte per un tuo giocatore.');
       if (amt < minOf(cur) - 1) fail(`L’offerta minima ora è ${fmtM(minOf(cur))}.`);
       canAfford(mc, amt, p?.wage, a.id);
+      mkGuard(mc, p?.ovr, amt, a.id);
       const t = now(), endsAt = cur.endsAt - t < SNIPE ? t + SNIPE : cur.endsAt;
       await ref.update({highBid: amt, highClubId: mc.id, bids: [...(cur.bids || []), {c: mc.id, amt, ts: t}], endsAt});
       toast(`Sei in testa per ${a.playerName}`);
@@ -1153,14 +1216,16 @@ async function closeAuction(a){
     await ref.update({status: 'closed', closedTs: now()});
     await db.doc('players/' + p.id).update({clubId: w.id});
     await Promise.all([ledger(w.id, -cur.highBid, `Asta vinta: ${p.name} dal ${sc.name}`), ledger(sc.id, cur.highBid, `Asta: ${p.name} venduto al ${w.name}`),
-      logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: w.name, fromClubId: sc.id, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction'})]);
+      logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: w.name, fromClubId: sc.id, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction', ovr: p.ovr || 0})]);
+    await mkTax(w, cur.highBid, p.name);
     return;
   }
   if (!p || p.clubId || p.loan || !w){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta' : 'Giocatore non più disponibile'}); return; }
   await ref.update({status: 'closed', closedTs: now()});
   await db.doc('players/' + p.id).update({clubId: w.id, injured: false});
   await Promise.all([cur.highBid ? ledger(w.id, -cur.highBid, `Asta vinta: ${p.name}`) : null,
-    logTransfer({playerId: p.id, playerName: p.name, fromLabel: 'Svincolato', toLabel: w.name, fromClubId: null, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction'})]);
+    logTransfer({playerId: p.id, playerName: p.name, fromLabel: 'Svincolato', toLabel: w.name, fromClubId: null, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction', ovr: p.ovr || 0})]);
+  await mkTax(w, cur.highBid, p.name);
 }
 const closing = new Set();
 function autoClose(){
@@ -2589,7 +2654,7 @@ function viewPre(){
 const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -2675,6 +2740,8 @@ document.addEventListener('click', async e => {
       case 'obj-del': { const c = club(id); await db.doc('clubs/' + id).update({objectives: (c.objectives || []).filter(x => x.id !== b.dataset.o)}); break; }
       case 'adjust': { const c = club(id); openModal(`Rettifica budget · ${c.name}`, `<div class="fgrid">${fld('amt', 'Importo (milioni €, negativo per togliere)', 'type="number" step="0.1" required')}${fld('why', 'Motivo', 'required maxlength="80" placeholder="Es. Sponsor maglia"')}</div>`,
         async fd => { const a = num(fd, 'amt') * M || fail('Inserisci un importo.'); await ledger(id, a, String(fd.get('why')).trim() || 'Rettifica del commissario'); toast('Budget aggiornato'); }); break; }
+      case 'mkt-edit': mkModal(); break;
+      case 'mkt-start': mkStart(); break;
       case 'window': await db.doc('league/settings').update({windowOpen: !window_()}); toast(window_() ? 'Mercato chiuso' : 'Mercato aperto'); break;
       case 'export': exportSQL(); break;
       case 'account': if (S.me) confirmBox('Esci', 'Vuoi uscire dal tuo account?', 'Esci', async () => { await sb.auth.signOut(); location.reload(); }); else authModal(); break;
