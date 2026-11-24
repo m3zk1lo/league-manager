@@ -754,14 +754,14 @@ function transferRow(t){
 
 function viewFixtures(){
   const ri = roundInfo();
-  if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Il commissario lo genera in automatico da Lega oppure lo crea a mano, partita per partita.', S.comm ? '<a class="btn primary" href="#lega">Genera da Lega</a> <button class="btn" data-act="fx-add">Crea a mano</button>' : '');
+  if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Il commissario lo genera in automatico da Lega oppure lo crea a mano, partita per partita.', S.comm ? '<button class="btn primary" data-act="fx-round">Inserisci giornata</button> <button class="btn" data-act="fx-add">Aggiungi partita</button>' : '');
   const r = S.round && S.round <= ri.total ? S.round : (ri.cur || ri.total);
   const ms = leagueMatches(curDiv()).filter(m => m.round === r);
   const half = ri.total / 2;
   const chips = Array.from({length: ri.total}, (_, i) => i + 1).map(x => {
     const done = leagueMatches(curDiv()).filter(m => m.round === x).every(m => m.played);
     return `<button class="chip${done ? ' done' : ''}" aria-pressed="${x === r}" data-act="round" data-id="${x}">${x}</button>`; }).join('');
-  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="row"><span class="sub">Stagione ${season()} · ${ri.total} giornate</span>${S.comm ? '<button class="btn sm" data-act="fx-add">Aggiungi partita</button>' : ''}</span></div>
+  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="row"><span class="sub">Stagione ${season()} · ${ri.total} giornate</span>${S.comm ? '<button class="btn sm" data-act="fx-round">Inserisci giornata</button> <button class="btn sm" data-act="fx-add">Aggiungi partita</button>' : ''}</span></div>
     <div class="chips" role="group" aria-label="Scegli giornata">${chips}</div>
     <div style="margin-top:12px">${ms.map(fixture).join('')}</div>
     <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
@@ -914,6 +914,7 @@ function viewLeague(){
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
           <button class="btn sm" data-act="mkt-edit">Mercato equilibrato A/B${MK().on ? ' · attivo' : ''}</button>
           ${MK().on && (MK().prio || MK().maxTop) ? '<button class="btn sm" data-act="mkt-start">Avvia sessione di mercato</button>' : ''}
+          <button class="btn sm" data-act="cpu-clubs">Squadre CPU Serie A e B</button>
           <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
           <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
@@ -1210,6 +1211,7 @@ function newsItems(){
   S.transfers.filter(t => t.kind === 'cpu-in' || t.kind === 'cpu-out').forEach(t => out.push({ts: t.ts || 0, ic: t.kind === 'cpu-in' ? '✈️' : '👋',
     html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}` : `Cessione · <b>${esc(t.playerName)}</b>: <b>${esc(t.fromLabel)}</b> → ${esc(t.toLabel || 'svincolato')}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
   out.push(...cpuNews());
+  try { out.push(...lgNews()); } catch {}
   return out.sort((a, b) => b.ts - a.ts);
 }
 const newsWhen = ts => { const d = now() - ts; if (d < 6e4) return 'ora'; if (d < 36e5) return Math.floor(d / 6e4) + ' min fa'; if (d < 864e5) return Math.floor(d / 36e5) + ' h fa';
@@ -1446,8 +1448,19 @@ const takenNames = () => new Set(S.players.filter(p => p.clubId || p.loan || p.f
 const freeList = () => S.players.filter(p => !p.clubId && !p.loan && p.freeSince).sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
 function wPlayer(fc){
   if (isFreeKey(fc)){ const x = S.players.find(q => q.id === fc.slice(2) && !q.clubId && !q.loan); return x ? {p: {fc, name: x.name, pos: x.pos, age: ageOf(x), ovr: x.ovr || 0}, c: {name: 'Svincolato', free: true, players: [], avg: 0, league: 'Senza squadra'}} : null; }
-  for (const c of WORLD?.clubs || []){ const p = c.players.find(x => x.fc === fc); if (p) return {p, c}; } return null; }
-function wAvailable(c){ const t = takenFc(), n = takenNames(); return c.players.filter(p => !t.has(p.fc) && !n.has(normKey(p.name))); }
+  for (const c of allClubs()){ const p = c.players.find(x => x.fc === fc); if (p) return {p, c}; } return null; }
+let TK = null, LMC = null;
+function lmCpuClubs(){
+  if (!WORLD || WORLD.err) return [];
+  if (LMC && LMC.p === S.players && LMC.c === S.clubs) return LMC.v;
+  const v = S.clubs.filter(c => !c.managerId).map(c => {
+    const li = divOf(c) === 'B' ? 1 : 0, ps = roster(c.id).filter(p => !p.loan).map(p => ({fc: 'l_' + p.id, pid: p.id, name: p.name, pos: p.pos, age: ageOf(p), ovr: p.ovr || 0})).sort((a, b) => b.ovr - a.ovr);
+    const top = ps.slice(0, 16); return {i: 'L' + c.id, lm: c.id, name: c.name, league: WORLD.leagues[li], li, players: ps, avg: top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : 60};
+  });
+  LMC = {p: S.players, c: S.clubs, v}; return v;
+}
+const allClubs = () => { const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
+function wAvailable(c){ if (c.lm) return c.players; if (!TK || TK.ref !== S.players){ TK = {ref: S.players, t: takenFc(), n: takenNames()}; } const t = TK.t, n = TK.n; return c.players.filter(p => !t.has(p.fc) && !n.has(normKey(p.name))); }
 /* carattere del club e del giocatore */
 function cpuProfile(c, p){
   if (c.free){ const ag = AGENCIES[Math.floor(WH('ag' + p.fc) * AGENCIES.length)]; return {rank: -1, role: 'svincolato', rich: 0, needMoney: false, mult: 0, untouchable: false, value: autoValue(p.ovr, p.age), wage: autoWage(p.ovr, p.age), agency: {name: ag[0], kind: ag[1], wm: ag[2], comm: ag[3]}}; }
@@ -1472,15 +1485,16 @@ function viewWorld(){
   if (!WORLD) return '<div class="panel"><div class="empty"><strong>Carico il calcio mondiale…</strong><span>Squadre e rose vere di FC 27.</span></div></div>';
   if (WORLD.err) return panelEmpty('Database non trovato', 'Manca il file fc27.json sul sito: il commissario deve caricarlo su GitHub insieme a index.html.');
   const mc = myClub(), q = normKey(S.wq || ''), li = S.wl ?? 0, minO = +(S.wo || 0);
-  const clubs = WORLD.clubs.filter(c => q ? true : c.li === +li);
+  const AC = allClubs(), clubs = AC.filter(c => q ? true : c.li === +li);
   let list = [];
-  if (q || minO){ WORLD.clubs.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
+  if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
   const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
-  const sc = S.wc != null ? WORLD.clubs.find(c => c.i === +S.wc) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
-  const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
+  const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
+  const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
   const head = `${window_() ? mkNotice() : '<div class="notice">Mercato chiuso: puoi guardare le rose, le trattative ripartono quando il commissario riapre la finestra.</div>'}${subtabs}`;
   if (wt === 'sala') return head + salaView();
+  if (wt === 'lg') return head + lgView();
   if (wt === 'free'){
     const fr = x => { const key = 'p_' + x.id, d = dealsFor(key); return `<div class="li"><div class="main"><span class="posb ${GRP[x.pos] || 'mid'}">${esc(x.pos || '')}</span> <b>${esc(x.name)}</b> <span class="sub">${x.ovr || ''} · ${ageOf(x)} anni · svincolato</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(y => esc(cname(y.buyerId))).join(', ')}</span>` : ''}</div>
       <span class="num">${fmtM(autoValue(x.ovr || 0, ageOf(x)))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${key}">Tratta</button>` : ''}</div>`; };
@@ -1495,7 +1509,7 @@ function viewWorld(){
       <div class="f full"><label for="wl">Campionato</label><select id="wl" data-wf="wl">${WORLD.leagues.map((l, i) => `<option value="${i}"${+li === i ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
     </div></div>
   ${list.length || q || minO ? `<div class="panel"><div class="ph"><h3>Risultati</h3><span class="sub">${list.length} giocatori</span></div><div class="list">${list.map(pRow).join('') || '<p class="muted">Nessun giocatore trovato.</p>'}</div></div>` : ''}
-  ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${esc(sc.league)} · media squadra ${sc.avg.toFixed(1)}</p><div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
+  ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${esc(sc.league)}${sc.lm ? ' · club della lega gestito dalla CPU' : ''} · media squadra ${sc.avg.toFixed(1)}</p><div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
     : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> <span class="sub">media ${c.avg.toFixed(1)} · ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
   ${cpuPanel()}`;
 }
@@ -1580,7 +1594,7 @@ async function extendTable(fc, minEnd){
   await Promise.all(t.filter(d => d.stage === st).map(d => db.doc('offers/' + d.id).update({[f]: Math.max(d[f] || 0, minEnd)})));
 }
 function wOffer(fc){
-  const key = isFreeKey(fc) ? fc : +fc, w = wPlayer(key), mc = myClub(); if (!w || !mc) return;
+  const key = /^[pl]_/.test(fc) ? fc : +fc, w = wPlayer(key), mc = myClub(); if (!w || !mc) return;
   const {p, c} = w, free = !!c.free, pr = cpuProfile(c, p), tb = tableOf(key), others = tb.filter(d => d.buyerId !== mc.id);
   if (tb.some(d => d.buyerId === mc.id)) return toast('Sei già in corsa per questo giocatore: segui la trattativa nelle tue trattative.');
   if (!canJoin(tb)) return toast('Troppo tardi: la trattativa è già passata alla fase successiva.');
@@ -1719,11 +1733,11 @@ async function resolveAgent(fc){
   for (const win of ok){
     try { squadRoom(win.B.id); } catch (e){ win.why = 'La rosa è piena.'; continue; }
     const d = win.d, B = win.B, until = season() + (d.years || 3) - 1;
-    if (free){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name}); }
+    if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name}); }
     else await db.doc('players/fc' + fc).set({name: p.name, pos: p.pos, age: p.age, ageSeason: season(), ovr: p.ovr, value: autoValue(p.ovr, p.age), wage: d.wage, injured: false, clubId: B.id, loan: null, fcId: fc, contractUntil: until, agency: pr.agency.name});
-    const pid = free ? String(fc).slice(2) : 'fc' + fc, money = d.fee ? `${fmtM(d.fee)} a ${c.name}, ` : '';
-    await Promise.all([d.fee ? ledger(B.id, -d.fee, `Acquisto ${p.name} da ${c.name}`) : null, win.a.comm ? ledger(B.id, -win.a.comm, `Commissione ${pr.agency.name} per ${p.name}`) : null,
-      logTransfer({playerId: pid, playerName: p.name, fromLabel: c.name, toLabel: B.name, fromClubId: null, toClubId: B.id, fee: d.fee || 0, kind: 'cpu-in', mode: 'transfer', ovr: p.ovr}),
+    const pid = free || c.lm ? String(fc).slice(2) : 'fc' + fc, money = d.fee ? `${fmtM(d.fee)} a ${c.name}, ` : '';
+    await Promise.all([d.fee ? ledger(B.id, -d.fee, `Acquisto ${p.name} da ${c.name}`) : null, d.fee && c.lm ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${B.name}`) : null, win.a.comm ? ledger(B.id, -win.a.comm, `Commissione ${pr.agency.name} per ${p.name}`) : null,
+      logTransfer({playerId: pid, playerName: p.name, fromLabel: c.name, toLabel: B.name, fromClubId: c.lm || null, toClubId: B.id, fee: d.fee || 0, kind: 'cpu-in', mode: 'transfer', ovr: p.ovr}),
       upd(d, {status: 'done'}, `Firmato! ${p.name} sceglie ${B.name}: ${fmtW(d.wage)} per ${d.years} anni.`, `UFFICIALE: ${p.name} firma con ${B.name} · ${money}${fmtW(d.wage)} per ${d.years} anni`, 'sign'),
       ...scored.filter(x => x.d.id !== d.id).map(x => upd(x.d, {status: 'rejected'}, `${p.name} ha scelto ${B.name}.${x.why ? ' ' + x.why : ''}`, null))]);
     if (d.fee) await mkTax(B, d.fee, p.name);
@@ -1806,6 +1820,140 @@ function cpuNews(){
   return out;
 }
 document.addEventListener('change', e => { const el = e.target.closest && e.target.closest('[data-wf]'); if (!el) return; S[el.dataset.wf] = el.value; if (el.dataset.wf === 'wl') S.wc = null; schedule(); });
+/* ---------- campionati virtuali della CPU: avanzano insieme alle giornate della lega ---------- */
+const LG_SKIP = /Libertadores|Sudamericana|^Serie [AB]$/;
+const lgRng = seed => { let k = 0; return () => WH(seed + '#' + (k++)); };
+function lgList(){
+  if (!WORLD || WORLD.err) return [];
+  return WORLD.leagues.map((name, li) => ({li, name, clubs: WORLD.clubs.filter(c => c.li === li)})).filter(l => !LG_SKIP.test(l.name) && l.clubs.length >= 6);
+}
+const lgDoc = (li, s = season()) => (S.world || []).find(d => d.id === `L${li}-S${s}`);
+function lgSchedule(ids, s, li){
+  const a = ids.slice(); const r = lgRng(`sch${li}-${s}`);
+  for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  if (a.length % 2) a.push(-1);
+  const n = a.length, rounds = [];
+  for (let k = 0; k < n - 1; k++){
+    const m = []; for (let i = 0; i < n / 2; i++){ const h = a[i], w = a[n - 1 - i]; if (h >= 0 && w >= 0) m.push(k % 2 ? [w, h] : [h, w]); }
+    rounds.push(m); a.splice(1, 0, a.pop());
+  }
+  return [...rounds, ...rounds.map(m => m.map(([h, w]) => [w, h]))];
+}
+const lgClub = i => WORLD.clubs.find(c => c.i === i);
+function lgSquad(c){ const ps = wAvailable(c); return ps.length ? ps : c.players; }
+function lgStrength(c){ const t = lgSquad(c).slice(0, 16); return t.length ? t.reduce((a, p) => a + p.ovr, 0) / t.length : 60; }
+function lgPoisson(l, r){ let k = 0, p = Math.exp(-l), s = p; const u = r(); while (u > s && k < 9){ k++; p *= l / k; s += p; } return k; }
+const SC_W = {ATT: 6, AS: 4.5, AD: 4.5, COC: 3, ES: 2.5, ED: 2.5, CC: 1.5, CDC: 0.8, DC: 0.5, TS: 0.35, TD: 0.35, POR: 0};
+function lgScorers(c, n, r){
+  const ps = lgSquad(c).slice(0, 16), w = ps.map(p => (SC_W[p.pos] ?? 1) * Math.pow(1.06, p.ovr - 70)), tot = w.reduce((a, b) => a + b, 0), out = [];
+  for (let g = 0; g < n; g++){ let u = r() * tot, i = 0; while (i < ps.length - 1 && u > w[i]){ u -= w[i]; i++; } if (ps[i]) out.push(ps[i].fc); }
+  return out;
+}
+function lgPlay(h, a, seed){
+  const r = lgRng(seed), sh = lgStrength(h), sa = lgStrength(a), d = (sh - sa) * 0.075;
+  const hg = lgPoisson(Math.max(0.2, 1.4 * Math.exp(d) + 0.12), r), ag = lgPoisson(Math.max(0.2, 1.15 * Math.exp(-d)), r);
+  return [h.i, a.i, hg, ag, lgScorers(h, hg, r), lgScorers(a, ag, r)];
+}
+function lgProgress(){
+  const ms = seasonMatches().filter(m => !m.stage), pl = ms.filter(m => m.played).length;
+  return ms.length ? pl / ms.length : 0;
+}
+let lgBusy = false;
+async function lgTick(){
+  if (!S.comm || lgBusy || !S.loaded.world || !S.loaded.matches || !WORLD || WORLD.err) return;
+  const frac = lgProgress(), s = season(); lgBusy = true;
+  try {
+    for (const L of lgList()){
+      let doc = lgDoc(L.li, s);
+      const ids = doc ? doc.clubs : L.clubs.map(c => c.i), sched = lgSchedule(ids, s, L.li), target = Math.floor(frac * sched.length + 1e-9);
+      const played = doc ? doc.rounds.length : 0; if (played >= target) continue;
+      const rounds = doc ? doc.rounds.slice() : [];
+      for (let k = played; k < target; k++){ rounds.push({ts: now(), m: sched[k].map(([h, a]) => { const H = lgClub(h), A = lgClub(a); return H && A ? lgPlay(H, A, `g${L.li}-${s}-${k}-${h}-${a}`) : [h, a, 0, 0, [], []]; })}); }
+      await db.doc(`world/L${L.li}-S${s}`).set({li: L.li, name: L.name, season: s, clubs: ids, total: sched.length, rounds});
+    }
+  } finally { lgBusy = false; }
+}
+function lgTable(doc){
+  const t = new Map(doc.clubs.map(i => [i, {i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0}]));
+  doc.rounds.forEach(r => r.m.forEach(([h, a, hg, ag]) => { const H = t.get(h), A = t.get(a); if (!H || !A) return; H.g++; A.g++; H.gf += hg; H.gs += ag; A.gf += ag; A.gs += hg;
+    if (hg > ag){ H.v++; A.p++; H.pt += 3; } else if (hg < ag){ A.v++; H.p++; A.pt += 3; } else { H.n++; A.n++; H.pt++; A.pt++; } }));
+  return [...t.values()].sort((x, y) => y.pt - x.pt || (y.gf - y.gs) - (x.gf - x.gs) || y.gf - x.gf);
+}
+let FCN = null;
+const fcName = fc => { if (!FCN){ FCN = new Map(); (WORLD?.clubs || []).forEach(c => c.players.forEach(p => FCN.set(p.fc, p))); } return FCN.get(fc); };
+function lgScorerTable(doc){
+  const m = new Map(); doc.rounds.forEach(r => r.m.forEach(x => [[x[0], x[4]], [x[1], x[5]]].forEach(([ci, sc]) => (sc || []).forEach(fc => { const k = fc; const e = m.get(k) || {fc, ci, g: 0}; e.g++; m.set(k, e); }))));
+  return [...m.values()].sort((a, b) => b.g - a.g).slice(0, 10);
+}
+const lgCN = i => lgClub(i)?.name || '—';
+function lgScoreLine(x){ const sc = arr => { const c = {}; (arr || []).forEach(fc => { const n = fcName(fc)?.name || '?'; c[n] = (c[n] || 0) + 1; }); return Object.entries(c).map(([n, k]) => esc(n.split(' ').slice(-1)[0]) + (k > 1 ? ` (${k})` : '')).join(', '); };
+  const s1 = sc(x[4]), s2 = sc(x[5]); return s1 || s2 ? `<span class="sub">${s1}${s1 && s2 ? ' · ' : ''}${s2}</span>` : ''; }
+function lgView(){
+  const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
+  const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
+  const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>
+    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito e avanzano insieme alle nostre giornate. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p></div>`;
+  const total = doc ? doc.total : lgSchedule(L.clubs.map(c => c.i), season(), li).length, played = doc ? doc.rounds.length : 0;
+  const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0}));
+  const last = doc && doc.rounds[played - 1], next = played < total ? lgSchedule(doc ? doc.clubs : L.clubs.map(c => c.i), season(), li)[played] : null, sc = doc ? lgScorerTable(doc) : [];
+  const clubBtn = i => `<button type="button" class="clublink" data-act="w-club" data-id="${i}"><span class="nm">${esc(lgCN(i))}</span></button>`;
+  return sel_ + `<div class="panel"><div class="ph"><h3>${esc(L.name)}</h3><span class="sub">Giornata ${played} di ${total}</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
+    ${tab.map((r, k) => `<tr${k === 0 && played ? ' class="z-top"' : ''}><td class="pos">${k + 1}</td><td>${clubBtn(r.i)}</td><td class="r">${r.g}</td><td class="r">${r.v}</td><td class="r">${r.n}</td><td class="r">${r.p}</td><td class="r">${r.gf - r.gs > 0 ? '+' : ''}${r.gf - r.gs}</td><td class="r pts">${r.pt}</td></tr>`).join('')}</tbody></table></div></div>
+    ${last ? `<div class="panel"><div class="ph"><h3>Risultati · giornata ${played}</h3></div><div class="list">${last.m.map(x => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${x[2]}-${x[3]} <b>${esc(lgCN(x[1]))}</b><br>${lgScoreLine(x)}</div></div>`).join('')}</div></div>` : ''}
+    ${next ? `<div class="panel"><div class="ph"><h3>Prossimo turno · giornata ${played + 1}</h3></div><div class="list">${next.map(([h, a]) => `<div class="li"><div class="main">${esc(lgCN(h))} <span class="sub">vs</span> ${esc(lgCN(a))}</div></div>`).join('')}</div></div>` : ''}
+    <div class="panel"><div class="ph"><h3>Marcatori</h3></div>${sc.length ? `<div class="list">${sc.map((e, k) => { const p = fcName(e.fc); return `<div class="li"><div class="main"><b>${k + 1}.</b> ${p ? `<span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> ` : ''}<b>${esc(p?.name || '?')}</b> <span class="sub">${esc(lgCN(e.ci))}${p && !wAvailable(lgClub(e.ci) || {players: []}).some(q => q.fc === e.fc) ? ' · ora in un club della lega' : ''}</span></div><b class="pts">${e.g}</b></div>`; }).join('')}</div>` : '<p class="muted">Ancora nessun gol: si parte con la prima giornata della lega.</p>'}</div>`;
+}
+const LG_TOP = /^(Premier League|LaLiga|Bundesliga|Ligue 1|Liga Portugal|Eredivisie)$/;
+function lgNews(){
+  const out = [];
+  (S.world || []).filter(d => !LG_SKIP.test(d.name) && d.season === season() && d.rounds?.length && LG_TOP.test(d.name)).forEach(d => {
+    const r = d.rounds[d.rounds.length - 1], k = d.rounds.length;
+    const best = r.m.slice().sort((x, y) => (lgStrength(lgClub(y[0]) || {players: []}) + lgStrength(lgClub(y[1]) || {players: []})) - (lgStrength(lgClub(x[0]) || {players: []}) + lgStrength(lgClub(x[1]) || {players: []})))[0];
+    if (!best) return; const top = lgTable(d)[0];
+    out.push({ts: r.ts || 0, ic: '🌍', html: `<b>${esc(d.name)}</b> · ${k}ª giornata: ${esc(lgCN(best[0]))} ${best[2]}-${best[3]} ${esc(lgCN(best[1]))}${lgScoreLine(best) ? ` (${lgScoreLine(best).replace(/<[^>]+>/g, '')})` : ''} · in testa <b>${esc(lgCN(top.i))}</b> a ${top.pt}`});
+  });
+  return out;
+}
+/* ---------- squadre CPU di Serie A e B dentro la lega (le partite le gioca il commissario) ---------- */
+async function cpuClubsImport(){
+  loadWorld(); if (!WORLD || WORLD.err) return toast('Aspetta il caricamento del database FC 27 e riprova.');
+  const res = await fetch('fc27.json').then(r => r.json()), have = new Set(S.clubs.map(c => normKey(c.name)));
+  const todo = res.clubs.map((c, i) => ({i, name: c[0], li: c[1]})).filter(c => (c.li === 0 || c.li === 1) && !have.has(normKey(c.name)));
+  if (!todo.length) return toast('Le squadre CPU di Serie A e B sono già nella lega.');
+  const med = (dv, k) => { const v = S.clubs.filter(c => divOf(c) === dv).map(c => c[k] || 0).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : (k === 'budget0' ? S.settings.startBudget : S.settings.startWage); };
+  const nP = todo.reduce((a, c) => a + res.p.filter(x => x[5] === c.i).length, 0);
+  confirmBox('Squadre CPU di Serie A e B', `Entrano nella lega <b>${todo.length}</b> squadre senza manager con le rose vere di FC 27 (<b>${nP}</b> giocatori):<br><br><b>Serie A:</b> ${todo.filter(c => c.li === 0).map(c => esc(c.name)).join(', ') || '—'}<br><b>Serie B:</b> ${todo.filter(c => c.li === 1).map(c => esc(c.name)).join(', ') || '—'}<br><br>Le partite le giochi tu e le inserisci come le altre. I manager possono trattare i loro giocatori dal Mondo. Non chiudere la pagina finché non compare il messaggio finale.`, 'Aggiungi', async () => {
+    let k = 0;
+    for (const c of todo){
+      const dv = c.li === 1 ? 'B' : 'A', id = 'cpu' + c.i, ps = res.p.filter(x => x[5] === c.i);
+      await db.doc('clubs/' + id).set({name: c.name, short: c.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: med(dv, 'budget0'), wage0: Math.max(med(dv, 'wage0'), ps.reduce((a, x) => a + autoWage(x[4], x[3]), 0)), div: dv, managerId: null, cpu: true, objectives: [], createdAt: now(), logo: null});
+      for (let j = 0; j < ps.length; j += 10) await Promise.all(ps.slice(j, j + 10).map(x => db.doc('players/fc' + x[0]).set({name: x[1], pos: x[2], age: x[3], ageSeason: season(), ovr: x[4], value: autoValue(x[4], x[3]), wage: autoWage(x[4], x[3]), injured: false, clubId: id, loan: null, fcId: x[0], contractUntil: season() + 1 + Math.floor(WH('c' + x[0]) * 3)})));
+      k++; toast(`Aggiunte ${k} di ${todo.length}: ${c.name}`);
+    }
+    toast(`Fatto: ${todo.length} squadre CPU nella lega`, 6000);
+  });
+}
+/* inserire una giornata intera a mano */
+function fxRound(){
+  const div0 = curDiv(), ri = roundInfo(div0), next = (ri.total || 0) + 1;
+  const clubsOf = dv => S.clubs.filter(c => !hasB() || divOf(c) === dv).sort((a, b) => a.name.localeCompare(b.name));
+  const n = Math.floor(clubsOf(div0).length / 2) || 1, opts = dv => [['', '—'], ...clubsOf(dv).map(c => [c.id, c.name])];
+  openModal(`Inserisci giornata intera${hasB() ? ' · ' + DIVS[div0] : ''}`, `<div class="fgrid">${fld('fxround', 'Giornata', `type="number" min="1" step="1" value="${next}" required`)}</div>
+    <p class="sub">${n} partite: scegli casa e trasferta. Le righe lasciate vuote non vengono salvate.</p>
+    ${Array.from({length: n}, (_, i) => `<div class="fgrid">${sel('h' + i, `Partita ${i + 1} · casa`, opts(div0), '')}${sel('a' + i, 'trasferta', opts(div0), '')}</div>`).join('')}`,
+    async fd => {
+      const round = Math.round(num(fd, 'fxround')), s = season(); if (round < 1) fail('Scegli una giornata valida.');
+      const pairs = [], used = new Set();
+      for (let i = 0; i < n; i++){ const h = String(fd.get('h' + i) || ''), a = String(fd.get('a' + i) || ''); if (!h && !a) continue;
+        if (!h || !a) fail(`Partita ${i + 1}: scegli entrambe le squadre.`); if (h === a) fail(`Partita ${i + 1}: una squadra non può giocare contro sé stessa.`);
+        if (used.has(h) || used.has(a)) fail(`Partita ${i + 1}: una squadra è già stata usata in questa giornata.`); used.add(h); used.add(a); pairs.push([h, a]); }
+      if (!pairs.length) fail('Inserisci almeno una partita.');
+      const busy = S.matches.filter(m => m.season === s && !m.stage && mDiv(m) === div0 && m.round === round).flatMap(m => [m.homeId, m.awayId]);
+      if (pairs.some(([h, a]) => busy.includes(h) || busy.includes(a))) fail(`Nella giornata ${round} una di queste squadre ha già una partita.`);
+      await Promise.all(pairs.map(([h, a]) => db.doc('matches/' + `s${s}-${div0}-r${round}-${h}-${a}-${Date.now().toString(36)}`).set({season: s, div: div0, round, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []})));
+      S.round = round; toast(`Giornata ${round}: ${pairs.length} partite salvate`);
+    }, 'Salva giornata');
+}
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -1943,6 +2091,7 @@ function autoClose(){
   if (!db || !S.me || !S.loaded.players || !S.loaded.clubs || !S.loaded.auctions) return;
   openAuctions().filter(a => a.endsAt <= now() && !closing.has(a.id)).forEach(a => { closing.add(a.id); closeAuction(a).catch(() => closing.delete(a.id)); });
   try { cpuTick(); } catch {}
+  try { lgTick(); } catch {}
 }
 
 function resultModal(m){
@@ -3381,7 +3530,7 @@ function viewPre(){
 const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -3446,7 +3595,7 @@ document.addEventListener('click', async e => {
       case 'redeem': redeem(p()); break;
       case 'w-offer': wOffer(id); break;
       case 'w-tab': S.wt = id; if (S.route !== 'mondo') location.hash = '#mondo'; else schedule(); break;
-      case 'w-club': S.wc = id === '' ? null : id; schedule(); break;
+      case 'w-club': S.wc = id === '' ? null : id; if (id !== '') S.wt = 'club'; schedule(); window.scrollTo(0, 0); break;
       case 'cpu-reply': cpuReply(cpuDeals().find(x => x.id === id)); break;
       case 'cpu-quit': { const d = cpuDeals().find(x => x.id === id); if (d) await db.doc('offers/' + id).update({status: d.dir === 'sell' ? 'rejected' : 'withdrawn', waiting: null, ts: now(), msg: d.dir === 'sell' ? 'Offerta rifiutata.' : 'Trattativa abbandonata.'}); break; }
       case 'clause-set': clauseSet(p()); break;
@@ -3491,6 +3640,8 @@ document.addEventListener('click', async e => {
       case 'fx-edit': fxModal(id); break;
       case 'fx-del': fxDelete(id); break;
       case 'fx-clear': fxClear(); break;
+      case 'cpu-clubs': cpuClubsImport(); break;
+      case 'fx-round': fxRound(); break;
     }
   } catch (err){ toast(err.message || 'Operazione non riuscita. Riprova.'); }
 });
@@ -3533,6 +3684,7 @@ async function boot(){
   subscribe('ledger', d => S.ledger = d);
   subscribe('transfers', d => S.transfers = d);
   subscribe('lineups', d => S.lineups = d);
+  subscribe('world', d => { S.world = d; schedule(); });
 }
 boot();
 </script>
