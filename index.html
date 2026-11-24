@@ -282,6 +282,8 @@ button.tag:hover{border-color:var(--on-pitch)}
 .feed{display:grid;gap:6px;border-left:2px solid #22304f;padding-left:10px}
 .feed div{display:grid;grid-template-columns:40px 20px minmax(0,1fr);gap:4px;font-size:.88rem}
 .feed .t{color:var(--muted);font-variant-numeric:tabular-nums}
+.rtoc{display:flex;flex-wrap:wrap;gap:6px}.rtoc a{font-size:.85rem;padding:6px 10px;background:#141b2e;color:#c9d0de;text-decoration:none}
+.rsec h3{margin-bottom:8px}.rtext{max-width:72ch;line-height:1.55}.rtext p{margin:0 0 10px}.rtext ul,.rtext ol{margin:0 0 10px;padding-left:20px}.rtext li{margin-bottom:5px}.rtext b{color:#fff}
 .zl.z-cl{background:#4fc3ff}.zl.z-el{background:#ff8a3d}.zl.z-ecl{background:#3ee07a}.zl.z-rpo{background:#c792ea}.zl.z-top{background:var(--accent)}
 tr.z-cl .pos{color:#4fc3ff}tr.z-el .pos{color:#ff8a3d}tr.z-ecl .pos{color:#3ee07a}tr.z-rpo .pos{color:#c792ea}tr.z-top .pos{color:var(--accent)}tr.z-po .pos{color:#2f9bff}
 tr.z-cl td:first-child,tr.z-el td:first-child,tr.z-ecl td:first-child,tr.z-top td:first-child,tr.z-po td:first-child,tr.z-bot td:first-child,tr.z-rpo td:first-child{box-shadow:inset 3px 0 0 currentColor}
@@ -364,6 +366,7 @@ dialog{border-radius:0;border:0;border-top:3px solid var(--accent);background:#0
     <a href="#mondo">Mondo</a>
     <a href="#calendario">Calendario</a>
     <a href="#classifica">Classifica</a>
+    <a href="#regolamento">Regolamento</a>
     <a href="#svincolati" hidden><span class="badge" id="aucbadge" hidden></span></a>
     <a href="#statistiche">Statistiche</a>
     <a href="#precampionato">Precampionato</a>
@@ -618,7 +621,7 @@ function render(){
   if (S.gate) return;
   let r = (location.hash || '#home').slice(1);
   if (r === 'svincolati'){ r = 'mondo'; S.wt = 'free'; history.replaceState(null, '', '#mondo'); }
-  S.route = ['home','classifica','calendario','societa','mercato','mondo','svincolati','statistiche','lega','precampionato'].includes(r) ? r : 'home';
+  S.route = ['home','classifica','calendario','societa','mercato','regolamento','mondo','svincolati','statistiche','lega','precampionato'].includes(r) ? r : 'home';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   { const tb = $('#tabs'), on = tb && tb.querySelector('[aria-current]'); if (on && tb.scrollWidth > tb.clientWidth) tb.scrollLeft = on.offsetLeft - (tb.clientWidth - on.offsetWidth) / 2; }
   $('#lname').textContent = S.settings?.name || 'Lega Carriera';
@@ -642,7 +645,7 @@ function render(){
   const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
   const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
   restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
-  main.innerHTML = roBanner() + drawBanner() + preBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, mondo:viewWorld, svincolati:viewFree, statistiche:viewStats, lega:viewLeague, precampionato:viewPre})[S.route]();
+  main.innerHTML = roBanner() + drawBanner() + preBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, regolamento:viewRules, mondo:viewWorld, svincolati:viewFree, statistiche:viewStats, lega:viewLeague, precampionato:viewPre})[S.route]();
   if (restoreFocus) restoreFocus();
   bnavSync();
 }
@@ -923,6 +926,7 @@ function viewLeague(){
           <button class="btn sm" data-act="mkt-edit">Mercato equilibrato A/B${MK().on ? ' · attivo' : ''}</button>
           ${MK().on && (MK().prio || MK().maxTop) ? '<button class="btn sm" data-act="mkt-start">Avvia sessione di mercato</button>' : ''}
           <button class="btn sm" data-act="cpu-clubs">Squadre CPU Serie A e B</button>
+          <button class="btn sm" data-act="logos-bulk">Carica loghi</button>
           <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
           <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
@@ -2216,6 +2220,100 @@ function cupNews(){
     d.teams.filter(isLM).forEach(k => { const t = cupTable(d), pos = t.findIndex(x => x.k === k); if (d.md.length && pos >= 0) out.push({ts: 0, ic: '🌍', html: `<b>${esc(d.name)}</b>: <b>${esc(cupName(k))}</b> ${pos + 1}ª in classifica dopo ${d.md.length} giornate`}); });
   });
   return out;
+}
+/* ---------- regolamento ufficiale: come funziona il sito ---------- */
+const RULES_SECTIONS = [
+ ['🧭 Il sito in breve', `<p>Il sito è in stile <b>Carriera allenatore di FC 27</b>. Dal menu in alto:</p><ul>
+  <li><b>Centrale</b>: la tua squadra, la prossima partita con la distinta da consegnare, budget, monte ingaggi, bacheca trattative, notizie e classifica.</li>
+  <li><b>Squadra</b>: rosa, stadio, sponsor, bilancio.</li><li><b>Mercato</b>: le tue trattative e le notizie di mercato.</li>
+  <li><b>Mondo</b>: tutte le squadre vere di FC 27, campionati, coppe e trattative in diretta.</li><li><b>Calendario</b>, <b>Classifica</b>, <b>Statistiche</b>, <b>Lega</b>, <b>Regolamento</b>.</li></ul>`],
+ ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione.</b></p><ol>
+  <li>Si apre il mercato (il commissario lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Parte la stagione e si gioca tutto il campionato.</li><li>Finisce la stagione.</li><li>Prima della stagione successiva si riapre il mercato.</li></ol>
+  <p><b>Non esiste un mercato di gennaio.</b> A mercato chiuso non si compra e non si vende nulla: si possono solo guardare le rose.</p>`],
+ ['⚽ Le partite', `<p>Serie A e Serie B sono da <b>20 squadre</b>: le squadre dei manager più quelle gestite dalla CPU.</p><ul>
+  <li>Le partite delle <b>squadre con un manager vero</b> le gioca il commissario alla PlayStation, con la distinta del manager.</li>
+  <li>Le partite delle <b>squadre CPU</b> della lega le simula comunque il commissario alla PlayStation e inserisce il risultato.</li>
+  <li>Tutti i risultati di Serie A e B li inserisce il commissario.</li></ul>
+  <p>Sotto il nome delle squadre CPU c'è il loro allenatore reale (es. «All. De Rossi · CPU»).</p>
+  <p><b>Distinte</b>: ogni giornata va consegnata entro il tempo indicato. Se non la consegni, la squadra gioca con la <b>formazione di default di FC 27</b>. <b>Alla 5ª distinta non consegnata il manager viene tolto dalla squadra</b>, che passa alla CPU.</p>`],
+ ['🏆 Campionati, promozioni e retrocessioni', `<ul><li><b>Serie A</b>: prime 4 in Champions League, 5ª e 6ª in Europa League, 7ª in Conference League. <b>Le ultime 3 retrocedono in Serie B.</b></li>
+  <li><b>Serie B</b>: le prime 2 salgono in Serie A, dalla 3ª alla 6ª playoff per il terzo posto. La Serie C nel gioco non esiste: dalla B non retrocede nessuno.</li></ul>
+  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri) li gioca il sito in automatico: avanzano insieme alle nostre giornate e finiscono con la nostra stagione. Hanno classifiche, risultati, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione.</p>
+  <p>I risultati dipendono dalle rose vere: se compri il bomber di un club, quel club segna meno da quel momento. Tutto in <b>Mondo → Campionati</b>.</p>`],
+ ['🏆 Coppe europee', `<p><b>Champions League, Europa League e Conference League</b> con il formato vero: fase campionato a 36 squadre (8 partite, 6 in Conference), poi spareggi, ottavi, quarti, semifinali andata e ritorno e finale secca.</p><ul>
+  <li><b>Prima stagione</b>: partecipano le squadre davvero qualificate quest'anno.</li>
+  <li><b>Dalle stagioni successive</b> ci si qualifica con le classifiche (la nostra Serie A con la nostra classifica); chi vince Champions o Europa League va in Champions l'anno dopo.</li>
+  <li><b>Le partite europee delle squadre della lega le gioca il commissario alla PlayStation</b>, come il campionato. Le altre le simula il sito.</li></ul><p>Tutto in <b>Mondo → Coppe</b>.</p>`],
+ ['🌍 Il Mondo: da chi si compra', `<p>Non esiste più la lista degli svincolati: si compra dal <b>Mondo</b>.</p><ul>
+  <li><b>Club e rose</b>: tutti i club veri di FC 27 con le rose divise per ruolo, comprese le squadre CPU della nostra Serie A e B.</li>
+  <li><b>Senza squadra</b>: i giocatori svincolati dai manager della lega (niente cartellino, si tratta subito con giocatore e procuratore).</li>
+  <li><b>Sala trattative</b>: tutte le trattative in corso, in diretta.</li></ul>
+  <p>Ogni club ha la sua società, ogni giocatore il suo carattere e il suo procuratore: <b>si tratta come nella realtà, prima con il club, poi con il giocatore, poi con il procuratore.</b></p>`],
+ ['🤝 Come si compra un giocatore', `<p>Apri il club, scegli il giocatore, premi <b>Tratta</b>. Le fasi sono quattro.</p>
+  <p><b>🏢 Fase 1 – La società (5 minuti)</b></p><ul><li>Fai l'offerta per il cartellino: la prima offerta fa partire un conto alla rovescia di <b>5 minuti</b>, uguale per tutti.</li>
+  <li>In quei 5 minuti <b>chiunque può entrare</b>: gli altri manager e anche <b>un club CPU</b> a cui piace il giocatore.</li>
+  <li>Puoi <b>rilanciare</b> finché il tempo non scade. <b>Se qualcuno entra o rilancia nell'ultimo minuto, il tempo si allunga di 1 minuto per tutti.</b></li>
+  <li>Allo scadere la società valuta <b>tutte le offerte insieme</b>: chi ha offerto abbastanza passa alla fase 2 (anche più squadre); se nessuno basta ma qualcuno si avvicina, la società chiede di più e ci sono <b>3 minuti</b> per rilanciare (massimo 3 giri); le offerte troppo basse vengono scartate.</li>
+  <li>Le società non regalano niente: un titolare costa più di una riserva, i giovani costano di più, <b>i pilastri dei club più forti sono quasi incedibili</b>. Alcuni club però hanno bisogno di soldi.</li></ul>
+  <p><b>👤 Fase 2 – Il giocatore (circa 1 minuto e mezzo)</b></p><p>Il giocatore valuta ogni squadra rimasta in corsa: se giocherebbe <b>titolare</b>, la forza della rosa, la categoria, la sua età e ambizione. Può aprire alla tua squadra o dire di no spiegando il motivo.</p>
+  <p><b>🧑‍💼 Fase 3 – Il procuratore (4 minuti)</b></p><ul><li>Il procuratore dice cosa chiede: <b>ingaggio settimanale, anni di contratto e commissione</b>.</li><li>Fai la tua proposta; puoi modificarla finché il tempo non scade.</li>
+  <li>Ogni procuratore ha il suo carattere: collaborativo, duro, esoso o specializzato in campioni.</li>
+  <li>Allo scadere il giocatore sceglie <b>la proposta migliore per lui</b>: conta lo stipendio ma anche il progetto e il posto da titolare. Se nessuno arriva alla cifra ma qualcuno ci va vicino, il procuratore alza la richiesta e dà altri <b>2 minuti</b>.</li></ul>
+  <p><b>✍️ Fase 4 – La firma</b></p><p>Paghi il cartellino alla società, la commissione al procuratore e, per le squadre di Serie A, la tassa sugli acquisti che viene divisa tra i club di Serie B. Il giocatore entra subito in rosa e parte la notizia <b>UFFICIALE</b>.</p>
+  <p>⚠️ <b>Controlli automatici</b>: non puoi offrire più del tuo <b>budget</b>, l'ingaggio deve entrare nel tuo <b>monte ingaggi</b> e la rosa non può superare il <b>massimo di giocatori</b>. Altrimenti la trattativa non parte o salta.</p>`],
+ ['👀 Tutti vedono tutto', `<p>Nella <b>Sala trattative</b> e nella <b>Bacheca</b> della Centrale vedi in diretta: il giocatore trattato e il suo club, <b>chi è in corsa</b> (manager e club CPU), la fase, il tempo che manca e la cronaca mossa per mossa.</p>
+  <p>🔒 <b>Le cifre restano segrete fino alla firma.</b> Si sa che qualcuno ha rilanciato, non di quanto.</p><p><b>Nessuno può dire «non l'ho visto»: ogni trattativa è pubblica e c'è sempre il tempo per entrare.</b> A mercato aperto bisogna stare online: le trattative durano minuti, non giorni.</p>`],
+ ['🤖 La CPU nelle trattative', `<ul><li><b>La CPU può inserirsi nelle trattative</b>: se un club del Mondo vede che un giocatore gli piace, entra e fa la sua offerta come un manager (più spesso con i giocatori forti). Se vince la CPU, il giocatore va in quel club e lo vedrai giocare lì.</li>
+  <li><b>La CPU può chiedere i tuoi giocatori</b>: l'offerta arriva in «Le tue trattative» e nelle notizie. <b>Decidi tu</b>: accettare, chiedere di più o rifiutare. Nessuno ti obbliga a vendere.</li>
+  <li>Hai <b>6 minuti</b> per rispondere, poi l'offerta scade. Se vendi, il giocatore lascia la lega e i soldi entrano nel tuo budget.</li></ul>`],
+ ['🔵 La Serie B non è svantaggiata', `<ul><li>Sotto 80 di valutazione la categoria <b>non conta</b>.</li><li><b>Il posto da titolare conta tantissimo</b>: un giocatore preferisce essere titolare in B che riserva in A.</li>
+  <li>I giovani fino a 24 anni vogliono giocare; quelli sopra i 31 guardano soprattutto il contratto.</li><li>Rifiutano la B solo i giocatori da 80 in su più ambiziosi, e quasi sempre i campioni da 85 in su.</li>
+  <li><b>Progetto promozione</b>: le prime 3 della Serie B, a campionato iniziato, non vengono rifiutate per la categoria.</li><li>Una parte di ogni acquisto della Serie A va ai club di Serie B.</li></ul>`],
+ ['🔁 Trattative tra manager', `<p>Dalla pagina <b>Mercato</b>, sempre e solo a mercato aperto, con tutte le formule reali: acquisto definitivo, scambio, prestito, prestito con diritto o con obbligo di riscatto, pagamento a rate, bonus, percentuale sulla futura rivendita, diritto di recompra, prelazione, clausola rescissoria.</p>
+  <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita di 20 settimane di ingaggio: il giocatore finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
+ ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
+  <li>Società (5 min) → Giocatore (circa 1 min e mezzo) → Procuratore (4 min) → Firma.</li><li>Ultimo minuto = +1 minuto per tutti.</li><li>Tutti vedono chi tratta; <b>le cifre si scoprono solo alla firma</b>.</li>
+  <li>La CPU può entrare nelle trattative e chiederti i tuoi giocatori: <b>decidi tu se vendere</b>.</li><li>Serie A e B: le partite le gioca il commissario alla PlayStation, sia con i manager sia con le squadre CPU.</li>
+  <li>Gli altri campionati e le coppe vanno avanti con promozioni, retrocessioni e qualificazioni vere.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
+function viewRules(){
+  const extra = (S.settings?.rules || '').trim();
+  return `<div class="panel"><div class="ph"><h2>Regolamento ufficiale</h2><span class="sub">Come funziona League Manager · leggilo tutto</span></div>
+    <nav class="rtoc">${RULES_SECTIONS.map(([t], i) => `<a href="#regolamento" data-act="rule-go" data-id="r${i}">${t}</a>`).join('')}</nav></div>
+    ${RULES_SECTIONS.map(([t, h], i) => `<section class="panel rsec" id="r${i}"><h3>${t}</h3><div class="rtext">${h}</div></section>`).join('')}
+    ${extra ? `<div class="panel"><div class="ph"><h3>📝 Regole aggiuntive del commissario</h3></div><p class="rules">${esc(extra)}</p></div>` : ''}
+    <p class="sub" style="text-align:center">Il Mondo è la nostra realtà: trattate come veri direttori sportivi. — La Commissione, League Manager</p>`;
+}
+/* ---------- caricamento loghi multiplo: il nome del file sceglie la squadra ---------- */
+const logoKey = s => normKey(String(s).replace(/\.[a-z0-9]+$/i, '').replace(/[_\-.]+/g, ' ').replace(/\b(fc|ac|as|ssc|calcio|us|ss|logo|stemma)\b/gi, ' '));
+function logoMatch(fname){
+  const k = logoKey(fname); if (!k) return null;
+  const all = S.clubs.map(c => ({c, k: logoKey(c.name)}));
+  return (all.find(x => x.k === k) || all.find(x => x.k && (k.includes(x.k) || x.k.includes(k))))?.c || null;
+}
+function logosBulk(){
+  openModal('Carica loghi', `<p class="sub">Scegli tutti i file insieme (PNG con sfondo trasparente è l’ideale). Il nome del file deve contenere il nome della squadra: es. <b>Genoa.png</b>, <b>Juve Stabia.png</b>, <b>logo-fiorentina.png</b>.</p>
+    <div class="f full"><label for="lgfiles">File dei loghi</label><input id="lgfiles" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple></div>
+    <div id="lgprev" class="list" style="margin-top:10px"></div>`,
+    async () => {
+      const sel_ = [...document.querySelectorAll('#lgprev select')].map(s => ({i: +s.dataset.i, cid: s.value})).filter(x => x.cid);
+      if (!sel_.length) fail('Nessun logo da salvare: scegli i file e controlla gli abbinamenti.');
+      const used = new Set(); for (const x of sel_){ if (used.has(x.cid)) fail(`Due file sono abbinati alla stessa squadra (${club(x.cid)?.name}).`); used.add(x.cid); }
+      let n = 0; for (const x of sel_){ const d = logosBulk.data[x.i]; if (!d) continue; await db.doc('clubs/' + x.cid).update({logo: d}); n++; }
+      toast(`Loghi salvati: ${n}`, 5000);
+    }, 'Salva tutti i loghi');
+  logosBulk.data = [];
+  $('#lgfiles').onchange = async e => {
+    const files = [...e.target.files], box = $('#lgprev'); box.innerHTML = '<p class="sub">Preparo le immagini…</p>'; logosBulk.data = [];
+    const rows = [];
+    for (let i = 0; i < files.length; i++){
+      let d = null; try { d = await shrinkLogo(files[i]); } catch {}
+      logosBulk.data[i] = d; const m = d ? logoMatch(files[i].name) : null;
+      rows.push(`<div class="li"><div class="main" style="display:flex;gap:10px;align-items:center">${d ? `<img src="${d}" alt="" style="width:40px;height:40px;object-fit:contain">` : '❌'}<span class="sub">${esc(files[i].name)}</span></div>
+        ${d ? `<select class="inl" data-i="${i}" aria-label="Squadra per ${esc(files[i].name)}"><option value="">— non salvare —</option>${S.clubs.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}"${m && m.id === c.id ? ' selected' : ''}>${esc(c.name)}${c.logo ? ' (ha già un logo)' : ''}</option>`).join('')}</select>` : '<span class="sub">immagine non valida</span>'}</div>`);
+    }
+    const ok = rows.length - (box.innerHTML = rows.join(''), [...box.querySelectorAll('select')].filter(s => !s.value).length);
+    box.insertAdjacentHTML('afterbegin', `<p class="sub">${ok} file abbinati in automatico. Controlla e correggi dove serve, poi premi «Salva tutti i loghi».</p>`);
+  };
 }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
@@ -3794,7 +3892,7 @@ function viewPre(){
 const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['logos-bulk','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -3905,6 +4003,8 @@ document.addEventListener('click', async e => {
       case 'fx-del': fxDelete(id); break;
       case 'fx-clear': fxClear(); break;
       case 'cpu-clubs': cpuClubsImport(); break;
+      case 'logos-bulk': logosBulk(); break;
+      case 'rule-go': { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); break; }
       case 'cup-res': { const [cc, wh, j, l, k] = id.split('|'); cupResult(cc, wh, +j, l || null, k === '' ? null : +k); break; }
       case 'fx-round': fxRound(); break;
     }
