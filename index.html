@@ -423,7 +423,7 @@ const divOf = c => (c && c.div) || 'A';
 const mDiv = m => m.div || 'A';
 const hasB = () => S.clubs.some(c => divOf(c) === 'B');
 const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m) === div && !m.stage);
-const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : divOf(myClub());
+const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : (divOf(myClub()) === 'B' ? 'B' : 'A');
 const divTabs = () => { const cur = (S.div === 'W' || S.div === 'C') ? S.div : curDiv(), tabs = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : []), ['W', 'Altri campionati'], ['C', 'Coppe']];
   return `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${tabs.map(([d, l]) => `<button class="chip" aria-pressed="${cur === d}" data-act="div" data-id="${d}">${l}</button>`).join('')}</div>`; };
 const worldScope = () => { if (S.div !== 'W' && S.div !== 'C') return null; loadWorld(); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : S.div === 'C' ? cupView() : lgView()); };
@@ -518,16 +518,50 @@ const window_ = () => !!S.settings?.windowOpen;
 const COACHES = {Lecce: 'Eusebio Di Francesco', Fiorentina: 'Paolo Vanoli', Sassuolo: 'Alberto Aquilani', Bologna: 'Raffaele Palladino', Torino: 'Ignazio Abate', Cagliari: 'Fabio Pisacane', Frosinone: 'Massimiliano Alvini', Udinese: 'Paolo Zanetti', Venezia: 'Davide Nicola', Genoa: 'Daniele De Rossi', Monza: 'Ivan Juric', Parma: 'Alberto Gilardino',
   Padova: 'Antonio Calabro', Mantova: 'Francesco Modesto', Cesena: 'Alessandro Diamanti', 'Südtirol': 'Davide Possanzini', Carrarese: 'Guido Pagliuca', Benevento: 'Antonio Floro Flores', Ascoli: 'Francesco Tomei', 'Juve Stabia': 'Pietro De Giorgio', Entella: 'Andrea Chiappella', Arezzo: 'Cristian Bucchi', Empoli: 'Matteo Andreoletti', Vicenza: 'Fabio Gallo'};
 const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : c?.coach ? 'All. ' + c.coach + ' · CPU' : c?.prevCoach ? 'Panchina libera · esonerato ' + c.prevCoach : 'Panchina libera';
-/* esonero CPU: una volta a stagione per club, solo se la squadra va male (ultime posizioni e pochi punti nelle ultime 5) */
+/* esonero CPU: se la squadra va male la società esonera (1 volta a stagione per club) e offre la panchina al miglior manager reale */
+const mvBy = () => (S.world || []).find(d => d.id === `MGR-S${season()}`)?.by || {};
+const ofrDoc = () => (S.world || []).find(d => d.id === `OFR-S${season()}`) || {list: [], sacked: []};
+const ofrSave = d => wsave(`OFR-S${season()}`, {season: season(), list: d.list || [], sacked: d.sacked || []});
+function bestManager(skipId){ const sc = new Map(); ['A', 'B'].forEach(dv => { if (dv === 'B' && !hasB()) return; try { standings(season(), dv).forEach(x => { if (x.c.managerId && x.g) sc.set(x.c.managerId, {id: x.c.managerId, cid: x.c.id, v: x.pt / x.g + (dv === 'A' ? 0.4 : 0)}); }); } catch {} });
+  const by = mvBy(), busy = new Set(ofrDoc().list.filter(o => o.st === 'open').map(o => o.uid));
+  return [...sc.values()].filter(x => x.cid !== skipId && !by[x.id] && !busy.has(x.id)).sort((a, b) => b.v - a.v)[0] || null; }
 let sackBusy = false;
-async function sackTick(){ if (!S.comm || sackBusy || !S.loaded.clubs || !S.loaded.matches) return; sackBusy = true;
-  try { for (const dv of ['A', 'B']){ if (dv === 'B' && !hasB()) continue; let rows; try { rows = standings(season(), dv); } catch { continue; } const n = rows.length;
-    for (let i = 0; i < n; i++){ const x = rows[i], c = x.c; if (c.managerId || !c.coach || c.sackedSeason === season() || x.g < 8 || i < n - 4) continue;
-      const f = x.form.slice(-5), pts = f.reduce((a, r) => a + (r === 'V' ? 3 : r === 'N' ? 1 : 0), 0);
-      if (pts <= 3 && WH('sack' + c.id + season() + x.g) < 0.5){ await db.doc('clubs/' + c.id).update({coach: null, prevCoach: c.coach, vacant: true, sackedSeason: season()}); toast(`${c.name} esonera ${c.coach}: panchina libera`, 5000); return; } } } } finally { sackBusy = false; } }
+async function sackTick(){ if (!S.comm || sackBusy || !S.loaded.clubs || !S.loaded.matches || !S.loaded.world) return; sackBusy = true;
+  try { const d = JSON.parse(JSON.stringify(ofrDoc())); d.list ||= []; d.sacked ||= [];
+    const fire = async (key, name, prev, upd) => { const bm = bestManager(key.startsWith('s:') ? key.slice(2) : null); d.sacked.push(name);
+      if (bm) d.list.push({id: 'o' + now(), key, club: name, prev: prev || '', uid: bm.id, st: 'open', ts: now()});
+      await ofrSave(d); if (upd) await upd(); toast(`${name} esonera ${prev || 'l’allenatore'}${bm ? ' e cerca un nuovo allenatore tra i manager' : ''}`, 5000);
+      if (bm) pushSend([bm.id], `🧢 ${name} ti vuole come allenatore`, `${name} ha esonerato ${prev || 'il tecnico'} e ti offre la panchina. Rispondi da Lega.`, './#lega', 'ofr-' + name + season()); };
+    for (const dv of ['A', 'B']){ if (dv === 'B' && !hasB()) continue; let rows; try { rows = standings(season(), dv); } catch { continue; } const n = rows.length;
+      for (let i = Math.max(0, n - 4); i < n; i++){ const x = rows[i], c = x?.c; if (!c || c.managerId || !c.coach || c.sackedSeason === season() || x.g < 8) continue;
+        const pts = x.form.slice(-5).reduce((a, r) => a + (r === 'V' ? 3 : r === 'N' ? 1 : 0), 0);
+        if (pts <= 3 && WH('sack' + c.id + season() + x.g) < 0.5) return await fire('s:' + c.id, c.name, c.coach, () => db.doc('clubs/' + c.id).update({coach: null, prevCoach: c.coach, vacant: true, sackedSeason: season()})); } }
+    if (WORLD && !WORLD.err){ const mine = new Set(S.clubs.map(c => normKey(c.name)));
+      for (const L of lgList()){ const doc = lgDoc(L.li); if (!doc) continue; const t = lgTable(doc), n = t.length;
+        for (let i = Math.max(0, n - 3); i < n; i++){ const x = t[i], wc = x && lgClub(x.i); if (!wc || mine.has(normKey(wc.name)) || d.sacked.includes(wc.name) || x.g < 10 || x.pt / x.g >= 0.8) continue;
+          if (WH('wsack' + wc.i + season() + x.g) < 0.3) return await fire('w:' + wc.i, wc.name, COACHES[wc.name] || '', null); } } }
+  } finally { sackBusy = false; } }
+/* un manager prende una squadra di QUALSIASI campionato: la squadra del Mondo diventa sua (rosa, budget, mercato) */
+async function takeClub(key, uid, free){
+  const old = S.clubs.find(c => c.managerId === uid); let cid = key.slice(2);
+  if (key[0] === 'w'){ const wc = WORLD.clubs.find(c => String(c.i) === cid); if (!wc) throw new Error('Squadra non trovata.'); cid = 'w' + wc.i;
+    if (!S.clubs.some(c => c.id === cid)){ const ps = wc.players;
+      await db.doc('clubs/' + cid).set({name: wc.name, short: wc.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: divBudget('A'), wage0: Math.round(ps.reduce((a, x) => a + autoWage(x.ovr, x.age), 0) * (1 + wageMargin() / 100)), div: 'X', lg: wc.li, managerId: uid, objectives: [], createdAt: now(), logo: null});
+      for (let j = 0; j < ps.length; j += 10) await Promise.all(ps.slice(j, j + 10).map(x => db.doc('players/fc' + x.fc).set({name: x.name, pos: x.pos, age: x.age, ageSeason: season(), ovr: x.ovr, value: autoValue(x.ovr, x.age), wage: autoWage(x.ovr, x.age), injured: false, clubId: cid, loan: null, fcId: x.fc, contractUntil: season() + 1 + Math.floor(WH('c' + x.fc) * 3)}))); }
+    else await db.doc('clubs/' + cid).update({managerId: uid}); }
+  else await db.doc('clubs/' + cid).update({managerId: uid, coach: null, vacant: false});
+  if (old && old.id !== cid) await db.doc('clubs/' + old.id).update({managerId: null});
+  if (!free) await wsave(`MGR-S${season()}`, {season: season(), by: {...mvBy(), [uid]: true}}); }
 const benches = () => S.clubs.filter(c => !c.managerId && !c.coach);
-function benchPanel(){ const b = benches(); return `<div class="panel"><div class="ph"><h3>Panchine libere</h3><span class="sub">Cambio allenatore: una volta a stagione</span></div>
-  ${b.length ? `<div class="list">${b.map(c => `<div class="li"><div class="main">${clubLink(c)}<br><span class="sub">${c.prevCoach ? 'Esonerato ' + esc(c.prevCoach) + ' · ' : ''}${esc(DIVS[divOf(c)] || '')}</span></div>${S.comm ? `<button class="btn sm" data-act="coach-set" data-id="${c.id}">Nuovo allenatore CPU</button>` : ''}</div>`).join('')}</div>` : '<p class="muted">Nessuna panchina libera. Se una squadra CPU va male, a stagione in corso può esonerare il suo allenatore e la panchina compare qui.</p>'}</div>`; }
+function benchPanel(){ const b = benches(), by = mvBy(), used = !!S.me && !!by[S.me] && !S.comm, mine = ofrDoc().list.filter(o => o.st === 'open' && o.uid === S.me);
+  const mineN = new Set(S.clubs.map(c => normKey(c.name))); loadWorld();
+  const opts = []; (WORLD?.leagues || []).forEach((ln, li) => { const cs = (WORLD.clubs || []).filter(c => c.li === li && !mineN.has(normKey(c.name))); if (cs.length) opts.push(`<optgroup label="${esc(ln)}">${cs.map(c => `<option value="w:${c.i}"${S.mvc === 'w:' + c.i ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`); });
+  const vac = b.map(c => `<option value="s:${c.id}"${S.mvc === 's:' + c.id ? ' selected' : ''}>${esc(c.name)} (panchina libera)</option>`).join('');
+  return `${mine.length ? `<div class="panel"><div class="ph"><h3>Offerte di panchina</h3></div><div class="list">${mine.map(o => `<div class="li"><div class="main"><b>${esc(o.club)}</b><br><span class="sub">${o.prev ? 'Ha esonerato ' + esc(o.prev) + ' · ' : ''}ti ha scelto come miglior manager</span></div><button class="btn sm good" data-act="ofr-ok" data-id="${o.id}">Accetta</button><button class="btn sm ghost" data-act="ofr-no" data-id="${o.id}">Rifiuta</button></div>`).join('')}</div></div>` : ''}
+  <div class="panel"><div class="ph"><h3>Cambia squadra</h3><span class="sub">Una volta a stagione · ${used ? 'già usato' : 'disponibile'}</span></div>
+  ${S.me ? `<p class="sub">Puoi allenare una squadra di qualsiasi campionato del Mondo. Si cambia a mercato aperto e una sola volta a stagione.</p><div class="f full"><label for="mvc">Squadra</label><select id="mvc" data-wf="mvc"><option value="">Scegli…</option>${vac ? `<optgroup label="Panchine libere">${vac}</optgroup>` : ''}${opts.join('')}</select></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="mgr-take" ${used || !S.mvc ? 'disabled' : ''}>Passa a questa squadra</button></div>` : '<p class="muted">Accedi per cambiare squadra.</p>'}</div>
+  <div class="panel"><div class="ph"><h3>Panchine libere</h3></div>
+  ${b.length ? `<div class="list">${b.map(c => `<div class="li"><div class="main">${clubLink(c)}<br><span class="sub">${c.prevCoach ? 'Esonerato ' + esc(c.prevCoach) : 'Senza allenatore'}</span></div>${S.comm ? `<button class="btn sm" data-act="coach-set" data-id="${c.id}">Nuovo allenatore CPU</button>` : ''}</div>`).join('')}</div>` : '<p class="muted">Nessuna panchina libera. Se una squadra CPU va male, la società esonera l’allenatore e offre la panchina al miglior manager reale.</p>'}</div>`; }
 let coachFill = false;
 async function coachTick(){ if (!S.comm || coachFill || !S.loaded.clubs) return; const todo = S.clubs.filter(c => !c.managerId && c.coach === undefined && COACHES[c.name]); if (!todo.length) return; coachFill = true;
   try { await Promise.all(todo.map(c => db.doc('clubs/' + c.id).update({coach: COACHES[c.name]}))); } finally { coachFill = false; } }
@@ -1461,7 +1495,7 @@ const AGENCIES = [['Stella Sport Management', 'esosa', 1.18, 9], ['Calcio Partne
 function loadWorld(){
   if (WORLD || worldLoading) return; worldLoading = true;
   fetch('fc27.json').then(r => { if (!r.ok) throw 0; return r.json(); }).then(d => {
-    const mine = new Set(S.clubs.map(c => normKey(c.name)));
+    const mine = new Set(S.clubs.filter(c => c.lg == null).map(c => normKey(c.name)));
     const clubs = d.clubs.map((c, i) => ({i, name: c[0], league: d.leagues[c[1]], li: c[1], players: []}));
     d.p.forEach(x => clubs[x[5]]?.players.push({fc: x[0], name: x[1], pos: x[2], age: x[3], ovr: x[4], ci: x[5]}));
     clubs.forEach(c => { c.players.sort((a, b) => b.ovr - a.ovr); const top = c.players.slice(0, 16); c.avg = top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : 60; c.mine = mine.has(normKey(c.name)); });
@@ -1989,7 +2023,7 @@ const stSave = st => { ['inj', 'sus'].forEach(k => Object.keys(st[k]).forEach(fc
 /* REGOLA: un campionato con almeno un manager vero lo gestisce il commissario (calendario e partite a mano, il sito non lo simula);
    un campionato senza manager veri lo simula il sito. */
 function lgHumanSet(){ const out = new Set(); if (!WORLD || WORLD.err || !WORLD.mineClubs) return out;
-  const hm = new Set(S.clubs.filter(c => c.managerId).map(c => normKey(c.name))); WORLD.mineClubs.forEach(c => { if (hm.has(c.k)) out.add(c.li); }); return out; }
+  const hm = new Set(S.clubs.filter(c => c.managerId).map(c => normKey(c.name))); WORLD.mineClubs.forEach(c => { if (hm.has(c.k)) out.add(c.li); }); WORLD.clubs.forEach(c => { if (hm.has(normKey(c.name))) out.add(c.li); }); return out; }
 let lgBusy = false;
 async function lgTick(){
   if (!S.comm || lgBusy || !S.loaded.world || !S.loaded.matches || !WORLD || WORLD.err) return;
@@ -3579,7 +3613,7 @@ function startPresence(){
 }
 /* ================= GESTIONE SOCIETÀ: budget, sponsor, stadio, staff medico, sorteggio ================= */
 const DEF_BUDGET = {A: 50 * M, B: 30 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K};
-const divBudget = d => S.settings?.['budget' + d] ?? DEF_BUDGET[d];
+const divBudget = d => S.settings?.['budget' + d] ?? DEF_BUDGET[d] ?? DEF_BUDGET.A;
 const divWage = d => S.settings?.['wage' + d] ?? DEF_WAGE[d];
 const divPlayed = d => roundInfo(d).played || 0;
 const divSize = d => S.clubs.filter(c => divOf(c) === d).length;
@@ -4360,6 +4394,13 @@ document.addEventListener('click', async e => {
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'mgr-take': { const k = S.mvc; if (!S.me || !k) return; if (!S.comm && !window_()) return toast('Si cambia squadra solo a mercato aperto.'); if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
+        const nm = k[0] === 'w' ? WORLD.clubs.find(c => String(c.i) === k.slice(2))?.name : club(k.slice(2))?.name;
+        confirmBox('Cambia squadra', `Lasci la tua squadra e vai al <b>${esc(nm || '')}</b>. Il cambio vale una volta a stagione.`, 'Conferma', async () => { try { await takeClub(k, S.me, S.comm); S.mvc = ''; toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } }); break; }
+      case 'ofr-ok': case 'ofr-no': { const d = JSON.parse(JSON.stringify(ofrDoc())), o = (d.list || []).find(x => x.id === id); if (!o || o.uid !== S.me || o.st !== 'open') return;
+        if (act === 'ofr-no'){ o.st = 'no'; await ofrSave(d); return toast('Offerta rifiutata'); }
+        if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
+        try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
       case 'coach-set': { const c = club(id); openModal('Nuovo allenatore · ' + c.name, fld('cn', 'Nome allenatore', 'maxlength="40" required placeholder="Es. Daniele De Rossi"'), async fd => { const nm = String(fd.get('cn') || '').trim(); if (!nm) fail('Scrivi il nome.'); await db.doc('clubs/' + id).update({coach: nm, vacant: false}); toast('Panchina assegnata'); }, 'Salva'); break; }
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
