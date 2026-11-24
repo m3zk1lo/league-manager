@@ -507,7 +507,12 @@ function autoValue(ovr, age){ if (!ovr) return 0; const v = 0.3 * M * Math.exp(0
 function autoWage(ovr, age){ if (!ovr) return 0; return roundTo(2.5 * K * Math.exp(0.17 * (ovr - 60)) * AGE_W(age || 25), 500); }
 const canManage = cid => S.comm || (!!S.me && club(cid)?.managerId === S.me);
 const window_ = () => !!S.settings?.windowOpen;
-const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : 'Panchina libera';
+const COACHES = {Lecce: 'Eusebio Di Francesco', Fiorentina: 'Paolo Vanoli', Sassuolo: 'Alberto Aquilani', Bologna: 'Raffaele Palladino', Torino: 'Ignazio Abate', Cagliari: 'Fabio Pisacane', Frosinone: 'Massimiliano Alvini', Udinese: 'Paolo Zanetti', Venezia: 'Davide Nicola', Genoa: 'Daniele De Rossi', Monza: 'Ivan Juric', Parma: 'Alberto Gilardino',
+  Padova: 'Antonio Calabro', Mantova: 'Francesco Modesto', Cesena: 'Alessandro Diamanti', 'Südtirol': 'Davide Possanzini', Carrarese: 'Guido Pagliuca', Benevento: 'Antonio Floro Flores', Ascoli: 'Francesco Tomei', 'Juve Stabia': 'Pietro De Giorgio', Entella: 'Andrea Chiappella', Arezzo: 'Cristian Bucchi', Empoli: 'Matteo Andreoletti', Vicenza: 'Fabio Gallo'};
+const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : c?.coach ? 'All. ' + c.coach + ' · CPU' : 'Panchina libera';
+let coachFill = false;
+async function coachTick(){ if (!S.comm || coachFill || !S.loaded.clubs) return; const todo = S.clubs.filter(c => !c.managerId && c.coach === undefined && COACHES[c.name]); if (!todo.length) return; coachFill = true;
+  try { await Promise.all(todo.map(c => db.doc('clubs/' + c.id).update({coach: COACHES[c.name]}))); } finally { coachFill = false; } }
 
 function crest(c, lg){ if (!c) return '<span class="crest" style="--c:#8a9a91;--ct:#fff">?</span>';
   if (c.logo && /^data:image\/(png|jpeg|webp);base64,/.test(c.logo)) return `<span class="crest logo${lg?' lg':''}"><img src="${c.logo}" alt="" loading="lazy"></span>`;
@@ -999,6 +1004,7 @@ function clubModal(c){
       <input id="clogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">${c.logo ? '<button type="button" class="btn sm ghost" id="clogodel">Togli logo</button>' : ''}</div>
       <span class="hint">PNG con sfondo trasparente è l’ideale. Viene ridotto in automatico.</span></div>
     ${sel('cdiv', 'Campionato', [['A', 'Serie A'], ['B', 'Serie B']], divOf(c))}
+    ${fld('ccoach', 'Allenatore (squadra CPU)', `maxlength="40" value="${esc(c.coach || '')}" placeholder="Es. Daniele De Rossi"`, 'Si vede sotto il nome quando la squadra non ha un manager.')}
     ${fld('ccap', 'Capienza stadio (posti)', `type="number" min="1000" max="80000" step="100" value="${stadium(c).cap}"`, 'Metti la capienza reale dello stadio del club.')}
     ${fld('cbudget', 'Budget trasferimenti iniziale (milioni €)', `type="number" min="0" step="0.5" value="${c.budget0 / M}"`, 'Usa quello che FC 27 assegna al tuo club, o lo standard della lega.')}
     ${fld('cwage', 'Monte ingaggi (migliaia €/settimana)', `type="number" min="0" step="10" value="${c.wage0 / K}"`)}
@@ -1009,7 +1015,7 @@ function clubModal(c){
       if (S.clubs.some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail('Esiste già una società con questo nome.');
       const dv = String(fd.get('cdiv')) === 'B' ? 'B' : 'A';
       const logo = clubModal.logo === undefined ? (c.logo || null) : clubModal.logo;
-      const data = {name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
+      const data = {coach: String(fd.get('ccoach') || '').trim(), name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
         stadium: {...(c.stadium || {}), cap: Math.max(1000, Math.round(num(fd, 'ccap')) || stadium({...c, div: dv}).cap)}, logo};
       if (isNew){
         const manage = S.comm ? (!myClub() && fd.get('cmine') === 'on') : true;
@@ -2092,6 +2098,7 @@ function autoClose(){
   openAuctions().filter(a => a.endsAt <= now() && !closing.has(a.id)).forEach(a => { closing.add(a.id); closeAuction(a).catch(() => closing.delete(a.id)); });
   try { cpuTick(); } catch {}
   try { lgTick(); } catch {}
+  try { coachTick(); } catch {}
 }
 
 function resultModal(m){
