@@ -805,7 +805,7 @@ function viewClub(){
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#mondo">Mondo</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
-        <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b>${rightsNote(p)}${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
+        <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b>${rightsNote(p)}${moraleBadge(p)}${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
         <td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td>
         <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
         <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
@@ -1216,6 +1216,7 @@ function newsItems(){
   S.transfers.filter(t => t.kind === 'cpu-in' || t.kind === 'cpu-out').forEach(t => out.push({ts: t.ts || 0, ic: t.kind === 'cpu-in' ? '✈️' : '👋',
     html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}` : `Cessione · <b>${esc(t.playerName)}</b>: <b>${esc(t.fromLabel)}</b> → ${esc(t.toLabel || 'svincolato')}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
   out.push(...cpuNews());
+  try { out.push(...moraleNews()); } catch {}
   try { out.push(...lgNews()); } catch {}
   try { out.push(...cupNews()); } catch {}
   return out.sort((a, b) => b.ts - a.ts);
@@ -1486,9 +1487,10 @@ function cpuProfile(c, p){
   let mult = {pilastro: 1.85, titolare: 1.5, riserva: 1.22, esubero: 1.0}[role] + rich * 0.12 - (needMoney ? 0.15 : 0);
   if (p.age <= 22) mult += 0.12; if (p.age >= 31) mult -= 0.15;
   mult *= 0.95 + WH('m' + p.fc) * 0.15;
+  const unhappy = (role === 'riserva' || role === 'esubero') && WH('mor' + p.fc + season()) < 0.35; if (unhappy) mult *= 0.85;
   const untouchable = role === 'pilastro' && rich >= 1 && !needMoney;
   const ag = AGENCIES[Math.floor(WH('ag' + p.fc) * AGENCIES.length)];
-  return {rank, role, rich, needMoney, mult, untouchable, value: autoValue(p.ovr, p.age), wage: autoWage(p.ovr, p.age), agency: {name: ag[0], kind: ag[1], wm: ag[2], comm: ag[3]}};
+  return {rank, role, rich, needMoney, mult, untouchable, unhappy, value: autoValue(p.ovr, p.age), wage: autoWage(p.ovr, p.age), agency: {name: ag[0], kind: ag[1], wm: ag[2], comm: ag[3]}};
 }
 const cpuDeals = () => S.cpuDeals || [];
 const dealsFor = fc => cpuDeals().filter(d => d.fcId === fc && d.status === 'open');
@@ -1504,7 +1506,7 @@ function viewWorld(){
   const AC = allClubs(), LIO = lgLiOf(), clubs = AC.filter(c => q ? true : (c.lm ? c.li : LIO.get(c.i) ?? c.li) === +li);
   let list = [];
   if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
-  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc, c.i) : null; return st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''; })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
+  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc) : null; const un = !st && !c.lm && !c.free && cpuProfile(c, p).unhappy ? ' <span class="pill info">😠 Scontento · vuole giocare</span>' : ''; return un + (st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''); })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
   const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
   const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['cup', 'Coppe'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
@@ -1640,6 +1642,7 @@ function wOffer(fc){
 }
 function cpuReply(d){
   if (!d) return;
+  if (d.dir === 'sell' && d.loan) return confirmBox(`Prestito di ${d.playerName}`, esc(d.msg || ''), 'Accetta il prestito', async () => { const cur = cpuDeals().find(x => x.id === d.id); if (!cur || cur.status !== 'open') fail('Questa offerta non è più valida.'); if (!window_()) fail('Il mercato è chiuso.'); await cpuSellDone(cur, 0); });
   if (d.dir === 'sell') return openModal(`Offerta di ${d.cpuClub} per ${d.playerName}`, `<p>${esc(d.msg || '')}</p><p>Offerta attuale: <b class="num">${fmtM(d.fee)}</b></p>
     <div class="fgrid">${sel('ans', 'Risposta', [['ok', 'Accetto e vendo'], ['counter', 'Chiedo di più']], 'ok', true)}${fld('fee', 'La tua richiesta (milioni €)', `type="number" min="0" step="0.1" value="${(d.fee * 1.2 / M).toFixed(1)}"`, '', true)}</div>`,
     async fd => {
@@ -1666,14 +1669,14 @@ function cpuReply(d){
   const a = d.agentAsk || {};
   return openModal(`Procuratore di ${d.playerName}`, `<p>${esc(d.msg || '')}</p>
     <p class="sub">Richiesta di ${esc(d.agency || 'agente')}: ingaggio <b>${fmtW(a.wage)}</b> per <b>${a.years}</b> anni + commissione <b>${fmtM(a.comm)}</b>. Il giocatore sceglie tra <b>${timeLeft((d.agentEnd || 0) - now())}</b> confrontando tutte le proposte.</p>
-    <div class="fgrid">${fld('wage', 'Ingaggio offerto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${((d.wage || a.wage || 0) / K).toFixed(1)}" required`)}${sel('years', 'Anni di contratto', [['1', '1 anno'], ['2', '2 anni'], ['3', '3 anni'], ['4', '4 anni'], ['5', '5 anni']], String(d.years || a.years || 3))}</div>
-    <p class="sub">Se firma paghi ${d.fee ? `${fmtM(d.fee)} a ${esc(d.cpuClub)} + ` : ''}la commissione${d.fee && MK().on && divOf(club(d.buyerId)) === 'A' ? ` + la tassa Serie A del ${MK().tax}%` : ''}.</p>`,
+    <div class="fgrid">${sel('role', 'Ruolo promesso in squadra', Object.entries(PROLES).map(([k, x]) => [k, x[0]]), d.role || 'imp')}${fld('wage', 'Ingaggio offerto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${((d.wage || a.wage || 0) / K).toFixed(1)}" required`)}${sel('years', 'Anni di contratto', [['1', '1 anno'], ['2', '2 anni'], ['3', '3 anni'], ['4', '4 anni'], ['5', '5 anni']], String(d.years || a.years || 3))}</div>
+    <p class="sub">Più alto il ruolo promesso, più il giocatore è invogliato a firmare. Ma la promessa va mantenuta: se poi non gioca, il morale scende e può chiedere la cessione.</p><p class="sub">Se firma paghi ${d.fee ? `${fmtM(d.fee)} a ${esc(d.cpuClub)} + ` : ''}la commissione${d.fee && MK().on && divOf(club(d.buyerId)) === 'A' ? ` + la tassa Serie A del ${MK().tax}%` : ''}.</p>`,
     async fd => {
       const cur = cpuDeals().find(x => x.id === d.id); if (!cur || cur.status !== 'open' || cur.stage !== 'agent') fail('La trattativa è cambiata: ricarica.');
       const wage = Math.round(num(fd, 'wage') * K), years = +fd.get('years') || 3, t = now(), mc = club(d.buyerId);
       if (wageUsed(mc.id) + wage > (mc.wage0 || 0)) fail('L’ingaggio non entra nel tuo monte ingaggi.');
       if ((cur.agentEnd || 0) - t < WIN_SNIPE) await extendTable(d.fcId, t + WIN_SNIPE);
-      await db.doc('offers/' + d.id).update({wage, years, proposed: true, ts: t, hist: pubH(cur, 'user', `Proposta: ${fmtW(wage)} per ${years} anni`, cur.proposed ? `${mc.name} modifica la proposta al procuratore` : `${mc.name} presenta la proposta al procuratore`)});
+      await db.doc('offers/' + d.id).update({wage, years, role: String(fd.get('role') || 'imp'), proposed: true, ts: t, hist: pubH(cur, 'user', `Proposta: ${fmtW(wage)} per ${years} anni`, cur.proposed ? `${mc.name} modifica la proposta al procuratore` : `${mc.name} presenta la proposta al procuratore`)});
       toast('Proposta consegnata al procuratore');
     }, 'Invia proposta');
 }
@@ -1713,7 +1716,8 @@ function playerView(p, B, key){
   else if (divB && p.ovr >= 80 && amb > 0.6 && !topB) why = 'non vuole scendere in Serie B';
   else if (!titolare && p.age <= 24 && amb > 0.45) why = 'vuole giocare: lì farebbe la riserva';
   else if (str < p.ovr - 14 && amb > 0.65) why = 'la squadra non è al suo livello';
-  const pref = 1 + (titolare ? 0.1 : 0) + (!divB ? amb * 0.06 : 0) + (topB ? 0.04 : 0) + (str - 75) / 250 + (p.age >= 31 ? 0 : 0);
+  const unh = typeof key === 'number' && (() => { const w = wPlayer(key); return w && cpuProfile(w.c, w.p).unhappy; })();
+  const pref = 1 + (titolare ? (unh ? 0.2 : 0.1) : 0) + (!divB ? amb * 0.06 : 0) + (topB ? 0.04 : 0) + (str - 75) / 250 + (p.age >= 31 ? 0 : 0);
   return {why, titolare, pref, amb, divB};
 }
 async function resolvePlayer(fc){
@@ -1751,7 +1755,8 @@ async function resolveAgent(fc){
     else if (d.wage < need) why = `Ingaggio troppo basso: chiedevamo ${fmtW(Math.round(need / 500) * 500)}.`;
     else if ((d.fee || 0) + (a.comm || 0) > budget(B)) why = 'Il club non ha più il budget per chiudere.';
     else if (wageUsed(B.id) + d.wage > (B.wage0 || 0)) why = 'Il club non ha spazio nel monte ingaggi.';
-    const score = (d.wage || 0) / (need || 1) * (d.pref || 1) * (1 + Math.min(d.years || 3, 4) * 0.01);
+    const rb = {fond: 1.08, imp: 1.04, rot: 1, pan: 0.93, gio: p.age <= 21 ? 1.05 : 0.96}[d.role || 'imp'] || 1;
+    const score = (d.wage || 0) / (need || 1) * (d.pref || 1) * rb * (1 + Math.min(d.years || 3, 4) * 0.01);
     return {d, B, a, need, why, score};
   });
   const ok = scored.filter(x => !x.why).sort((a, b) => b.score - a.score);
@@ -1766,8 +1771,8 @@ async function resolveAgent(fc){
     }
     try { squadRoom(win.B.id); } catch (e){ win.why = 'La rosa è piena.'; continue; }
     const d = win.d, B = win.B, until = season() + (d.years || 3) - 1;
-    if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name}); }
-    else await db.doc('players/fc' + fc).set({name: p.name, pos: p.pos, age: p.age, ageSeason: season(), ovr: p.ovr, value: autoValue(p.ovr, p.age), wage: d.wage, injured: false, clubId: B.id, loan: null, fcId: fc, contractUntil: until, agency: pr.agency.name});
+    if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name, role: d.role || 'imp', morale: 75, req: null, listed: false, mHist: [], promiseUntil: 0}); }
+    else await db.doc('players/fc' + fc).set({name: p.name, pos: p.pos, age: p.age, ageSeason: season(), ovr: p.ovr, value: autoValue(p.ovr, p.age), wage: d.wage, injured: false, clubId: B.id, loan: null, fcId: fc, contractUntil: until, agency: pr.agency.name, role: d.role || 'imp', morale: 75});
     const pid = free || c.lm ? String(fc).slice(2) : 'fc' + fc, money = d.fee ? `${fmtM(d.fee)} a ${c.name}, ` : '';
     await Promise.all([d.fee ? ledger(B.id, -d.fee, `Acquisto ${p.name} da ${c.name}`) : null, d.fee && c.lm ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${B.name}`) : null, win.a.comm ? ledger(B.id, -win.a.comm, `Commissione ${pr.agency.name} per ${p.name}`) : null,
       logTransfer({playerId: pid, playerName: p.name, fromLabel: c.name, toLabel: B.name, fromClubId: c.lm || null, toClubId: B.id, fee: d.fee || 0, kind: 'cpu-in', mode: 'transfer', ovr: p.ovr}),
@@ -1787,6 +1792,12 @@ async function resolveAgent(fc){
 async function cpuSellDone(d, fee, byCpu){
   const p = S.players.find(x => x.id === d.playerId), Se = club(d.sellerId), t = now();
   if (!p || p.clubId !== d.sellerId || p.loan) return db.doc('offers/' + d.id).update({status: 'expired', waiting: null, ts: t, msg: 'Giocatore non più disponibile.'});
+  if (d.loan){
+    await db.doc('players/' + p.id).update({clubId: null, loan: loanDoc({type: 'loan', dur: 1, wagePct: 100}, Se.id, Se.name, {borrowerLabel: d.cpuClub}), req: null, listed: false, morale: 80});
+    await Promise.all([logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: d.cpuClub, fromClubId: Se.id, toClubId: null, fee: 0, kind: 'cpu-out', mode: 'loan', ovr: p.ovr || 0}),
+      db.doc('offers/' + d.id).update({status: 'done', waiting: null, ts: t, msg: `${p.name} va in prestito al ${d.cpuClub} per una stagione.`, hist: [...(d.hist || []), {who: 'user', t: 'Prestito accettato', ts: t}]})]);
+    return toast(`${p.name} va in prestito al ${d.cpuClub}`);
+  }
   await db.doc('players/' + p.id).delete();
   await Promise.all([ledger(Se.id, fee, `Cessione ${p.name} a ${d.cpuClub}`),
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: d.cpuClub, fromClubId: Se.id, toClubId: null, fee, kind: 'cpu-out', mode: 'transfer', ovr: p.ovr || 0}),
@@ -1800,10 +1811,13 @@ async function cpuGenerate(){
   if (!WORLD || WORLD.err || !window_() || !S.loaded.offers) return;
   const day = Math.floor(now() / 864e5);
   for (const c of S.clubs.filter(c => c.managerId)){
-    const id = `cpus-${day}-${c.id}`; if (cpuDeals().some(d => d.id === id) || WH(id) > 0.35) continue;
-    const rs = roster(c.id).filter(p => !p.loan && p.ovr).sort((a, b) => b.ovr - a.ovr); if (rs.length < 12) continue;
-    const p = rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
+    const id = `cpus-${day}-${c.id}`, rs = roster(c.id).filter(p => !p.loan && p.ovr).sort((a, b) => b.ovr - a.ovr), hot = rs.filter(p => p.listed || p.req === 'sale' || p.req === 'loan');
+    if (cpuDeals().some(d => d.id === id) || WH(id) > (hot.length ? 0.75 : 0.35)) continue; if (rs.length < 12) continue;
+    const p = hot.length && WH(id + 'h') < 0.7 ? hot[Math.floor(WH(id + 'q') * hot.length)] : rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
     const buyers = WORLD.clubs.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
+    if (p.req === 'loan'){ const lb = WORLD.clubs.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
+      await db.doc('offers/' + id).set({cpu: true, dir: 'sell', loan: true, playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee: 0, round: 1, waiting: 'user', respondAt: t + 6 * 6e4, ts: t, season: season(), msg: `${bc.name} chiede ${p.name} in prestito per una stagione: gioca titolare e paga il 100% dell’ingaggio. Hai 6 minuti per rispondere.`, hist: [{who: 'cpu', t: 'Richiesta di prestito', ts: t}]});
+      continue; }
     const bc = buyers[Math.floor(WH(id + 'c') * buyers.length)], base = p.value || autoValue(p.ovr, ageOf(p)), fee = Math.round(base * (0.85 + WH(id + 'f') * 0.3) / 1e5) * 1e5, t = now();
     if (!fee) continue;
     await db.doc('offers/' + id).set({cpu: true, dir: 'sell', playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee, maxPay: Math.round(fee * (1.05 + WH(id + 'm') * 0.2) / 1e5) * 1e5,
@@ -2423,6 +2437,75 @@ async function luTick(){
     }
   } finally { luBusy = false; }
 }
+/* ---------- ruolo promesso e morale dei giocatori (come nella Carriera di FC 27) ---------- */
+const PROLES = {fond: ['⭐ Fondamentale', 0.8, 8], imp: ['Importante', 0.6, 6], rot: ['Rotazione', 0.4, 4], pan: ['Panchinaro', 0.15, 1.5], gio: ['Giovane promessa', 0.3, 3]};
+function autoRole(p){
+  const rs = roster(p.clubId).filter(x => !x.loan).sort((a, b) => (b.ovr || 0) - (a.ovr || 0)), k = rs.findIndex(x => x.id === p.id);
+  if (ageOf(p) <= 21 && k >= 11) return 'gio'; return k < 3 ? 'fond' : k < 11 ? 'imp' : k < 16 ? 'rot' : 'pan';
+}
+const roleOf = p => p.role && PROLES[p.role] ? p.role : autoRole(p);
+const moraleOf = p => p.morale ?? 70;
+const moraleIc = v => v >= 75 ? '😀' : v >= 55 ? '🙂' : v >= 40 ? '😐' : '😠';
+function moraleBadge(p){
+  if (!p.clubId || p.loan) return ''; const c = club(p.clubId); if (!c?.managerId) return '';
+  const v = moraleOf(p), rq = p.req, can = canManage(c.id) || S.comm;
+  const txt = `${moraleIc(v)} ${PROLES[roleOf(p)][0]}${rq ? {sale: ' · chiede la cessione', loan: ' · vuole il prestito', raise: ' · chiede la rivalutazione'}[rq] : v < 40 ? ' · scontento' : ''}`;
+  return can ? `<button type="button" class="mgr" data-act="morale" data-id="${p.id}" style="background:none;border:0;padding:0;cursor:pointer;color:${rq ? 'var(--bad)' : v < 40 ? 'var(--warn)' : 'var(--muted)'}">${txt}</button>` : `<span class="mgr">${PROLES[roleOf(p)][0]}</span>`;
+}
+function moraleModal(pid){
+  const p = S.players.find(x => x.id === pid), c = club(p?.clubId); if (!p || !c) return;
+  const can = canManage(c.id) || S.comm, v = moraleOf(p), r = roleOf(p), sNow = season(), lastR = divPlayed(divOf(c));
+  const promised = (p.promiseUntil || 0) > lastR;
+  const raise = Math.round((p.wage || 0) * 0.15 / 500) * 500;
+  openModal(`${p.name} · morale e ruolo`, `<p>${moraleIc(v)} Morale <b>${Math.round(v)}/100</b> · ruolo promesso <b>${PROLES[r][0]}</b> (si aspetta di giocare titolare almeno ${PROLES[r][2]} partite su 10).</p>
+    ${p.req ? `<p class="notice">${p.req === 'loan' ? '🔁 Il giovane <b>chiede di andare a giocare in prestito</b>: mettilo sul mercato dei prestiti e i club CPU ti faranno offerte, oppure mandalo in prestito tu da «Cedi».' : p.req === 'sale' ? '✈️ Il giocatore <b>chiede di essere ceduto</b>.' : `💰 Il giocatore <b>chiede la rivalutazione</b>: un aumento di ${fmtW(raise)}.`}</p>` : ''}
+    <p class="sub">Ultime partite: ${(p.mHist || []).slice(-10).map(x => x === 2 ? '🟩' : x === 1 ? '🟨' : '⬜').join('') || 'nessuna ancora'} (🟩 titolare · 🟨 subentrato · ⬜ non ha giocato)</p>
+    ${can ? `<div class="fgrid">${sel('mact', 'Azione', [['', '— nessuna —'], ['raise', `Concedi aumento (+${fmtW(raise)})`], ...(promised ? [] : [['promise', 'Prometti più spazio (3 giornate)']]), ['list', p.listed ? 'Togli dal mercato' : (p.req === 'loan' ? 'Metti sul mercato dei prestiti' : 'Metti sul mercato')]], '')}</div>
+      <p class="sub">Promettere più spazio alza il morale subito, ma se nelle 3 giornate dopo non gioca titolare il morale crolla. Un giocatore sul mercato riceve più offerte dai club CPU (le decidi sempre tu).</p>` : ''}`,
+    can ? async fd => {
+      const upd = {}, act = String(fd.get('mact') || '');
+      if (act === 'raise'){ if (wageUsed(c.id) + raise > (c.wage0 || 0)) fail('L’aumento non entra nel monte ingaggi.'); upd.wage = (p.wage || 0) + raise; upd.morale = Math.min(100, (upd.morale ?? v) + 30); upd.req = null; }
+      if (act === 'promise'){ upd.promiseUntil = lastR + 3; upd.morale = Math.min(100, (upd.morale ?? v) + 15); if (p.req === 'raise') upd.req = null; }
+      if (act === 'list') upd.listed = !p.listed;
+      if (!Object.keys(upd).length) return;
+      await db.doc('players/' + p.id).update(upd); toast('Salvato');
+    } : null, can ? 'Salva' : 'Chiudi');
+}
+/* dopo ogni giornata giocata il morale si aggiorna in base allo spazio avuto */
+let moraleBusy = false;
+async function moraleTick(){
+  if (!S.comm || moraleBusy || !S.loaded.matches || !S.loaded.lineups || !S.loaded.players || !S.settings) return;
+  const done = S.settings.moraleDone || {}, todo = seasonMatches().filter(m => m.played && !m.pre && !done[m.id]); if (!todo.length) return;
+  moraleBusy = true;
+  try {
+    const news = [], cur = new Map();
+    for (const m of todo.sort((a, b) => a.round - b.round)) for (const cid of [m.homeId, m.awayId]){
+      const c = club(cid); if (!c?.managerId) continue;
+      const L = lineupOf(m.id, cid), xi = new Set(L?.xi || []), ins = new Set((L?.subs || []).map(x => x.in)), lastR = divPlayed(divOf(c));
+      for (const p0 of roster(cid).filter(x => !x.loan)){
+        const p = {...p0, ...(cur.get(p0.id) || {})};
+        if (p.injured) continue;
+        const r = roleOf(p), exp = PROLES[r][1], st = xi.has(p.id) ? 2 : ins.has(p.id) ? 1 : 0, v0 = moraleOf(p);
+        let v = v0 + (st === 2 ? 4 + (1 - exp) * 4 : st === 1 ? 1 - exp * 4 : -exp * 10);
+        if ((p.promiseUntil || 0) >= lastR && st < 2) v -= 10;
+        v = Math.max(0, Math.min(100, v));
+        const upd = {morale: Math.round(v * 10) / 10, mHist: [...(p.mHist || []), st].slice(-10)};
+        const young = r === 'gio' || ageOf(p) <= 21;
+        if (v < 25 && !p.req){ upd.req = young ? 'loan' : ['fond', 'imp'].includes(r) && !p.raiseAsked ? 'raise' : 'sale'; if (upd.req === 'raise') upd.raiseAsked = true; news.push(upd.req === 'loan' ? `🔁 ${p.name} (${c.name}) chiede di andare in prestito` : upd.req === 'sale' ? `✈️ ${p.name} (${c.name}) chiede di essere ceduto` : `💰 ${p.name} (${c.name}) chiede la rivalutazione`); }
+        else if (v < 15 && p.req === 'raise'){ upd.req = 'sale'; news.push(`✈️ ${p.name} (${c.name}) ora chiede di essere ceduto`); }
+        else if (v >= 50 && p.req){ upd.req = null; }
+        cur.set(p.id, {...(cur.get(p.id) || {}), ...upd});
+      }
+    }
+    for (const [id, upd] of cur) await db.doc('players/' + id).update(upd);
+    const nd = {...done}; todo.forEach(m => nd[m.id] = now());
+    await db.doc('league/settings').update({moraleDone: nd});
+    if (news.length) toast(news.slice(0, 3).join(' · '), 7000);
+  } finally { moraleBusy = false; }
+}
+function moraleNews(){
+  return S.players.filter(p => p.req && p.clubId).map(p => ({ts: 0, ic: {sale: '✈️', loan: '🔁', raise: '💰'}[p.req], live: true, html: `<b>${esc(p.name)}</b> (${esc(club(p.clubId)?.name || '')}) ${{sale: 'chiede di essere ceduto', loan: 'chiede di andare a giocare in prestito', raise: 'chiede la rivalutazione'}[p.req]}`}));
+}
 /* ---------- regolamento ufficiale: come funziona il sito ---------- */
 const RULES_SECTIONS = [
  ['🧭 Il sito in breve', `<p>Il sito è in stile <b>Carriera allenatore di FC 27</b>. Dal menu in alto:</p><ul>
@@ -2475,6 +2558,14 @@ const RULES_SECTIONS = [
  ['🔵 La Serie B non è svantaggiata', `<ul><li>Sotto 80 di valutazione la categoria <b>non conta</b>.</li><li><b>Il posto da titolare conta tantissimo</b>: un giocatore preferisce essere titolare in B che riserva in A.</li>
   <li>I giovani fino a 24 anni vogliono giocare; quelli sopra i 31 guardano soprattutto il contratto.</li><li>Rifiutano la B solo i giocatori da 80 in su più ambiziosi, e quasi sempre i campioni da 85 in su.</li>
   <li><b>Progetto promozione</b>: le prime 3 della Serie B, a campionato iniziato, non vengono rifiutate per la categoria.</li><li>Una parte di ogni acquisto della Serie A va ai club di Serie B.</li></ul>`],
+ ['😀 Ruolo promesso e morale', `<p>Come nella Carriera di FC 27 ogni giocatore ha un <b>ruolo in squadra</b>: ⭐ Fondamentale, Importante, Rotazione, Panchinaro, Giovane promessa. Più è alto, più partite da titolare si aspetta (Fondamentale almeno 8 su 10, Importante 6, Rotazione 4, Giovane 3, Panchinaro 1–2).</p><ul>
+  <li><b>Chi compri dal Mondo</b>: il ruolo lo prometti al procuratore nella trattativa. Un ruolo alto convince di più il giocatore, ma la promessa va mantenuta.</li>
+  <li><b>Chi è già in rosa</b>: il ruolo lo assegna il sito in base al valore del giocatore nella squadra. <b>Il ruolo non si può cambiare.</b></li>
+  <li>Il sito legge le <b>distinte</b>: dopo ogni giornata il morale (da 0 a 100, 😀 🙂 😐 😠) sale se il giocatore gioca quanto si aspetta e scende se gioca meno.</li>
+  <li><b>Sotto 40</b> il giocatore è scontento. <b>Sotto 25</b> protesta: i <b>giovani</b> (Giovane promessa o fino a 21 anni) <b>chiedono di andare a giocare in prestito</b>; un titolare sulla carta chiede la <b>rivalutazione</b> (un aumento); gli altri <b>chiedono di essere ceduti</b>. Per i giovani che vogliono giocare arrivano richieste di prestito dai club CPU: accettare o no lo decidi tu. La richiesta esce nelle notizie, visibile a tutti.</li>
+  <li>Il manager può: <b>mandarlo in prestito</b> (giovani), <b>concedere l'aumento</b> (entro il monte ingaggi), <b>promettere più spazio</b> (morale su subito, ma se nelle 3 giornate dopo non gioca titolare crolla), <b>metterlo sul mercato</b> (i club CPU fanno più offerte, decidi sempre tu) o ignorarlo.</li>
+  <li>Il morale <b>non cambia il rendimento in partita</b>: pesa su contratto e mercato.</li>
+  <li><b>Squadre CPU</b>: il morale dei loro giocatori lo gestisce il sito. Nel Mondo vedi i giocatori <b>😠 scontenti</b> che vogliono giocare: il loro club li cede più volentieri e a prezzo più basso, e loro preferiscono chi gli offre il posto da titolare.</li></ul>`],
  ['🔁 Trattative tra manager', `<p>Sempre e solo a mercato aperto: apri la squadra di un altro manager e premi <b>«Fai un’offerta»</b> sul giocatore. Le trattative le segui nella pagina <b>Mercato</b>. Ci sono tutte le formule reali: acquisto definitivo, scambio, prestito, prestito con diritto o con obbligo di riscatto, pagamento a rate, bonus, percentuale sulla futura rivendita, diritto di recompra, prelazione, clausola rescissoria.</p>
   <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita di 20 settimane di ingaggio: il giocatore finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
  ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
@@ -2661,6 +2752,7 @@ function autoClose(){
   try { lgTick(); } catch {}
   try { coachTick(); } catch {}
   try { luTick(); } catch {}
+  try { moraleTick(); } catch {}
 }
 
 function resultModal(m){
@@ -4216,6 +4308,7 @@ document.addEventListener('click', async e => {
       case 'cpu-clubs': cpuClubsImport(); break;
       case 'logos-bulk': logosBulk(); break;
       case 'rule-go': { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); break; }
+      case 'morale': moraleModal(id); break;
       case 'lu-win': luWinModal(); break;
       case 'lu-copy': { const t = luMissingText(); try { await navigator.clipboard.writeText(t); toast('Elenco copiato: incollalo su WhatsApp'); } catch { openModal('Distinte mancanti', `<textarea style="width:100%;min-height:200px">${esc(t)}</textarea>`, null); } break; }
       case 'lg-gen': lgGen(+id); break;
