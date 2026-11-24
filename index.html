@@ -1479,7 +1479,7 @@ function lmCpuClubs(){
   if (!WORLD || WORLD.err) return [];
   if (LMC && LMC.p === S.players && LMC.c === S.clubs) return LMC.v;
   const v = S.clubs.filter(c => !c.managerId).map(c => {
-    const li = divOf(c) === 'B' ? 1 : 0, ps = roster(c.id).filter(p => !p.loan).map(p => ({fc: 'l_' + p.id, pid: p.id, name: p.name, pos: p.pos, age: ageOf(p), ovr: p.ovr || 0})).sort((a, b) => b.ovr - a.ovr);
+    const li = divOf(c) === 'B' ? 1 : 0, ps = roster(c.id).filter(p => !p.loan).map(p => ({fc: 'l_' + p.id, pid: p.id, name: p.name, pos: p.pos, age: ageOf(p), ovr: p.ovr || 0, inj: !!p.injured, injLeft: p.injured ? injLeft(p) : 0})).sort((a, b) => b.ovr - a.ovr);
     const top = ps.slice(0, 16); return {i: 'L' + c.id, lm: c.id, name: c.name, league: WORLD.leagues[li], li, players: ps, avg: top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : 60};
   });
   LMC = {p: S.players, c: S.clubs, v}; return v;
@@ -1513,7 +1513,7 @@ function viewWorld(){
   const AC = allClubs(), LIO = lgLiOf(), clubs = AC.filter(c => q ? true : (c.lm ? c.li : LIO.get(c.i) ?? c.li) === +li);
   let list = [];
   if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
-  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
+  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc, c.i) : null; return st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''; })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
   const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
   const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['cup', 'Coppe'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
@@ -1910,25 +1910,76 @@ function lgSquad(c){ const ps = wAvailable(c); return ps.length ? ps : c.players
 function lgStrength(c){ const t = lgSquad(c).slice(0, 16); return t.length ? t.reduce((a, p) => a + p.ovr, 0) / t.length : 60; }
 function lgPoisson(l, r){ let k = 0, p = Math.exp(-l), s = p; const u = r(); while (u > s && k < 9){ k++; p *= l / k; s += p; } return k; }
 const SC_W = {ATT: 6, AS: 4.5, AD: 4.5, COC: 3, ES: 2.5, ED: 2.5, CC: 1.5, CDC: 0.8, DC: 0.5, TS: 0.35, TD: 0.35, POR: 0};
-function lgScorers(c, n, r){
-  const ps = lgSquad(c).slice(0, 16), w = ps.map(p => (SC_W[p.pos] ?? 1) * Math.pow(1.06, p.ovr - 70)), tot = w.reduce((a, b) => a + b, 0), out = [];
-  for (let g = 0; g < n; g++){ let u = r() * tot, i = 0; while (i < ps.length - 1 && u > w[i]){ u -= w[i]; i++; } if (ps[i]) out.push(ps[i].fc); }
-  return out;
+/* ---------- simulazione realistica: undici titolari, gol, assist, cartellini, infortuni ---------- */
+const AS_W = {COC: 5, ES: 4, ED: 4, AS: 4, AD: 4, CC: 3, ATT: 2.5, TS: 1.8, TD: 1.8, CDC: 1.5, DC: 0.4, POR: 0.05};
+const YC_W = {CDC: 5, DC: 4.5, TS: 3.5, TD: 3.5, CC: 3.5, ES: 2.5, ED: 2.5, COC: 2.2, ATT: 2, AS: 1.8, AD: 1.8, POR: 0.6};
+function wPick(list, w, r){ const tot = list.reduce((a, p) => a + w(p), 0); let u = r() * tot; for (const p of list){ u -= w(p); if (u <= 0) return p; } return list[list.length - 1]; }
+function lgXI(c, r, st){
+  const out = p => st && ((st.inj[p.fc]?.left > 0) || (st.sus[p.fc]?.left > 0));
+  let ps = lgSquad(c).filter(p => !out(p)); if (ps.length < 11) ps = lgSquad(c);
+  const sc = p => p.ovr + r() * 4, by = g => ps.filter(p => (GRP[p.pos] || 'mid') === g).sort((x, y) => sc(y) - sc(x));
+  const need = {gk: 1, def: 4, mid: 4, att: 2}, xi = [];
+  Object.entries(need).forEach(([g, n]) => xi.push(...by(g).slice(0, n)));
+  ps.filter(p => !xi.includes(p)).sort((x, y) => sc(y) - sc(x)).slice(0, 11 - xi.length).forEach(p => xi.push(p));
+  return xi.slice(0, 11);
 }
-function lgPlay(h, a, seed){
-  const r = lgRng(seed), sh = lgStrength(h), sa = lgStrength(a), d = (sh - sa) * 0.075;
+function lgScorers(c, n, r){ const ps = lgSquad(c).slice(0, 16); return Array.from({length: n}, () => wPick(ps, p => (SC_W[p.pos] ?? 1) * Math.pow(1.06, p.ovr - 70), r)?.fc).filter(x => x != null); }
+function lgPlay(h, a, seed, st){
+  const r = lgRng(seed), XH = lgXI(h, r, st), XA = lgXI(a, r, st), str = xi => xi.length ? xi.reduce((s, p) => s + p.ovr, 0) / xi.length : 60;
+  const sh = str(XH), sa = str(XA), d = (sh - sa) * 0.075;
   const hg = lgPoisson(Math.max(0.2, 1.4 * Math.exp(d) + 0.12), r), ag = lgPoisson(Math.max(0.2, 1.15 * Math.exp(-d)), r);
-  return [h.i, a.i, hg, ag, lgScorers(h, hg, r), lgScorers(a, ag, r)];
+  const goals = (xi, n) => Array.from({length: n}, () => wPick(xi, p => (SC_W[p.pos] ?? 1) * Math.pow(1.06, p.ovr - 70) + 0.05, r));
+  const g1 = goals(XH, hg), g2 = goals(XA, ag);
+  const assist = (xi, gs) => gs.map(g => r() < 0.72 ? wPick(xi.filter(p => p !== g), p => (AS_W[p.pos] ?? 1) * Math.pow(1.05, p.ovr - 70), r)?.fc ?? null : null);
+  const ev = {a1: assist(XH, g1), a2: assist(XA, g2), y: [], r: [], i: []};
+  [[XH, 0], [XA, 1]].forEach(([xi, sd]) => {
+    const ny = lgPoisson(sd ? 2.1 : 1.85, r), booked = new Set();
+    for (let k = 0; k < ny; k++){ const p = wPick(xi, q => YC_W[q.pos] ?? 2, r); if (booked.has(p.fc)){ if (r() < 0.5){ ev.r.push([sd, p.fc]); } continue; } booked.add(p.fc); ev.y.push([sd, p.fc]); }
+    if (r() < 0.045){ const p = wPick(xi, q => YC_W[q.pos] ?? 2, r); if (!ev.r.some(x => x[1] === p.fc)) ev.r.push([sd, p.fc]); }
+    if (r() < 0.16){ const p = xi[Math.floor(r() * xi.length)], u = r(), gg = u < 0.55 ? 1 + Math.floor(r() * 2) : u < 0.87 ? 3 + Math.floor(r() * 3) : 6 + Math.floor(r() * 10); ev.i.push([sd, p.fc, gg]); }
+  });
+  return [h.i, a.i, hg, ag, g1.map(p => p.fc), g2.map(p => p.fc), ev];
 }
 function lgProgress(){
   const ms = seasonMatches().filter(m => !m.stage), pl = ms.filter(m => m.played).length;
   return ms.length ? pl / ms.length : 0;
 }
-/* tutto manuale: il commissario crea calendari e inserisce risultati e marcatori */
+/* stato del Mondo (infortuni, squalifiche, gialli): aggiornato dopo ogni partita giocata */
+const stLoad = () => { const w = worldState(); return {inj: {...(w.inj || {})}, sus: {...(w.sus || {})}, yc: {...(w.yc || {})}}; };
+function stAfter(st, m){
+  if (m[2] == null) return; const sides = [m[0], m[1]], ev = m[6] || {};
+  ['inj', 'sus'].forEach(k => Object.entries(st[k]).forEach(([fc, x]) => { if (sides.includes(x.ci) && x.left > 0) st[k][fc] = {...x, left: x.left - 1}; }));
+  (ev.r || []).forEach(([sd, fc]) => { if (typeof fc === 'number') st.sus[fc] = {ci: sides[sd], left: 1}; });
+  (ev.y || []).forEach(([sd, fc]) => { if (typeof fc !== 'number') return; st.yc[fc] = (st.yc[fc] || 0) + 1; if (st.yc[fc] % 5 === 0) st.sus[fc] = {ci: sides[sd], left: 1}; });
+  (ev.i || []).forEach(([sd, fc, gg]) => { if (typeof fc === 'number') st.inj[fc] = {ci: sides[sd], left: gg}; });
+}
+const stSave = st => { ['inj', 'sus'].forEach(k => Object.keys(st[k]).forEach(fc => { if (!(st[k][fc].left > 0)) delete st[k][fc]; })); return wsave(`WST-S${season()}`, {season: season(), ...st}); };
 let lgBusy = false;
 async function lgTick(){
-  if (!S.comm || lgBusy || !S.loaded.world || !WORLD || WORLD.err) return; lgBusy = true;
-  try { await cupTick(); } finally { lgBusy = false; }
+  if (!S.comm || lgBusy || !S.loaded.world || !S.loaded.matches || !WORLD || WORLD.err) return;
+  const frac = lgProgress(), s = season(); lgBusy = true;
+  try {
+    const st = stLoad(); let dirty = false;
+    if (s > 1) for (const d of (S.world || []).filter(d => d.season === s - 1 && d.li != null && d.rounds.some(r => r.m.some(m => m[2] == null)))){
+      const d2 = JSON.parse(JSON.stringify(d)); d2.rounds.forEach((r, k) => r.m = r.m.map(m => m[2] == null ? lgPlay(lgClub(m[0]) || {i: m[0], players: []}, lgClub(m[1]) || {i: m[1], players: []}, `g${d.li}-${s - 1}-${k}-${m[0]}-${m[1]}`) : m));
+      await wsave(d.id, d2); return;
+    }
+    const mv = s > 1 ? lgMembers(s) : null;
+    for (const L of lgList()){
+      const doc = lgDoc(L.li, s);
+      const ids = doc ? doc.clubs : (mv?.base.get(L.name) || L.clubs.map(c => c.i));
+      const rounds = doc ? JSON.parse(JSON.stringify(doc.rounds)) : lgSchedule(ids, s, L.li).map(m => ({m: m.map(([h, a]) => [h, a, null, null, [], []])}));
+      const total = rounds.length, target = Math.floor(frac * total + 1e-9); let ch = !doc;
+      for (let k = 0; k < target; k++){
+        if (rounds[k].m.every(lgPlayed)) continue;
+        rounds[k].m = rounds[k].m.map(m => { if (lgPlayed(m)) return m; const H = lgClub(m[0]), A = lgClub(m[1]); if (!H || !A) return m; const res = lgPlay(H, A, `g${L.li}-${s}-${k}-${m[0]}-${m[1]}`, st); stAfter(st, res); dirty = true; return res; });
+        rounds[k].ts = now(); ch = true;
+      }
+      if (ch) await wsave(`L${L.li}-S${s}`, {li: L.li, name: L.name, season: s, clubs: ids, total, rounds, moves: doc?.moves || mv?.moves[L.name] || null});
+    }
+    if (dirty) await stSave(st);
+    await cupTick(frac);
+  } finally { lgBusy = false; }
 }
 const lgPlayed = m => m && m[2] != null;
 function lgTable(doc){
@@ -1943,6 +1994,7 @@ function lgScorerTable(doc){
   const m = new Map(); doc.rounds.forEach(r => r.m.forEach(x => [[x[0], x[4]], [x[1], x[5]]].forEach(([ci, sc]) => (sc || []).forEach(fc => { const e = m.get(fc) || {fc, ci, g: 0}; e.g++; m.set(fc, e); }))));
   return [...m.values()].sort((a, b) => b.g - a.g).slice(0, 15);
 }
+const lgEvLine = x => { const ev = x[6]; if (!ev) return ''; const nm = fc => esc((fcName(fc)?.name || '?').split(' ').pop()); const parts = [...(ev.r || []).map(([, fc]) => '🟥 ' + nm(fc)), ...(ev.i || []).map(([, fc, gg]) => `🚑 ${nm(fc)} (${gg} g.)`)]; const y = (ev.y || []).length; return (parts.length || y) ? `<br><span class="sub">${y ? `🟨 ${y}` : ''}${y && parts.length ? ' · ' : ''}${parts.join(' · ')}</span>` : ''; };
 const lgCN = i => lgClub(i)?.name || cupName(i);
 function lgScoreLine(x){ const sc = arr => { const c = {}; (arr || []).forEach(fc => { const n = fcName(fc)?.name || '?'; c[n] = (c[n] || 0) + 1; }); return Object.entries(c).map(([n, k]) => esc(n.split(' ').slice(-1)[0]) + (k > 1 ? ` (${k})` : '')).join(', '); };
   const s1 = sc(x[4]), s2 = sc(x[5]); return s1 || s2 ? `<span class="sub">${s1}${s1 && s2 ? ' · ' : ''}${s2}</span>` : ''; }
@@ -1977,22 +2029,59 @@ function lgRoundAdd(li){
     }, 'Salva giornata');
 }
 /* risultato con marcatori: un menu per ogni gol */
-function scorerOpts(ci){ const c = lgClub(ci) || cupTeam(ci); const ps = c && !c.lm ? lgSquad(c) : (c?.lm ? roster(String(ci).slice(1)).map(p => ({fc: 'p' + p.id, name: p.name, pos: p.pos})) : []); return [['', '— marcatore —'], ...ps.map(p => [String(p.fc), `${p.name} (${p.pos})`]), ['og', 'Autogol']]; }
+function scorerOpts(ci){ const c = lgClub(ci) || cupTeam(ci); const ps = c && !c.lm ? lgSquad(c) : (c?.lm ? roster(String(ci).slice(1)).map(p => ({fc: 'p' + p.id, name: p.name, pos: p.pos, inj: p.injured})) : []); return [['', '— marcatore —'], ...ps.map(p => { const st = p.inj ? {t: 'inj'} : typeof p.fc === 'number' ? wStatus(p.fc) : null; return [String(p.fc), `${p.name} (${p.pos})${st ? (st.t === 'inj' ? ' · infortunato' : ' · squalificato') : ''}`]; }), ['og', 'Autogol']]; }
 function wResultModal(title, m, save){
-  const H = m[0], A = m[1];
+  const H = m[0], A = m[1], ev0 = m[6] || {}, oh = scorerOpts(H), oa = scorerOpts(A), noOg = o => o.filter(x => x[0] !== 'og');
   openModal(title, `<p><b>${esc(lgCN(H))}</b> – <b>${esc(lgCN(A))}</b></p><div class="fgrid">${fld('hg', esc(lgCN(H)), `type="number" min="0" max="20" required value="${m[2] ?? 0}"`)}${fld('ag', esc(lgCN(A)), `type="number" min="0" max="20" required value="${m[3] ?? 0}"`)}</div>
-    <div id="scbox"></div>`, async fd => {
+    <div id="scbox"></div>
+    <p class="sub" style="margin-top:12px">Cartellini e infortuni (come nella partita giocata alla Play)</p>
+    <div class="row"><button type="button" class="btn sm" data-wev="y">+ Giallo</button><button type="button" class="btn sm" data-wev="r">+ Rosso</button><button type="button" class="btn sm" data-wev="i">+ Infortunio</button></div>
+    <div id="wevlist" style="display:grid;gap:6px;margin-top:8px"></div>`, async fd => {
       const hg = Math.max(0, Math.round(num(fd, 'hg'))), ag = Math.max(0, Math.round(num(fd, 'ag')));
-      const pick = (k, n) => Array.from({length: n}, (_, i) => fd.get(k + i)).filter(v => v && v !== 'og').map(v => /^\d+$/.test(v) ? +v : v);
-      await save([H, A, hg, ag, pick('sh', hg), pick('sa', ag)], fd);
+      const val = v => /^\d+$/.test(v) ? +v : v;
+      const pick = (k, n) => Array.from({length: n}, (_, i) => fd.get(k + i)).filter(v => v && v !== 'og').map(val);
+      const ast = (k, n) => Array.from({length: n}, (_, i) => fd.get(k + i) || '').map(v => v ? val(v) : null);
+      const ev = {a1: ast('ah', hg), a2: ast('aa', ag), y: [], r: [], i: []};
+      document.querySelectorAll('#wevlist .wev').forEach(r => { const t = r.dataset.t, sd = r.querySelector('[data-k=side]').value, pv = r.querySelector('[data-k=p]').value; if (!pv) return;
+        if (t === 'i') ev.i.push([+sd, val(pv), Math.max(1, Math.round(+r.querySelector('[data-k=gg]').value || 1))]); else ev[t].push([+sd, val(pv)]); });
+      await save([H, A, hg, ag, pick('sh', hg), pick('sa', ag), ev], fd);
+      await applyInjuries(ev.i, [H, A], m[2] != null);
     }, 'Salva risultato');
-  const draw = () => { const hg = +($('#f-hg')?.value || document.querySelector('[name=hg]').value || 0), ag = +(document.querySelector('[name=ag]').value || 0), oh = scorerOpts(H), oa = scorerOpts(A);
-    $('#scbox').innerHTML = (hg ? `<p class="sub">Marcatori ${esc(lgCN(H))}</p>` + Array.from({length: Math.min(hg, 15)}, (_, i) => sel('sh' + i, `Gol ${i + 1}`, oh, String((m[4] || [])[i] ?? ''))).join('') : '') + (ag ? `<p class="sub">Marcatori ${esc(lgCN(A))}</p>` + Array.from({length: Math.min(ag, 15)}, (_, i) => sel('sa' + i, `Gol ${i + 1}`, oa, String((m[5] || [])[i] ?? ''))).join('') : ''); };
+  const draw = () => { const hg = +(document.querySelector('#mform [name=hg]').value || 0), ag = +(document.querySelector('#mform [name=ag]').value || 0);
+    const block = (k, ka, n, o, sc, as) => Array.from({length: Math.min(n, 15)}, (_, i) => `<div class="fgrid">${sel(k + i, `Gol ${i + 1}`, o, String((sc || [])[i] ?? ''))}${sel(ka + i, 'Assist', [['', 'Nessun assist'], ...noOg(o).slice(1)], String((as || [])[i] ?? ''))}</div>`).join('');
+    $('#scbox').innerHTML = (hg ? `<p class="sub">Gol ${esc(lgCN(H))}</p>` + block('sh', 'ah', hg, oh, m[4], ev0.a1) : '') + (ag ? `<p class="sub">Gol ${esc(lgCN(A))}</p>` + block('sa', 'aa', ag, oa, m[5], ev0.a2) : ''); };
+  const addRow = (t, side = 0, p = '', gg = 2) => {
+    const div = document.createElement('div'); div.className = 'wev'; div.dataset.t = t; div.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    const pOpts = sd => noOg(sd ? oa : oh).slice(1).map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(p) ? ' selected' : ''}>${esc(l)}</option>`).join('');
+    div.innerHTML = `<span class="pill ${t === 'y' ? 'warn' : t === 'r' ? 'bad' : 'info'}">${{y: 'Giallo', r: 'Rosso', i: 'Infortunio'}[t]}</span>
+      <select class="inl" data-k="side" aria-label="Squadra"><option value="0"${side ? '' : ' selected'}>${esc(lgCN(H))}</option><option value="1"${side ? ' selected' : ''}>${esc(lgCN(A))}</option></select>
+      <select class="inl" data-k="p" aria-label="Giocatore"><option value="">Giocatore</option>${pOpts(side)}</select>
+      ${t === 'i' ? `<input class="inl" data-k="gg" type="number" min="1" max="40" value="${gg}" style="width:70px" aria-label="Giornate di stop"> <span class="sub">giornate</span>` : ''}
+      <button type="button" class="btn sm ghost" aria-label="Rimuovi">×</button>`;
+    div.querySelector('[data-k=side]').onchange = e => { div.querySelector('[data-k=p]').innerHTML = '<option value="">Giocatore</option>' + pOpts(+e.target.value); };
+    div.querySelector('button').onclick = () => div.remove();
+    $('#wevlist').appendChild(div);
+  };
+  document.querySelectorAll('[data-wev]').forEach(b => b.onclick = () => addRow(b.dataset.wev));
+  (ev0.y || []).forEach(([sd, p]) => addRow('y', sd, p)); (ev0.r || []).forEach(([sd, p]) => addRow('r', sd, p)); (ev0.i || []).forEach(([sd, p, gg]) => addRow('i', sd, p, gg));
   document.querySelectorAll('#mform [name=hg],#mform [name=ag]').forEach(el => el.oninput = draw); draw();
 }
+/* infortuni: club della lega sulla scheda del giocatore, club del Mondo nello stato del Mondo */
+async function applyInjuries(list, sides, m0IsEdit){
+  if (!list?.length) return; const wst = {...(worldState().inj || {})}; let wch = false;
+  for (const [sd, p, gg] of list){
+    if (typeof p === 'string' && p[0] === 'p'){ const pl = S.players.find(x => x.id === p.slice(1)); if (pl) await db.doc('players/' + pl.id).update(injuryData(pl, {get: () => String(gg)})); }
+    else if (m0IsEdit) { const ci = sides[sd]; wst[p] = {ci, left: gg}; wch = true; }
+  }
+  if (wch) await wsave(`WST-S${season()}`, {...worldState(), season: season(), inj: wst});
+}
+const worldState = () => (S.world || []).find(d => d.id === `WST-S${season()}`) || {};
+function clubPlayedW(ci){ let n = 0; (S.world || []).filter(d => d.season === season() && (d.rounds || d.md)).forEach(d => { (d.rounds || []).forEach(r => r.m.forEach(m => { if (m[2] != null && (m[0] === ci || m[1] === ci)) n++; })); (d.md || []).forEach(md => md.forEach(m => { if (m[2] != null && (m[0] === ci || m[1] === ci)) n++; })); }); return n; }
+/* stato dei giocatori del Mondo: infortunati e squalificati */
+function wStatus(fc){ const w = worldState(); if (w.inj?.[fc]?.left > 0) return {t: 'inj', left: w.inj[fc].left}; if (w.sus?.[fc]?.left > 0) return {t: 'sus'}; return null; }
 function lgRes(li, r, j){
   const s = season(), doc = lgDoc(li, s); if (!doc) return; const m = doc.rounds[r].m[j];
-  wResultModal(`${doc.name} · giornata ${r + 1}`, m, async res => { const d2 = JSON.parse(JSON.stringify(doc)); d2.rounds[r].m[j] = res; d2.rounds[r].ts = now(); await wsave(doc.id, d2); toast('Risultato salvato'); });
+  wResultModal(`${doc.name} · giornata ${r + 1}`, m, async res => { const d2 = JSON.parse(JSON.stringify(doc)); d2.rounds[r].m[j] = res; d2.rounds[r].ts = now(); await wsave(doc.id, d2); if (!lgPlayed(m)){ const st = stLoad(); stAfter(st, res); await stSave(st); } toast('Risultato salvato'); });
 }
 /* incolla risultati (anche da screenshot trascritti): «Arsenal 2-1 Chelsea; Saka, Havertz; Palmer» */
 function lgBulk(li){
@@ -2019,8 +2108,8 @@ function lgView(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
   const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>
-    <p class="sub" style="margin:8px 0 0">Calendari, risultati e marcatori li inserisce il commissario. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p>
-    ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-gen" data-id="${li}">Genera calendario</button><button class="btn sm" data-act="lg-round" data-id="${li}">Inserisci giornata</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Incolla risultati</button>` : ''}</div>` : ''}</div>`;
+    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p>
+    ${S.comm && doc ? `<div class="row" style="margin-top:10px"><button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button></div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
   const firstOpen = doc ? doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) : -1, r = Math.min(Math.max(1, +S.lgr || (firstOpen >= 0 ? firstOpen + 1 : nR)), nR || 1), rd = doc?.rounds[r - 1], sc = doc ? lgScorerTable(doc) : [];
   const done = doc ? doc.rounds.filter(x => x.m.length && x.m.every(lgPlayed)).length : 0;
@@ -2029,7 +2118,7 @@ function lgView(){
     ${tab.map((x, k) => `<tr class="${lzone(L.name, k, tab.length)[0]}"><td class="pos">${k + 1}</td><td>${clubBtn(x.i)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('')}</tbody></table></div>${lzoneLegend(L.name, tab.length)}
     ${doc?.moves ? (() => { const mv = doc.moves, L_ = (a, t) => a?.length ? `${t}: <b>${a.map(lgCN).map(esc).join(', ')}</b>` : ''; const parts = [L_(mv.up, '⬆️ Neopromosse'), L_(mv.rin, '⬇️ Retrocesse dalla serie superiore')].filter(Boolean); return parts.length ? `<p class="sub">Novità della stagione · ${parts.join(' · ')}${mv.note?.length ? '<br>' + mv.note.map(esc).join(' · ') : ''}</p>` : ''; })() : ''}</div>
     ${rd ? `<div class="panel"><div class="ph"><h3>Giornata ${r}</h3><span class="row">${r > 1 ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r - 1}">‹</button>` : ''}${r < nR ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r + 1}">›</button>` : ''}</span></div><div class="list">
-      ${rd.m.map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) : ''}</div>${S.comm ? `<button class="btn sm${lgPlayed(x) ? ' ghost' : ' primary'}" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Modifica' : 'Risultato'}</button>` : ''}</div>`).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
+      ${rd.m.map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) + lgEvLine(x) : ''}</div>${S.comm ? `<button class="btn sm ghost" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Correggi' : 'Risultato'}</button>` : ''}</div>`).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
     ${S.comm && doc && (ruleOf(L.name).po || ruleOf(L.name).relpo || ruleOf(L.name).relpo3) ? (() => { const r_ = ruleOf(L.name), t = tab.map(x => x.i), out = [];
       if (r_.po){ const pool = t.slice(r_.po[0] - 1, r_.po[1]), cur = (S.world || []).find(d => d.id === `PO-${L.name}-S${season()}`)?.winner; out.push(`<div class="f full"><label>Vincitore dei playoff promozione (dalla ${r_.po[0]}ª alla ${r_.po[1]}ª)</label><select data-act-change="po" data-id="PO-${L.name}">${['', ...pool].map(i => `<option value="${i}"${String(cur ?? '') === String(i) ? ' selected' : ''}>${i === '' ? '— decidi a fine stagione —' : esc(lgCN(i))}</option>`).join('')}</select></div>`); }
       const upper = Object.entries(LG_RULES).find(([, x]) => x.lower === L.name && x.relpo);
@@ -2211,7 +2300,8 @@ function cupTable(doc){
     if (m[2] > m[3]) H.pt += 3; else if (m[2] < m[3]) A.pt += 3; else { H.pt++; A.pt++; } }));
   return [...t.values()].sort((x, y) => y.pt - x.pt || (y.gf - y.gs) - (x.gf - x.gs) || y.gf - x.gf);
 }
-function cupMatch(h, a){ return [h, a, null, null, [], []]; }
+let CUP_ST = null;
+function cupMatch(h, a, seed){ if (!seed || isLM(h) || isLM(a)) return [h, a, null, null, [], []]; const H = cupTeam(h), A = cupTeam(a); if (!H || !A) return [h, a, 0, 0, [], []]; const res = lgPlay(H, A, seed, CUP_ST); if (CUP_ST) stAfter(CUP_ST, res); return res; }
 const tieWin = (t, seed) => { if (!t.l1 || t.l1[2] == null || (t.l2 && t.l2[2] == null)) return null; const ga = t.l1[2] + (t.l2 ? t.l2[3] : 0), gb = t.l1[3] + (t.l2 ? t.l2[2] : 0);
   return ga > gb ? t.a : gb > ga ? t.b : (t.pen ?? (WH(seed) < 0.5 ? t.a : t.b)); };
 function cupPending(doc){ const p = []; (doc.md || []).forEach((md, k) => md.forEach((m, j) => { if (m[2] == null) p.push({where: 'md', k, j, m}); }));
@@ -2227,22 +2317,32 @@ function cupNextKO(c, doc, st){
   return [];
 }
 let cupBusy = false;
-async function cupTick(){
+async function cupTick(frac){
   if (cupBusy || !S.comm || !WORLD || WORLD.err) return; cupBusy = true;
   try {
     const s = season(); let parts = null; if (s <= 1) return;
+    CUP_ST = stLoad(); let dirty = false;
     for (const c of CUPS){
       const id = `C${c.code}-S${s}`; let doc = (S.world || []).find(d => d.id === id);
       if (!doc){ parts = parts || cupParticipants(s); const teams = parts[c.code] || []; if (teams.length < 8) continue;
         const sched = cupLeagueSched(teams, c.offs, `${c.code}${s}`);
-        await wsave(id, {code: c.code, name: c.name, season: s, teams, md: sched.map(md => md.map(([h, a]) => cupMatch(h, a))), ko: {}, winner: null}); continue; }
-      if (doc.winner != null || cupPending(doc).length) continue;
-      const order = c.ko8 ? ['qf', 'sf', 'f'] : ['po', 'r16', 'qf', 'sf', 'f'], next = order.find(k => !doc.ko[k]);
-      const d2 = JSON.parse(JSON.stringify(doc));
-      if (next){ d2.ko[next] = cupNextKO(c, d2, next); } else d2.winner = tieWin(d2.ko.f[0], `${c.code}${s}ff0`);
-      await wsave(id, d2);
+        await wsave(id, {code: c.code, name: c.name, season: s, teams, md: sched.map(md => md.map(([h, a]) => cupMatch(h, a))), mdDone: 0, ko: {}, winner: null}); continue; }
+      if (doc.winner != null) continue;
+      const d2 = JSON.parse(JSON.stringify(doc)), steps = CUP_STEPS(c); let ch = false;
+      for (let k = d2.mdDone || 0; k < c.md && frac >= steps[k][1]; k++){
+        d2.md[k] = d2.md[k].map((m, j) => m[2] == null && !isLM(m[0]) && !isLM(m[1]) ? cupMatch(m[0], m[1], `${c.code}${s}m${k}-${j}`) : m); d2.mdDone = k + 1; ch = true;
+      }
+      const order = c.ko8 ? ['qf', 'sf', 'f'] : ['po', 'r16', 'qf', 'sf', 'f'];
+      while ((d2.mdDone || 0) >= c.md && !cupPending(d2).length){
+        const next = order.find(k => !d2.ko[k]);
+        if (!next){ d2.winner = tieWin(d2.ko.f[0], `${c.code}${s}ff0`); ch = true; break; }
+        const th = steps.find(x => x[0] === next)?.[1] ?? 1; if (frac < th) break;
+        d2.ko[next] = cupNextKO(c, d2, next); ch = true;
+      }
+      if (ch){ dirty = true; await wsave(id, d2); }
     }
-  } finally { cupBusy = false; }
+    if (dirty) await stSave(CUP_ST);
+  } finally { CUP_ST = null; cupBusy = false; }
 }
 function cupResult(code, where, j, l, k){
   const doc = (S.world || []).find(d => d.id === `C${code}-S${season()}`); if (!doc) return;
@@ -2250,7 +2350,7 @@ function cupResult(code, where, j, l, k){
   wResultModal(`${doc.name} · ${where === 'md' ? 'giornata ' + (k + 1) : {po: 'spareggi', r16: 'ottavi', qf: 'quarti', sf: 'semifinale', f: 'finale'}[where]}`, m, async (res, fd) => {
     const d2 = JSON.parse(JSON.stringify(doc));
     if (where === 'md') d2.md[k][j] = res; else { d2.ko[where][j][l] = res; const pv = String(fd.get('pen') || ''); if (pv){ const tt = d2.ko[where][j]; tt.pen = String(tt.a) === pv ? tt.a : tt.b; } }
-    await wsave(doc.id, d2); toast('Risultato salvato');
+    await wsave(doc.id, d2); if (m[2] == null){ const st = stLoad(); stAfter(st, res); await stSave(st); } toast('Risultato salvato');
   });
   if (last) document.getElementById('scbox').insertAdjacentHTML('beforebegin', sel('pen', 'Se finisce in parità complessiva, ai rigori passa', [['', '—'], [String(t.a), cupName(t.a)], [String(t.b), cupName(t.b)]], ''));
 }
@@ -2258,14 +2358,14 @@ function cupView(){
   const s = season(), docs = s <= 1 ? [] : CUPS.map(c => (S.world || []).find(d => d.id === `C${c.code}-S${s}`)).filter(Boolean);
   if (!docs.length) return `<div class="panel"><div class="ph"><h3>Coppe europee</h3></div><p class="muted">${s <= 1 ? 'Le coppe europee partono dalla seconda stagione: si qualificano le squadre in base alle classifiche di questa stagione (in Serie A: prime 4 in Champions, 5ª e 6ª in Europa League, 7ª in Conference). Il sorteggio e il calendario delle coppe li crea il sito in automatico.' : 'Le coppe partono con la prima giornata della stagione.'}</p></div>`;
   const code = docs.some(d => d.code === S.cupc) ? S.cupc : docs[0].code, doc = docs.find(d => d.code === code), c = CUPS.find(x => x.code === code);
-  const allP = cupPending(doc), pend = allP.filter(p => p.where !== 'md' || p.k === allP[0].k);
+  const allP = cupPending(doc).filter(p => isLM(p.m[0]) || isLM(p.m[1])), pend = allP;
   const line = (m, act) => `<div class="li"><div class="main">${isLM(m[0]) ? '<b>' + esc(cupName(m[0])) + '</b>' : esc(cupName(m[0]))} ${m[2] == null ? '<span class="sub">vs</span>' : `<b>${m[2]}-${m[3]}</b>`} ${isLM(m[1]) ? '<b>' + esc(cupName(m[1])) + '</b>' : esc(cupName(m[1]))}${m[2] != null ? '<br>' + lgScoreLine(m) : ''}</div>${act || ''}</div>`;
   const tb = cupTable(doc), ko = ['po', 'r16', 'qf', 'sf', 'f'].filter(k => doc.ko[k]), KON = {po: 'Spareggi', r16: 'Ottavi', qf: 'Quarti', sf: 'Semifinali', f: 'Finale'};
   return `<div class="panel"><div class="f full"><label for="cupc">Competizione</label><select id="cupc" data-wf="cupc">${docs.map(d => `<option value="${d.code}"${d.code === code ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
     ${doc.winner != null ? `<p style="margin:10px 0 0">🏆 <b>${esc(cupName(doc.winner))}</b> vince la ${esc(doc.name)}!</p>` : ''}</div>
-    ${pend.length ? `<div class="panel"><div class="ph"><h3>Da giocare alla Play</h3><span class="sub">${pend[0].where === 'md' ? `Giornata ${pend[0].k + 1} · ` : ''}${allP.length} partite ancora senza risultato</span></div><div class="list">${pend.map(p => line(p.m, S.comm ? `<button class="btn sm primary" data-act="cup-res" data-id="${code}|${p.where}|${p.j}|${p.l || ''}|${p.k ?? ''}">Risultato</button>` : '<span class="pill warn">Da giocare</span>')).join('')}</div></div>` : ''}
+    ${pend.length ? `<div class="panel"><div class="ph"><h3>Da giocare alla Play</h3><span class="sub">Partite delle squadre della lega: le giochi tu</span></div><div class="list">${pend.map(p => line(p.m, S.comm ? `<button class="btn sm primary" data-act="cup-res" data-id="${code}|${p.where}|${p.j}|${p.l || ''}|${p.k ?? ''}">Risultato</button>` : '<span class="pill warn">Da giocare</span>')).join('')}</div></div>` : ''}
     ${ko.reverse().map(k => `<div class="panel"><div class="ph"><h3>${KON[k]}</h3></div><div class="list">${doc.ko[k].map((t, j) => { const w = tieWin(t, `${code}${s}${k}${j}`); return `<div class="li"><div class="main">${w != null ? '✅ ' : ''}<b>${esc(cupName(t.a))}</b> – <b>${esc(cupName(t.b))}</b><br><span class="sub">${t.l1[2] == null ? 'andata da giocare' : `${t.l1[2]}-${t.l1[3]}`}${t.l2 ? ` · ritorno ${t.l2[2] == null ? 'da giocare' : `${t.l2[3]}-${t.l2[2]}`}` : ''}${w != null ? ` · passa <b>${esc(cupName(w))}</b>` : ''}</span></div></div>`; }).join('')}</div></div>`).join('')}
-    <div class="panel"><div class="ph"><h3>Fase campionato</h3><span class="sub">${c.md} giornate</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
+    <div class="panel"><div class="ph"><h3>Fase campionato</h3><span class="sub">Giornata ${doc.mdDone || 0} di ${c.md}</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
       ${tb.map((r, k) => `<tr class="${c.ko8 ? (k < 8 ? 'z-cl' : '') : k < 8 ? 'z-cl' : k < 24 ? 'z-el' : ''}"><td class="pos">${k + 1}</td><td>${isLM(r.k) ? '<b>' + esc(cupName(r.k)) + '</b>' : esc(cupName(r.k))}</td><td class="r">${r.g}</td><td class="r">${r.gf - r.gs > 0 ? '+' : ''}${r.gf - r.gs}</td><td class="r pts">${r.pt}</td></tr>`).join('')}</tbody></table></div>
       <p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> ${c.ko8 ? 'Quarti di finale' : 'Ottavi diretti'}${c.ko8 ? '' : ' · <span class="zl z-el"></span> Spareggi'}</p></div>
     ${(() => { const lastK = doc.md.map((md, k) => md.some(m => m[2] != null) ? k : -1).filter(k => k >= 0).pop(); return lastK != null ? `<div class="panel"><div class="ph"><h3>Risultati · giornata ${lastK + 1}</h3></div><div class="list">${doc.md[lastK].filter(m => m[2] != null).map(m => line(m, S.comm ? `<button class="btn sm ghost" data-act="cup-res" data-id="${code}|md|${doc.md[lastK].indexOf(m)}||${lastK}">Modifica</button>` : '')).join('')}</div></div>` : ''; })()}`;
@@ -2344,7 +2444,7 @@ const RULES_SECTIONS = [
  ['⚽ Le partite', `<p>Serie A e Serie B sono da <b>20 squadre</b>: le squadre dei manager più quelle gestite dalla CPU.</p><ul>
   <li>Le partite delle <b>squadre con un manager vero</b> le gioca il commissario alla PlayStation, con la distinta del manager.</li>
   <li>Le partite delle <b>squadre CPU</b> della lega le simula comunque il commissario alla PlayStation e inserisce il risultato.</li>
-  <li>Tutti i risultati di Serie A e B li inserisce il commissario.</li></ul>
+  <li>Tutti i risultati di Serie A e B li inserisce il commissario, con marcatori, assist, cartellini e <b>infortuni</b> (il giocatore infortunato salta le giornate indicate, ridotte dallo staff medico).</li></ul>
   <p>Sotto il nome delle squadre CPU c'è il loro allenatore reale (es. «All. De Rossi · CPU»).</p>
   <p><b>Distinte</b></p><ul>
   <li>Ogni giornata il commissario la <b>apre</b> con un orario di apertura e uno di chiusura (es. dalla mezzanotte di domenica alle 21:00 del giorno della partita). Li vedi in Centrale e in Calendario con il conto alla rovescia.</li>
@@ -2354,11 +2454,11 @@ const RULES_SECTIONS = [
   <li><b>Alla 5ª distinta mancata il manager viene tolto dalla squadra</b>, che passa alla CPU.</li></ul>`],
  ['🏆 Campionati, promozioni e retrocessioni', `<ul><li><b>Serie A</b>: prime 4 in Champions League, 5ª e 6ª in Europa League, 7ª in Conference League. <b>Le ultime 3 retrocedono in Serie B.</b></li>
   <li><b>Serie B</b>: le prime 2 salgono in Serie A, dalla 3ª alla 6ª playoff per il terzo posto. La Serie C nel gioco non esiste: dalla B non retrocede nessuno.</li></ul>
-  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri): calendari, risultati e marcatori li inserisce il commissario, come per Serie A e B. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
+  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri) li gioca il sito in modo realistico: ogni squadra schiera i suoi undici migliori disponibili, ci sono gol, assist, ammonizioni, espulsioni con squalifica, diffide (5 gialli = 1 giornata) e infortuni con giorni di stop. Avanzano insieme alle nostre giornate e il commissario può correggere qualsiasi risultato. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
  ['🏆 Coppe europee', `<p><b>Champions League, Europa League e Conference League</b> con il formato vero: fase campionato a 36 squadre (8 partite, 6 in Conference), poi spareggi, ottavi, quarti, semifinali andata e ritorno e finale secca.</p><ul>
   <li><b>Prima stagione</b>: niente coppe, si gioca solo il campionato.</li>
   <li><b>Dalla seconda stagione</b> ci si qualifica con le classifiche della stagione prima (la nostra Serie A con la nostra classifica); chi vince Champions o Europa League va in Champions l'anno dopo. Sorteggio e calendario delle coppe li crea il sito in automatico.</li>
-  <li>Sorteggio e calendario li crea il sito; <b>tutte le partite le gioca o le simula il commissario alla PlayStation</b> e ne inserisce risultati e marcatori.</li></ul><p>Tutto in <b>Mondo → Coppe</b>.</p>`],
+  <li>Sorteggio e calendario li crea il sito. <b>Le partite delle squadre della lega le gioca il commissario alla PlayStation</b> (anche contro club CPU) e ne inserisce risultato, marcatori, cartellini e infortuni; le partite tra club del Mondo le simula il sito in modo realistico.</li></ul><p>Tutto in <b>Mondo → Coppe</b>.</p>`],
  ['🌍 Il Mondo: da chi si compra', `<p>Non esiste più la lista degli svincolati: si compra dal <b>Mondo</b>.</p><ul>
   <li><b>Club e rose</b>: tutti i club veri di FC 27 con le rose divise per ruolo, comprese le squadre CPU della nostra Serie A e B.</li>
   <li><b>Senza squadra</b>: i giocatori svincolati dai manager della lega (niente cartellino, si tratta subito con giocatore e procuratore).</li>
@@ -2389,7 +2489,7 @@ const RULES_SECTIONS = [
  ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
   <li>Società (5 min) → Giocatore (circa 1 min e mezzo) → Procuratore (4 min) → Firma.</li><li>Ultimo minuto = +1 minuto per tutti.</li><li>Tutti vedono chi tratta; <b>le cifre si scoprono solo alla firma</b>.</li>
   <li>La CPU può entrare nelle trattative e chiederti i tuoi giocatori: <b>decidi tu se vendere</b>.</li><li>Serie A e B: le partite le gioca il commissario alla PlayStation, sia con i manager sia con le squadre CPU.</li>
-  <li>Tutti i risultati (Serie A, B, altri campionati e coppe) li inserisce il commissario; promozioni, retrocessioni e qualificazioni sono quelle vere.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
+  <li>Serie A, Serie B e partite europee delle squadre della lega: le gioca il commissario alla PlayStation. Gli altri campionati e le partite tra club del Mondo li simula il sito, con infortuni e squalifiche veri; promozioni, retrocessioni e qualificazioni sono quelle reali.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
 function viewRules(){
   const extra = (S.settings?.rules || '').trim();
   return `<div class="panel"><div class="ph"><h2>Regolamento ufficiale</h2><span class="sub">Come funziona League Manager · leggilo tutto</span></div>
@@ -2578,7 +2678,7 @@ function resultModal(m){
   const opts = (cid, val, empty) => (empty ? `<option value="">${empty}</option>` : '') + roster(cid).map(p => `<option value="${p.id}"${p.id === val ? ' selected' : ''}>${esc(p.pos)} · ${esc(p.name)}</option>`).join('')
     + (val && !roster(cid).some(p => p.id === val) ? `<option value="${esc(val)}" selected>(ex) ${esc((m.events || []).find(e => e.p === val || e.a === val)?.[(m.events || []).find(e => e.p === val) ? 'n' : 'an'] || 'Giocatore')}</option>` : '');
   const col = (c, side) => `<div class="evcol" data-cid="${c.id}"><div class="evhead"><b>${esc(c.short || c.name)}</b><span class="row">
-    <button type="button" class="btn sm" data-ev="g">+ Gol</button><button type="button" class="btn sm" data-ev="y">+ Giallo</button><button type="button" class="btn sm" data-ev="r">+ Rosso</button></span></div><div class="evlist" id="ev-${side}"></div></div>`;
+    <button type="button" class="btn sm" data-ev="g">+ Gol</button><button type="button" class="btn sm" data-ev="y">+ Giallo</button><button type="button" class="btn sm" data-ev="r">+ Rosso</button><button type="button" class="btn sm" data-ev="i">+ Infortunio</button></span></div><div class="evlist" id="ev-${side}"></div></div>`;
   const f = openModal(`Giornata ${m.round} · ${H.name} – ${A.name}`, `<div class="scorebox">
       <div class="f"><label for="hg">${esc(H.name)}</label><input id="hg" name="hg" type="number" min="0" max="30" value="${m.played ? m.hg : 0}"></div><span class="dash">–</span>
       <div class="f"><label for="ag">${esc(A.name)}</label><input id="ag" name="ag" type="number" min="0" max="30" value="${m.played ? m.ag : 0}"></div></div>
@@ -2591,18 +2691,19 @@ function resultModal(m){
       const events = [];
       f.querySelectorAll('.evrow').forEach(r => { const cid = r.closest('.evcol').dataset.cid, ps = r.querySelector('.evp'), as = r.querySelector('.eva');
         if (!ps.value) return; const e = {t: r.dataset.t, c: cid, p: ps.value, n: ps.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, '')};
-        if (as && as.value){ e.a = as.value; e.an = as.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, ''); } events.push(e); });
+        if (as && as.value){ e.a = as.value; e.an = as.selectedOptions[0].textContent.replace(/^.*? · |^\(ex\) /, ''); } const gi = r.querySelector('.evgg'); if (gi) e.gg = Math.max(1, Math.round(+gi.value || 1)); events.push(e); });
       const gh = events.filter(e => e.t === 'g' && e.c === H.id).length, ga = events.filter(e => e.t === 'g' && e.c === A.id).length;
       if (gh > hg || ga > ag) fail('Ci sono più marcatori che gol nel punteggio.');
       if (!m.played) await luFreeze(m);
       await db.doc('matches/' + m.id).update({hg, ag, events, played: true, playedAt: now(), by: S.me || null});
+      for (const e of events.filter(x => x.t === 'i' && !(m.events || []).some(o => o.t === 'i' && o.p === x.p))){ const pl = S.players.find(x => x.id === e.p); if (pl) await db.doc('players/' + pl.id).update(injuryData(pl, {get: () => String(e.gg || 1)})); }
       if (!m.played && !m.gate) await creditGate(m);
       toast('Risultato salvato');
     }, 'Salva risultato');
   const addRow = (side, t, e = {}) => {
     const cid = side === 'h' ? H.id : A.id, i = ++seq;
     const div = document.createElement('div'); div.className = 'evrow'; div.dataset.t = t;
-    div.innerHTML = `<span class="evt ${t}">${{g:'Gol', y:'Giallo', r:'Rosso'}[t]}</span><select class="evp" id="evp-${i}" aria-label="Giocatore">${opts(cid, e.p, 'Scegli giocatore')}</select><button type="button" class="x" aria-label="Rimuovi">×</button>
+    div.innerHTML = `<span class="evt ${t}">${{g:'Gol', y:'Giallo', r:'Rosso', i:'Infortunio'}[t]}</span>${t === 'i' ? `<input class="evgg" type="number" min="1" max="40" value="${e.gg || 2}" style="width:64px" aria-label="Giornate di stop"> <span class="sub">giornate</span>` : ''}<select class="evp" id="evp-${i}" aria-label="Giocatore">${opts(cid, e.p, 'Scegli giocatore')}</select><button type="button" class="x" aria-label="Rimuovi">×</button>
       ${t === 'g' ? `<select class="eva assist" id="eva-${i}" aria-label="Assist">${opts(cid, e.a, 'Nessun assist')}</select>` : ''}`;
     div.querySelector('.x').onclick = () => div.remove();
     $('#ev-' + side).appendChild(div);
