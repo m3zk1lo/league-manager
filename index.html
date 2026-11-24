@@ -806,7 +806,7 @@ function viewClub(){
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#mondo">Mondo</a></div>` : ''}</div>
       ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
-        <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b>${rightsNote(p)}${moraleBadge(p)}${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
+        <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b> ${sofifa(p.name)}${rightsNote(p)}${moraleBadge(p)}${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
         <td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td>
         <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
         <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
@@ -920,6 +920,7 @@ function viewLeague(){
           ${MK().on && (MK().prio || MK().maxTop) ? '<button class="btn sm" data-act="mkt-start">Avvia sessione di mercato</button>' : ''}
           <button class="btn sm" data-act="cpu-clubs">Squadre CPU Serie A e B</button>
           <button class="btn sm" data-act="logos-bulk">Carica loghi</button>
+          <button class="btn sm" data-act="ratings">Aggiorna valutazioni</button>
           <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
           <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
@@ -1477,7 +1478,7 @@ function lmCpuClubs(){
   });
   LMC = {p: S.players, c: S.clubs, v}; return v;
 }
-const allClubs = () => { applyMoves(); const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
+const allClubs = () => { applyMoves(); applyOvr(); const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
 function wAvailable(c){ if (c.lm) return c.players; if (!TK || TK.ref !== S.players){ TK = {ref: S.players, t: takenFc(), n: takenNames()}; } const t = TK.t, n = TK.n; return c.players.filter(p => !t.has(p.fc) && !n.has(normKey(p.name))); }
 /* carattere del club e del giocatore */
 function cpuProfile(c, p){
@@ -1507,7 +1508,7 @@ function viewWorld(){
   const AC = allClubs(), LIO = lgLiOf(), clubs = AC.filter(c => q ? true : (c.lm ? c.li : LIO.get(c.i) ?? c.li) === +li);
   let list = [];
   if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
-  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc) : null; const un = !st && !c.lm && !c.free && cpuProfile(c, p).unhappy ? ' <span class="pill info">😠 Scontento · vuole giocare</span>' : ''; return un + (st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''); })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
+  const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr}${p.pot ? ' (pot ' + p.pot + ')' : ''} · ${p.age} anni · ${esc(c.name)}</span> ${sofifa(p.name)}${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc) : null; const un = !st && !c.lm && !c.free && cpuProfile(c, p).unhappy ? ' <span class="pill info">😠 Scontento · vuole giocare</span>' : ''; return un + (st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''); })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
   const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
   const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['cup', 'Coppe'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
@@ -2658,6 +2659,54 @@ function pushBanner(){
 /* avvisi legati alle trattative con i club CPU */
 function pushDeal(d, txt, tag){ if (!d || d.rival || !d.buyerId) return; const u = mgrOf(d.buyerId); if (u) pushSend([u], `🤝 ${d.playerName}`, txt, "./#mercato", `deal-${d.id}-${tag}`); }
 async function pushTest(){ await pushSend([S.me], '✅ League Manager', 'Le notifiche funzionano: riceverai offerte, trattative e scadenze delle distinte.', './#home', 'test-' + S.me + '-' + now()); try { localStorage.setItem('lmPushTest', '1'); } catch {} toast('Notifica di prova inviata: arriva entro pochi secondi'); schedule(); }
+/* ---------- valutazioni aggiornate (dagli aggiornamenti di EA) + collegamento a SoFIFA ---------- */
+const sofifa = name => `<a class="sub" href="https://sofifa.com/players?keyword=${encodeURIComponent(name)}" target="_blank" rel="noopener" title="Apri su SoFIFA">SoFIFA ↗</a>`;
+let OVRV = null;
+function applyOvr(){
+  if (!WORLD || WORLD.err) return; const d = (S.world || []).find(x => x.id === 'OVR'); if (!d || OVRV === d.updated) return; OVRV = d.updated;
+  const map = d.p || {};
+  WORLD.clubs.forEach(c => { let ch = false; c.players.forEach(p => { const o = map[p.fc]; if (o && o.ovr && p.ovr !== o.ovr){ p.ovr = o.ovr; ch = true; } if (o && o.pot) p.pot = o.pot; });
+    if (ch){ c.players.sort((a, b) => b.ovr - a.ovr); const top = c.players.slice(0, 16); c.avg = top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : 60; } });
+  FCN = null; TK = null;
+}
+function ratingsModal(){
+  loadWorld(); if (!WORLD || WORLD.err) return toast('Aspetta il caricamento del database FC 27 e riprova.');
+  openModal('Aggiorna valutazioni', `<p class="sub">Incolla un giocatore per riga. Formato: <b>Nome; OVR</b> oppure <b>Nome; Squadra; OVR; POT</b> (squadra e potenziale facoltativi, ma la squadra evita gli omonimi).</p>
+    <div class="f full"><label for="rtxt">Giocatori aggiornati</label><textarea id="rtxt" style="min-height:180px" placeholder="Lautaro Martínez; Inter; 89&#10;Moise Kean; Fiorentina; 84; 86&#10;Kenan Yıldız; 85"></textarea></div>
+    <button type="button" class="btn sm" id="rprev">Controlla</button><div id="rbox" class="list" style="margin-top:10px"></div>`,
+    async () => {
+      const ok = ratingsModal.ok || []; if (!ok.length) fail('Premi prima «Controlla».');
+      const map = {...((S.world || []).find(x => x.id === 'OVR')?.p || {})}; let nl = 0, nw = 0;
+      for (const r of ok){
+        if (r.lm){ const p = r.lm; await db.doc('players/' + p.id).update({ovr: r.ovr, value: autoValue(r.ovr, ageOf(p)), ...(r.pot ? {pot: r.pot} : {})}); nl++; }
+        if (r.w){ map[r.w.fc] = {ovr: r.ovr, ...(r.pot ? {pot: r.pot} : {})}; nw++; }
+      }
+      if (nw) await wsave('OVR', {p: map, season: season()});
+      toast(`Valutazioni aggiornate: ${nl} giocatori della lega, ${nw} del Mondo`, 6000); ratingsModal.ok = [];
+    }, 'Salva aggiornamenti');
+  ratingsModal.ok = [];
+  $('#rprev').onclick = () => {
+    applyOvr(); const rows = [], ok = [];
+    const lmAll = S.players.filter(p => p.clubId || p.loan || p.freeSince), wAll = [];
+    const lmNames = new Set(S.clubs.map(c => normKey(c.name)));
+    WORLD.clubs.filter(c => !lmNames.has(normKey(c.name))).forEach(c => c.players.forEach(p => wAll.push({p, c})));
+    String($('#rtxt').value || '').split('\n').map(x => x.trim()).filter(Boolean).forEach(line => {
+      const f = line.split(/[;\t]|,(?=\s*\d)/).map(x => x.trim()).filter(Boolean), nums = f.filter(x => /^\d{2}$/.test(x)).map(Number), txt = f.filter(x => !/^\d{2}$/.test(x));
+      const name = txt[0], team = txt[1] || '', ovr = nums[0], pot = nums[1];
+      if (!name || !ovr || ovr < 40 || ovr > 99){ rows.push(`<div class="li"><span class="pill bad">Riga non valida</span> <span class="sub">${esc(line)}</span></div>`); return; }
+      const k = normKey(name), last = k.split(' ').pop(), tk = normKey(team);
+      const nm = x => { const n = normKey(x); return n === k || n.endsWith(' ' + k) || (k.includes(' ') ? n === k : n.split(' ').pop() === last); };
+      const clubOk = cn => !tk || normKey(cn).includes(tk) || tk.includes(normKey(cn));
+      let lm = lmAll.filter(p => nm(p.name) && clubOk(club(p.clubId)?.name || (p.loan ? p.loan.borrowerLabel || '' : '')));
+      let w = wAll.filter(x => nm(x.p.name) && clubOk(x.c.name));
+      if (lm.length > 1 || w.length > 1 || (lm.length && w.length)){ rows.push(`<div class="li"><span class="pill warn">Omonimi</span> <b>${esc(name)}</b> <span class="sub">trovati ${lm.length + w.length}: aggiungi la squadra</span></div>`); return; }
+      if (!lm.length && !w.length){ rows.push(`<div class="li"><span class="pill bad">Non trovato</span> <b>${esc(name)}</b>${team ? ` <span class="sub">${esc(team)}</span>` : ''}</div>`); return; }
+      const r = {ovr, pot, lm: lm[0] || null, w: w[0]?.p || null}, old = r.lm ? r.lm.ovr : r.w.ovr, where = r.lm ? club(r.lm.clubId)?.name || 'lega' : w[0].c.name;
+      ok.push(r); rows.push(`<div class="li"><div class="main"><b>${esc(r.lm ? r.lm.name : r.w.name)}</b> <span class="sub">${esc(where)}</span></div><span class="num">${old} → <b>${ovr}</b>${pot ? ` <span class="sub">pot ${pot}</span>` : ''}</span></div>`);
+    });
+    ratingsModal.ok = ok; $('#rbox').innerHTML = `<p class="sub">${ok.length} pronti da salvare.</p>` + rows.join('');
+  };
+}
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -4241,7 +4290,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4352,6 +4401,7 @@ document.addEventListener('click', async e => {
       case 'fx-del': fxDelete(id); break;
       case 'fx-clear': fxClear(); break;
       case 'cpu-clubs': cpuClubsImport(); break;
+      case 'ratings': ratingsModal(); break;
       case 'push-on': pushEnable(); break;
       case 'push-test': pushTest(); break;
       case 'logos-bulk': logosBulk(); break;
