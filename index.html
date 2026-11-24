@@ -283,6 +283,7 @@ button.tag:hover{border-color:var(--on-pitch)}
 .feed{display:grid;gap:6px;border-left:2px solid #22304f;padding-left:10px}
 .feed div{display:grid;grid-template-columns:40px 20px minmax(0,1fr);gap:4px;font-size:.88rem}
 .feed .t{color:var(--muted);font-variant-numeric:tabular-nums}
+.stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}.stars .sub{letter-spacing:0}
 .rtoc{display:flex;flex-wrap:wrap;gap:6px}.rtoc a{font-size:.85rem;padding:6px 10px;background:#141b2e;color:#c9d0de;text-decoration:none}
 .rsec h3{margin-bottom:8px}.rtext{max-width:72ch;line-height:1.55}.rtext p{margin:0 0 10px}.rtext ul,.rtext ol{margin:0 0 10px;padding-left:20px}.rtext li{margin-bottom:5px}.rtext b{color:#fff}
 .zl.z-cl{background:#4fc3ff}.zl.z-el{background:#ff8a3d}.zl.z-ecl{background:#3ee07a}.zl.z-rpo{background:#c792ea}.zl.z-top{background:var(--accent)}
@@ -889,9 +890,9 @@ function viewLeague(){
       ${drawPanel()}
       ${usersPanel()}
       <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
-        ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span></div>
+        ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span> ${starHtml(clubStars(c))}</div>
           <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
-          <div class="row">${!c.managerId && !mc && (S.comm || canPick(S.me)) ? `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>` : ''}
+          <div class="row">${!c.managerId && !mc && (S.comm || canPick(S.me)) ? (clubStars(c) > maxStars() && !S.comm ? `<span class="pill neutral">Oltre ${String(maxStars()).replace('.', ',')} stelle: non selezionabile</span>` : `<button class="btn sm good" data-act="club-claim" data-id="${c.id}">Prendi la panchina</button>`) : ''}
           ${S.comm ? `<button class="btn sm ghost" data-act="club-edit" data-id="${c.id}">Modifica</button>` : ''}
           ${c.managerId && S.comm ? `<button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">${c.managerId === S.me ? 'Lascia' : 'Libera panchina'}</button>` : ''}
           ${S.comm ? `<button class="btn sm bad" data-act="club-del" data-id="${c.id}">Elimina</button>` : ''}</div></div>`).join('')}</div>`
@@ -1005,6 +1006,7 @@ function clubModal(c){
       <input id="clogo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">${c.logo ? '<button type="button" class="btn sm ghost" id="clogodel">Togli logo</button>' : ''}</div>
       <span class="hint">PNG con sfondo trasparente è l’ideale. Viene ridotto in automatico.</span></div>
     ${sel('cdiv', 'Campionato', [['A', 'Serie A'], ['B', 'Serie B']], divOf(c))}
+    ${fld('cstars', 'Stelle FC 27 (vuoto = calcolate dalla rosa)', `type="number" min="0.5" max="5" step="0.5" value="${c.stars ?? ''}" placeholder="${clubStars({...c, stars: undefined})}"`)}
     ${fld('ccoach', 'Allenatore (squadra CPU)', `maxlength="40" value="${esc(c.coach || '')}" placeholder="Es. Daniele De Rossi"`, 'Si vede sotto il nome quando la squadra non ha un manager.')}
     ${fld('ccap', 'Capienza stadio (posti)', `type="number" min="1000" max="80000" step="100" value="${stadium(c).cap}"`, 'Metti la capienza reale dello stadio del club.')}
     ${fld('cbudget', 'Budget trasferimenti iniziale (milioni €)', `type="number" min="0" step="0.5" value="${c.budget0 / M}"`, 'Usa quello che FC 27 assegna al tuo club, o lo standard della lega.')}
@@ -1016,7 +1018,7 @@ function clubModal(c){
       if (S.clubs.some(x => x.id !== c.id && x.name.toLowerCase() === name.toLowerCase())) fail('Esiste già una società con questo nome.');
       const dv = String(fd.get('cdiv')) === 'B' ? 'B' : 'A';
       const logo = clubModal.logo === undefined ? (c.logo || null) : clubModal.logo;
-      const data = {coach: String(fd.get('ccoach') || '').trim(), name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
+      const data = {stars: fd.get('cstars') ? Math.max(0.5, Math.min(5, Math.round(+fd.get('cstars') * 2) / 2)) : null, coach: String(fd.get('ccoach') || '').trim(), name, short, color: hexOk(String(fd.get('ccolor'))), budget0: num(fd, 'cbudget') * M, wage0: num(fd, 'cwage') * K, div: dv,
         stadium: {...(c.stadium || {}), cap: Math.max(1000, Math.round(num(fd, 'ccap')) || stadium({...c, div: dv}).cap)}, logo};
       if (isNew){
         const manage = S.comm ? (!myClub() && fd.get('cmine') === 'on') : true;
@@ -1530,8 +1532,8 @@ function viewWorld(){
       <div class="f full"><label for="wl">Campionato</label><select id="wl" data-wf="wl">${WORLD.leagues.map((l, i) => `<option value="${i}"${+li === i ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
     </div></div>
   ${list.length || q || minO ? `<div class="panel"><div class="ph"><h3>Risultati</h3><span class="sub">${list.length} giocatori</span></div><div class="list">${list.map(pRow).join('') || '<p class="muted">Nessun giocatore trovato.</p>'}</div></div>` : ''}
-  ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${esc(sc.league)}${sc.lm ? ' · club della lega gestito dalla CPU' : ''} · media squadra ${sc.avg.toFixed(1)}</p><div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
-    : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> <span class="sub">media ${c.avg.toFixed(1)} · ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
+  ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${starHtml(wClubStars(sc))} · ${esc(sc.league)}${sc.lm ? ' · club della lega gestito dalla CPU' : ''} · media squadra ${sc.avg.toFixed(1)}</p><div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
+    : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> ${starHtml(wClubStars(c))} <span class="sub">· ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
   ${cpuPanel()}`;
 }
 
@@ -2707,6 +2709,20 @@ function ratingsModal(){
     ratingsModal.ok = ok; $('#rbox').innerHTML = `<p class="sub">${ok.length} pronti da salvare.</p>` + rows.join('');
   };
 }
+/* ---------- stelle del club come in FC 27 ---------- */
+const STAR_T = [[84.5, 5], [81, 4.5], [77.5, 4], [75, 3.5], [72, 3], [69, 2.5], [66, 2], [63, 1.5], [60, 1]];
+function xiAvg(ps){
+  const s = ps.slice().sort((a, b) => (b.ovr || 0) - (a.ovr || 0)), out = [];
+  [['gk', 1], ['def', 4], ['mid', 4], ['att', 2]].forEach(([g, n]) => out.push(...s.filter(p => (GRP[p.pos] || 'mid') === g).slice(0, n)));
+  s.filter(p => !out.includes(p)).slice(0, 11 - out.length).forEach(p => out.push(p));
+  return out.length ? out.reduce((a, p) => a + (p.ovr || 0), 0) / out.length : 0;
+}
+const starsOf = avg => (STAR_T.find(([t]) => avg >= t) || [0, 0.5])[1];
+const clubStars = c => c?.stars ?? starsOf(xiAvg(roster(c.id).filter(p => !p.loan)));
+const wClubStars = c => c.lm ? clubStars(club(c.lm)) : starsOf(xiAvg(c.players));
+const starTxt = n => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') ;
+const starHtml = n => `<span class="stars" title="${String(n).replace('.', ',')} stelle">${starTxt(n)}<span class="sub"> ${String(n).replace('.', ',')}</span></span>`;
+const maxStars = () => S.settings?.maxStars ?? 4.5;
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -4307,7 +4323,7 @@ document.addEventListener('click', async e => {
       case 'settings': settingsModal(); break;
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
-      case 'club-claim': if (!S.me) return authModal(); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
       case 'reset-league': resetLeagueModal(); break;
