@@ -772,7 +772,8 @@ function viewFixtures(){
   const chips = Array.from({length: ri.total}, (_, i) => i + 1).map(x => {
     const done = leagueMatches(curDiv()).filter(m => m.round === x).every(m => m.played);
     return `<button class="chip${done ? ' done' : ''}" aria-pressed="${x === r}" data-act="round" data-id="${x}">${x}</button>`; }).join('');
-  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="row"><span class="sub">Stagione ${season()} · ${ri.total} giornate</span>${S.comm ? '<button class="btn sm" data-act="fx-round">Inserisci giornata</button> <button class="btn sm" data-act="fx-add">Aggiungi partita</button>' : ''}</span></div>
+  return `${curDiv() === 'B' ? playoffPanel() : ''}<div class="panel">${divTabs()}<div class="ph"><h2>${hasB() ? DIVS[curDiv()] + ' · ' : ''}Giornata ${r} <span class="sub">· ${r <= half ? 'andata' : 'ritorno'}</span></h2><span class="row"><span class="sub">Stagione ${season()} · ${ri.total} giornate</span>${S.comm ? '<button class="btn sm primary" data-act="lu-win">Apri giornata</button> <button class="btn sm" data-act="lu-copy">Copia mancanti</button> <button class="btn sm" data-act="fx-round">Inserisci giornata</button> <button class="btn sm" data-act="fx-add">Aggiungi partita</button>' : ''}</span></div>
+    ${(() => { const m0 = seasonMatches().find(m => !m.pre && !m.stage && m.round === r); const l = luWinLine(m0); return l ? `<p class="notice" style="margin:0 0 12px">📝 ${l}</p>` : ''; })()}
     <div class="chips" role="group" aria-label="Scegli giornata">${chips}</div>
     <div style="margin-top:12px">${ms.map(fixture).join('')}</div>
     <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
@@ -2277,6 +2278,60 @@ function cupNews(){
   });
   return out;
 }
+/* ---------- finestra delle distinte: si aprono e si chiudono a orario, poi default automatico ---------- */
+const luKey = m => `${m.season}-${m.stage ? 'P' : 'L'}-${m.round}`;
+const luWin = m => m && !m.pre ? (S.settings?.luWin || {})[luKey(m)] || null : null;
+const fmtDT = t => new Date(t).toLocaleString('it-IT', {weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+function luLock(m){
+  const w = luWin(m); if (!w || S.comm) return '';
+  if (now() < w.open) return `Le distinte della giornata ${m.round} si aprono ${fmtDT(w.open)}.`;
+  if (now() > w.close) return `Tempo scaduto: le distinte della giornata ${m.round} si sono chiuse ${fmtDT(w.close)}.`;
+  return '';
+}
+function luWinLine(m){
+  const w = luWin(m); if (!w) return '';
+  const t = now();
+  return t < w.open ? `Distinte aperte da ${fmtDT(w.open)} a ${fmtDT(w.close)}` : t < w.close ? `Distinta: scade tra <b class="cd" data-end="${w.close}">${timeLeft(w.close - t)}</b> (${fmtDT(w.close)})` : `Distinte chiuse ${fmtDT(w.close)}`;
+}
+const dtLocal = t => { const d = new Date(t - new Date(t).getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 16); };
+function luWinModal(){
+  const r = S.round || 1, s = season(), key0 = `${s}-L-${r}`, w = (S.settings?.luWin || {})[key0];
+  const d = new Date(); d.setHours(24, 0, 0, 0); const open0 = w?.open || d.getTime(), c = new Date(open0); c.setHours(21, 0, 0, 0); if (c.getTime() <= open0) c.setDate(c.getDate() + 1);
+  openModal('Apri giornata · distinte', `<div class="fgrid">${fld('lr', 'Giornata', `type="number" min="1" value="${r}" required`)}
+    ${fld('lo', 'Le distinte si aprono', `type="datetime-local" value="${dtLocal(open0)}" required`)}${fld('lc', 'Le distinte si chiudono', `type="datetime-local" value="${dtLocal(w?.close || c.getTime())}" required`)}</div>
+    <p class="sub">Vale per Serie A e Serie B. Fino all’apertura i manager non possono consegnare; dopo la chiusura la distinta si blocca. Chi non l’ha consegnata e non ha una formazione tipo gioca con la formazione di default di FC 27 e prende una distinta mancata (alla ${MISS_MAX}ª perde la panchina).</p>`,
+    async fd => {
+      const rr = Math.round(num(fd, 'lr')), o = new Date(String(fd.get('lo'))).getTime(), cl = new Date(String(fd.get('lc'))).getTime();
+      if (!rr || !o || !cl) fail('Compila giornata e orari.'); if (cl <= o) fail('La chiusura deve essere dopo l’apertura.');
+      await db.doc('league/settings').update({luWin: {...(S.settings.luWin || {}), [`${s}-L-${rr}`]: {open: o, close: cl, closed: false}}});
+      toast(`Giornata ${rr}: distinte dal ${fmtDT(o)} al ${fmtDT(cl)}`, 6000);
+    }, 'Salva');
+}
+function luMissingText(){
+  const r = S.round || 1, ms = seasonMatches().filter(m => !m.pre && !m.stage && m.round === r && !m.played), w = luWin(ms[0]), out = [];
+  ms.forEach(m => [m.homeId, m.awayId].forEach(cid => { const c = club(cid); if (c?.managerId && !luDone(m.id, cid)) out.push(`• ${c.name} (${mgrName(c)})`); }));
+  return `📝 *Distinte giornata ${r}*${w ? ` – chiusura ${fmtDT(w.close)}` : ''}\n${out.length ? `Mancano ancora:\n${out.join('\n')}\n\nChi non consegna gioca con la formazione di default di FC 27 e prende una distinta mancata.` : 'Tutte consegnate ✅'}`;
+}
+let luBusy = false;
+async function luTick(){
+  if (!S.comm || luBusy || !S.settings?.luWin || !S.loaded.lineups || !S.loaded.matches) return;
+  const due = Object.entries(S.settings.luWin).filter(([, w]) => !w.closed && w.close <= now()); if (!due.length) return;
+  luBusy = true;
+  try {
+    for (const [key, w] of due){
+      const ms = S.matches.filter(m => !m.pre && luKey(m) === key && !m.played); let n = 0;
+      for (const m of ms) for (const cid of [m.homeId, m.awayId]){
+        const c = club(cid); if (!c?.managerId || luDone(m.id, cid)) continue;
+        const miss = missCount(cid) + 1;
+        await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, round: m.round, season: m.season, def: true, missed: true, auto: true, mgr: c.managerId, xi: [], draft: false, ts: now(), by: S.me || null});
+        if (miss >= MISS_MAX) await db.doc('clubs/' + cid).update({managerId: null});
+        n++;
+      }
+      await db.doc('league/settings').update({luWin: {...(S.settings.luWin || {}), [key]: {...w, closed: true}}});
+      toast(`Distinte chiuse${n ? `: ${n} squadre giocano con la formazione di default` : ': tutte consegnate'}`, 6000);
+    }
+  } finally { luBusy = false; }
+}
 /* ---------- regolamento ufficiale: come funziona il sito ---------- */
 const RULES_SECTIONS = [
  ['🧭 Il sito in breve', `<p>Il sito è in stile <b>Carriera allenatore di FC 27</b>. Dal menu in alto:</p><ul>
@@ -2291,7 +2346,12 @@ const RULES_SECTIONS = [
   <li>Le partite delle <b>squadre CPU</b> della lega le simula comunque il commissario alla PlayStation e inserisce il risultato.</li>
   <li>Tutti i risultati di Serie A e B li inserisce il commissario.</li></ul>
   <p>Sotto il nome delle squadre CPU c'è il loro allenatore reale (es. «All. De Rossi · CPU»).</p>
-  <p><b>Distinte</b>: ogni giornata va consegnata entro il tempo indicato. Se non la consegni, la squadra gioca con la <b>formazione di default di FC 27</b>. <b>Alla 5ª distinta non consegnata il manager viene tolto dalla squadra</b>, che passa alla CPU.</p>`],
+  <p><b>Distinte</b></p><ul>
+  <li>Ogni giornata il commissario la <b>apre</b> con un orario di apertura e uno di chiusura (es. dalla mezzanotte di domenica alle 21:00 del giorno della partita). Li vedi in Centrale e in Calendario con il conto alla rovescia.</li>
+  <li>Prima dell'apertura non si può consegnare; <b>alla chiusura la distinta si blocca</b> e non si modifica più.</li>
+  <li>Se hai salvato una <b>formazione tipo</b> e non consegni la distinta della giornata, giochi con la formazione tipo <b>senza penalità</b>.</li>
+  <li>Se non hai né distinta né formazione tipo, giochi con la <b>formazione di default di FC 27</b> e prendi una <b>distinta mancata</b>, in automatico.</li>
+  <li><b>Alla 5ª distinta mancata il manager viene tolto dalla squadra</b>, che passa alla CPU.</li></ul>`],
  ['🏆 Campionati, promozioni e retrocessioni', `<ul><li><b>Serie A</b>: prime 4 in Champions League, 5ª e 6ª in Europa League, 7ª in Conference League. <b>Le ultime 3 retrocedono in Serie B.</b></li>
   <li><b>Serie B</b>: le prime 2 salgono in Serie A, dalla 3ª alla 6ª playoff per il terzo posto. La Serie C nel gioco non esiste: dalla B non retrocede nessuno.</li></ul>
   <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri): calendari, risultati e marcatori li inserisce il commissario, come per Serie A e B. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
@@ -2509,6 +2569,7 @@ function autoClose(){
   try { cpuTick(); } catch {}
   try { lgTick(); } catch {}
   try { coachTick(); } catch {}
+  try { luTick(); } catch {}
 }
 
 function resultModal(m){
@@ -2710,6 +2771,7 @@ function luSummary(L, compact){
 
 function lineupModal(m, cid){
   if (m.played) return toast('La partita è già stata giocata: la distinta è chiusa.');
+  { const lk = !m.tplOnly && luLock(m); if (lk) return toast(lk, 6000); }
   const only = !!m.tplOnly;
   if (!canManage(cid)) return toast('Solo l’allenatore di questa società può consegnare la distinta.');
   const c = club(cid), L = (only ? club(cid)?.tpl : lineupOf(m.id, cid)) || club(cid)?.tpl || {}, rs = roster(cid), out = m.pre || only ? new Set() : suspended();
@@ -2757,6 +2819,7 @@ function lineupModal(m, cid){
       Object.entries(d.setp).forEach(([k, id]) => { if (id && !d.xi.includes(id)) fail(`${SETP.find(x => x[0] === k)[1]}: scegli un titolare.`); });
       if (only || f.querySelector('#lutpl')?.checked){ const {matchId, clubId, season: _s, round, pre, draft, by, ...T} = doc(d, subs, false); await db.doc('clubs/' + cid).update({tpl: T}); }
       if (only) return toast('Formazione tipo salvata: vale per tutte le partite');
+      { const lk = luLock(m); if (lk) fail(lk); }
       await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, false));
       toast(f.querySelector('#lutpl')?.checked ? 'Distinta consegnata e salvata come formazione tipo' : 'Distinta consegnata');
     }, only ? 'Salva formazione tipo' : 'Consegna distinta');
@@ -2832,6 +2895,7 @@ function lineupModal(m, cid){
   (L.subs || []).forEach(addSub);
   $('#lureset').onclick = () => { f.querySelectorAll('.luxi').forEach(s => s.value = ''); benchSet = new Set(); $('#lusubs').innerHTML = ''; refresh(); toast('Distinta azzerata: ricomincia o salva la bozza'); };
   if ($('#ludraft')) $('#ludraft').onclick = async () => { try { const d = collect(), subs = d.subs.filter(s => s.out || s.in || s.min);
+      { const lk = luLock(m); if (lk) return toast(lk, 6000); }
       await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, true)); dlg.close(); toast('Bozza salvata: la puoi completare e consegnare più tardi');
     } catch (err){ toast(err.message || 'Bozza non salvata. Riprova.'); } };
   const del = $('#ludel'); if (del) del.onclick = async () => { try { await db.doc('lineups/' + luId(m.id, cid)).delete(); dlg.close(); toast('Distinta ritirata: risulta di nuovo mancante'); } catch (err){ toast(err.message || 'Operazione non riuscita.'); } };
@@ -3746,7 +3810,7 @@ function viewHome(){
       ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${hasB() ? DIVS[divOf(mc)] + ' · ' : ''}Stagione ${season()}</span></div></div>`
         : `<div class="hwho"><div><span class="hsub">${S.me ? 'Non alleni ancora nessuna squadra' : 'Benvenuto'}</span><h2>League Manager</h2><span class="hsub">Stagione ${season()}</span></div></div>
           <a class="btn primary hbtn" href="#lega">${S.me ? 'Prendi una panchina' : 'Vai alla Lega'}</a>`}
-      ${myNext ? `<div class="hnext"><div class="hnl"><span>Prossima · ${myNext.stage ? 'Playoff' : 'Giornata ' + myNext.round}</span><span class="${lu ? 'ok' : 'todo'}">${lu ? 'Distinta consegnata' : 'Distinta da consegnare'}</span></div>
+      ${myNext ? `<div class="hnext"><div class="hnl"><span>Prossima · ${myNext.stage ? 'Playoff' : 'Giornata ' + myNext.round}</span><span class="${lu ? 'ok' : 'todo'}">${lu ? 'Distinta consegnata' : 'Distinta da consegnare'}</span></div>${luWinLine(myNext) ? `<div class="hsub">${luWinLine(myNext)}</div>` : ''}
           <div class="hvs"><span>${crest(H)}<b>${esc(H?.name || '—')}</b></span><i>vs</i><span class="r"><b>${esc(A?.name || '—')}</b>${crest(A)}</span></div>
           <button class="btn primary hbtn" data-act="lineup" data-id="${myNext.id}">${lu ? 'Modifica la distinta' : 'Consegna la distinta'}</button></div>` : ''}
     </section>
@@ -3947,7 +4011,7 @@ function viewPre(){
 const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['logos-bulk','lg-gen','lg-round','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4060,6 +4124,8 @@ document.addEventListener('click', async e => {
       case 'cpu-clubs': cpuClubsImport(); break;
       case 'logos-bulk': logosBulk(); break;
       case 'rule-go': { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); break; }
+      case 'lu-win': luWinModal(); break;
+      case 'lu-copy': { const t = luMissingText(); try { await navigator.clipboard.writeText(t); toast('Elenco copiato: incollalo su WhatsApp'); } catch { openModal('Distinte mancanti', `<textarea style="width:100%;min-height:200px">${esc(t)}</textarea>`, null); } break; }
       case 'lg-gen': lgGen(+id); break;
       case 'lg-round': lgRoundAdd(+id); break;
       case 'lg-bulk': lgBulk(+id); break;
