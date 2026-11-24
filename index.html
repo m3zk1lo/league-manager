@@ -250,6 +250,27 @@ button.tag:hover{border-color:var(--on-pitch)}
 </style>
 
 <style id="fc27">
+@media (max-width:760px){
+  html body #tabs{display:flex}
+  html body .bnav,html body .bsheet{display:none!important}
+  html body{padding-bottom:env(safe-area-inset-bottom)}
+  .band-in{padding-block:10px 6px}
+  .band h1{font-size:1.7rem}
+  .meta{gap:6px}.meta .tag{font-size:.75rem;padding:2px 8px}
+  .band{position:static}
+}
+.band{position:sticky;top:0;z-index:30}
+.tabs{-webkit-overflow-scrolling:touch;padding-inline:8px}
+.hkpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (min-width:760px){.hkpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.hkpi{background:var(--surface);border-top:3px solid var(--accent);padding:12px;text-decoration:none;color:var(--ink);display:block;min-width:0}
+.hkpi:nth-child(2){border-top-color:var(--blue)}.hkpi:nth-child(3){border-top-color:var(--warn)}.hkpi:nth-child(4){border-top-color:#ff8a3d}
+.hkpi .l{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.hkpi .v{font-family:var(--display);font-weight:800;font-size:1.75rem;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hkpi .s{font-size:11.5px;color:var(--muted)}
+.hmini{display:grid;grid-template-columns:28px minmax(0,1fr) 34px 34px;gap:6px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.92rem;align-items:center}
+.hmini.me{background:#1a2a6b;margin-inline:-18px;padding-inline:18px}
+.hmini b.p{font-family:var(--display);font-size:1.1rem}
 html:root,html:root:not([data-theme="light"]),html:root[data-theme]{
   --bg:#07090f; --surface:#111829; --surface-2:#141b2e; --ink:#eef1f6; --muted:#9aa3b8; --line:#1d2640;
   --accent:#d7ff3c; --accent-soft:#2a3410; --on-accent:#07090f;
@@ -323,13 +344,13 @@ dialog{border-radius:0;border:0;border-top:3px solid var(--accent);background:#0
     <div class="meta" id="meta"></div>
   </div>
   <nav class="wrap tabs" id="tabs" aria-label="Sezioni">
-    <a href="#home">Home</a>
-    <a href="#classifica">Classifica</a>
-    <a href="#calendario">Calendario</a>
-    <a href="#societa">Società</a>
+    <a href="#home">Centrale</a>
+    <a href="#societa">Squadra</a>
     <a href="#mercato">Mercato<span class="badge" id="mktbadge" hidden></span></a>
     <a href="#mondo">Mondo</a>
     <a href="#svincolati">Svincolati<span class="badge" id="aucbadge" hidden></span></a>
+    <a href="#calendario">Calendario</a>
+    <a href="#classifica">Classifica</a>
     <a href="#statistiche">Statistiche</a>
     <a href="#precampionato">Precampionato</a>
     <a href="#lega">Lega</a>
@@ -3028,6 +3049,19 @@ function fxClear(){
 }
 
 /* ---------- home (hub) + barra in basso ---------- */
+function homeKpis(mc, open, nA){
+  const k = (href, l, v, s) => `<a class="hkpi" href="#${href}"><div class="l">${l}</div><div class="v num">${v}</div><div class="s">${s}</div></a>`;
+  const tb = typeof tables === 'function' ? tables().length : 0;
+  return `<div class="hkpis">${mc ? k('societa', 'Budget mercato', fmtM(budget(mc)), esc(mc.name)) + k('societa', 'Monte ingaggi', fmtM(wageUsed(mc.id)), 'su ' + fmtM(mc.wage0 || 0)) : ''}
+    ${k('mercato', 'Mercato', open ? 'Aperto' : 'Chiuso', tb ? `${tb} ${tb === 1 ? 'trattativa' : 'trattative'} in corso` : 'nessuna trattativa CPU')}
+    ${k('svincolati', 'Aste', nA ? String(nA) : '0', nA ? 'in corso tra gli svincolati' : 'nessuna asta aperta')}</div>`;
+}
+function homeTable(mc){
+  const st = standings(); if (!st.length) return '';
+  const i = mc ? st.findIndex(r => r.c.id === mc.id) : -1, from = Math.max(0, Math.min(i - 2, st.length - 5)), rows = st.slice(i < 0 ? 0 : from, (i < 0 ? 0 : from) + 5);
+  return `<div class="panel"><div class="ph"><h3>Classifica${hasB() ? ' · ' + DIVS[curDiv()] : ''}</h3><a href="#classifica" class="sub">Tutta ›</a></div>
+    ${rows.map(r => `<div class="hmini${mc && r.c.id === mc.id ? ' me' : ''}"><b>${st.indexOf(r) + 1}</b><span>${esc(r.c.name)}</span><span class="sub">${r.g}</span><b class="p">${r.pt}</b></div>`).join('')}</div>`;
+}
 function viewHome(){
   const mc = myClub(), nA = openAuctions().length, open = window_();
   const myNext = mc ? seasonMatches().filter(m => !m.played && (m.homeId === mc.id || m.awayId === mc.id)).sort((a, b) => (a.stage ? 1 : 0) - (b.stage ? 1 : 0) || a.round - b.round)[0] : null;
@@ -3051,9 +3085,8 @@ function viewHome(){
           <div class="hvs"><span>${crest(H)}<b>${esc(H?.name || '—')}</b></span><i>vs</i><span class="r"><b>${esc(A?.name || '—')}</b>${crest(A)}</span></div>
           <button class="btn primary hbtn" data-act="lineup" data-id="${myNext.id}">${lu ? 'Modifica la distinta' : 'Consegna la distinta'}</button></div>` : ''}
     </section>
-    <a class="hstat ${open ? 'open' : 'closed'}" href="#svincolati"><span class="dot"></span>Mercato ${open ? 'aperto' : 'chiuso'}${nA ? ` · ${nA} ${nA === 1 ? 'asta' : 'aste'} in corso` : ''}</a>
-    <nav class="htiles" aria-label="Sezioni">${tiles.map(([r, l, s]) => `<a href="#${r}"><b>${l}</b><span>${s}</span></a>`).join('')}</nav>
-    ${newsItems().length ? newsPanel(4, 'Ultime dal mercato') : ''}${boardPanel(true)}`;
+    ${homeKpis(mc, open, nA)}
+    ${boardPanel(true)}${newsItems().length ? newsPanel(4, 'Notizie') : ''}${homeTable(mc)}`;
 }
 function bnavSync(){
   const nav = $('#bnav'); if (!nav) return;
