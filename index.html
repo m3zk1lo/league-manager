@@ -424,7 +424,9 @@ const mDiv = m => m.div || 'A';
 const hasB = () => S.clubs.some(c => divOf(c) === 'B');
 const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m) === div && !m.stage);
 const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : divOf(myClub());
-const divTabs = () => hasB() ? `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${['A', 'B'].map(d => `<button class="chip" aria-pressed="${curDiv() === d}" data-act="div" data-id="${d}">${DIVS[d]}</button>`).join('')}</div>` : '';
+const divTabs = () => { const cur = (S.div === 'W' || S.div === 'C') ? S.div : curDiv(), tabs = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : []), ['W', 'Altri campionati'], ['C', 'Coppe']];
+  return `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${tabs.map(([d, l]) => `<button class="chip" aria-pressed="${cur === d}" data-act="div" data-id="${d}">${l}</button>`).join('')}</div>`; };
+const worldScope = () => { if (S.div !== 'W' && S.div !== 'C') return null; loadWorld(); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : S.div === 'C' ? cupView() : lgView()); };
 const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
 function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
 function tieWinner(ms, s = season()){
@@ -515,7 +517,17 @@ const canManage = cid => S.comm || (!!S.me && club(cid)?.managerId === S.me);
 const window_ = () => !!S.settings?.windowOpen;
 const COACHES = {Lecce: 'Eusebio Di Francesco', Fiorentina: 'Paolo Vanoli', Sassuolo: 'Alberto Aquilani', Bologna: 'Raffaele Palladino', Torino: 'Ignazio Abate', Cagliari: 'Fabio Pisacane', Frosinone: 'Massimiliano Alvini', Udinese: 'Paolo Zanetti', Venezia: 'Davide Nicola', Genoa: 'Daniele De Rossi', Monza: 'Ivan Juric', Parma: 'Alberto Gilardino',
   Padova: 'Antonio Calabro', Mantova: 'Francesco Modesto', Cesena: 'Alessandro Diamanti', 'Südtirol': 'Davide Possanzini', Carrarese: 'Guido Pagliuca', Benevento: 'Antonio Floro Flores', Ascoli: 'Francesco Tomei', 'Juve Stabia': 'Pietro De Giorgio', Entella: 'Andrea Chiappella', Arezzo: 'Cristian Bucchi', Empoli: 'Matteo Andreoletti', Vicenza: 'Fabio Gallo'};
-const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : c?.coach ? 'All. ' + c.coach + ' · CPU' : 'Panchina libera';
+const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : c?.coach ? 'All. ' + c.coach + ' · CPU' : c?.prevCoach ? 'Panchina libera · esonerato ' + c.prevCoach : 'Panchina libera';
+/* esonero CPU: una volta a stagione per club, solo se la squadra va male (ultime posizioni e pochi punti nelle ultime 5) */
+let sackBusy = false;
+async function sackTick(){ if (!S.comm || sackBusy || !S.loaded.clubs || !S.loaded.matches) return; sackBusy = true;
+  try { for (const dv of ['A', 'B']){ if (dv === 'B' && !hasB()) continue; let rows; try { rows = standings(season(), dv); } catch { continue; } const n = rows.length;
+    for (let i = 0; i < n; i++){ const x = rows[i], c = x.c; if (c.managerId || !c.coach || c.sackedSeason === season() || x.g < 8 || i < n - 4) continue;
+      const f = x.form.slice(-5), pts = f.reduce((a, r) => a + (r === 'V' ? 3 : r === 'N' ? 1 : 0), 0);
+      if (pts <= 3 && WH('sack' + c.id + season() + x.g) < 0.5){ await db.doc('clubs/' + c.id).update({coach: null, prevCoach: c.coach, vacant: true, sackedSeason: season()}); toast(`${c.name} esonera ${c.coach}: panchina libera`, 5000); return; } } } } finally { sackBusy = false; } }
+const benches = () => S.clubs.filter(c => !c.managerId && !c.coach);
+function benchPanel(){ const b = benches(); return `<div class="panel"><div class="ph"><h3>Panchine libere</h3><span class="sub">Cambio allenatore: una volta a stagione</span></div>
+  ${b.length ? `<div class="list">${b.map(c => `<div class="li"><div class="main">${clubLink(c)}<br><span class="sub">${c.prevCoach ? 'Esonerato ' + esc(c.prevCoach) + ' · ' : ''}${esc(DIVS[divOf(c)] || '')}</span></div>${S.comm ? `<button class="btn sm" data-act="coach-set" data-id="${c.id}">Nuovo allenatore CPU</button>` : ''}</div>`).join('')}</div>` : '<p class="muted">Nessuna panchina libera. Se una squadra CPU va male, a stagione in corso può esonerare il suo allenatore e la panchina compare qui.</p>'}</div>`; }
 let coachFill = false;
 async function coachTick(){ if (!S.comm || coachFill || !S.loaded.clubs) return; const todo = S.clubs.filter(c => !c.managerId && c.coach === undefined && COACHES[c.name]); if (!todo.length) return; coachFill = true;
   try { await Promise.all(todo.map(c => db.doc('clubs/' + c.id).update({coach: COACHES[c.name]}))); } finally { coachFill = false; } }
@@ -721,6 +733,7 @@ function zoneLegend(){
     : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
 }
 function viewTable(){
+  { const w = worldScope(); if (w) return w; }
   const ri = roundInfo(), rows = standings(), n = rows.length;
   const tbl = !S.clubs.length ? `<div class="empty"><strong>Nessuna società</strong><span>Vai su Lega e crea la tua società per entrare nel torneo.</span><a class="btn primary" href="#lega">Vai a Lega</a></div>` : `
     <div class="tscroll"><table>
@@ -765,6 +778,7 @@ function transferRow(t){
 }
 
 function viewFixtures(){
+  { const w = worldScope(); if (w) return w; }
   const ri = roundInfo();
   if (!ri.total) return divTabs() + panelEmpty('Calendario da generare', 'Il commissario lo genera in automatico da Lega oppure lo crea a mano, partita per partita.', S.comm ? '<button class="btn primary" data-act="fx-round">Inserisci giornata</button> <button class="btn" data-act="fx-add">Aggiungi partita</button>' : '');
   const r = S.round && S.round <= ri.total ? S.round : (ri.cur || ri.total);
@@ -881,7 +895,8 @@ function viewStats(){
     ${cards.map(o => `<tr><td><b>${esc(o.n)}</b></td><td>${clubLink(club(o.c))}</td><td class="r">${o.y}</td><td class="r">${o.r}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun cartellino.</p>'}</div></aside></section>`;
 }
 
-function viewLeague(){
+function viewLeague(){ return viewLeague0() + benchPanel(); }
+function viewLeague0(){
   const s = S.settings, mc = myClub(), ri = roundInfo();
   const anyPlayed = seasonMatches().some(m => m.played);
   const prizes = (s.prizes || []).map((p, i) => `${i+1}° ${fmtM(p)}`).join(' · ');
@@ -2882,6 +2897,7 @@ function autoClose(){
   try { lgTick(); } catch {}
   try { cpuMatchTick(); } catch {}
   try { coachTick(); } catch {}
+  try { sackTick(); } catch {}
   try { luTick(); } catch {}
   try { moraleTick(); } catch {}
 }
@@ -4344,6 +4360,7 @@ document.addEventListener('click', async e => {
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'coach-set': { const c = club(id); openModal('Nuovo allenatore · ' + c.name, fld('cn', 'Nome allenatore', 'maxlength="40" required placeholder="Es. Daniele De Rossi"'), async fd => { const nm = String(fd.get('cn') || '').trim(); if (!nm) fail('Scrivi il nome.'); await db.doc('clubs/' + id).update({coach: nm, vacant: false}); toast('Panchina assegnata'); }, 'Salva'); break; }
       case 'club-leave': confirmBox('Lascia la panchina', `${esc(club(id).name)} resterà nella lega senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + id).update({managerId: null}); }); break;
       case 'club-del': delClubModal(club(id)); break;
       case 'reset-league': resetLeagueModal(); break;
