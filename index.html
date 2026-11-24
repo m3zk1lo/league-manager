@@ -2651,11 +2651,13 @@ async function pushSend(to, title, body, url, key){
 const mgrOf = cid => club(cid)?.managerId || null;
 const allMgrs = () => S.clubs.map(c => c.managerId).filter(Boolean);
 function pushBanner(){
+  if (S.me && pushState() === 'on' && !(() => { try { return localStorage.getItem('lmPushTest'); } catch { return 1; } })()) return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Notifiche attive. Vuoi provarle?</span><button class="btn sm" data-act="push-test">Manda una prova</button></div>`;
   if (!S.me || pushState() === 'on' || (pushOk() && typeof Notification !== 'undefined' && Notification.permission === 'denied')) return '';
   return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Ricevi sul telefono offerte, trattative e scadenze delle distinte.</span><button class="btn sm primary" data-act="push-on">Attiva notifiche</button></div>`;
 }
 /* avvisi legati alle trattative con i club CPU */
 function pushDeal(d, txt, tag){ if (!d || d.rival || !d.buyerId) return; const u = mgrOf(d.buyerId); if (u) pushSend([u], `🤝 ${d.playerName}`, txt, "./#mercato", `deal-${d.id}-${tag}`); }
+async function pushTest(){ await pushSend([S.me], '✅ League Manager', 'Le notifiche funzionano: riceverai offerte, trattative e scadenze delle distinte.', './#home', 'test-' + S.me + '-' + now()); try { localStorage.setItem('lmPushTest', '1'); } catch {} toast('Notifica di prova inviata: arriva entro pochi secondi'); schedule(); }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -4351,6 +4353,7 @@ document.addEventListener('click', async e => {
       case 'fx-clear': fxClear(); break;
       case 'cpu-clubs': cpuClubsImport(); break;
       case 'push-on': pushEnable(); break;
+      case 'push-test': pushTest(); break;
       case 'logos-bulk': logosBulk(); break;
       case 'rule-go': { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); break; }
       case 'morale': moraleModal(id); break;
