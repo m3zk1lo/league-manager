@@ -426,7 +426,7 @@ const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m
 const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : (divOf(myClub()) === 'B' ? 'B' : 'A');
 const divTabs = () => { const cur = (S.div === 'W' || S.div === 'C') ? S.div : curDiv(), tabs = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : []), ['W', 'Altri campionati'], ['C', 'Coppe']];
   return `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${tabs.map(([d, l]) => `<button class="chip" aria-pressed="${cur === d}" data-act="div" data-id="${d}">${l}</button>`).join('')}</div>`; };
-const worldScope = () => { if (S.div !== 'W' && S.div !== 'C') return null; loadWorld(); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : S.div === 'C' ? cupView() : lgView()); };
+const worldScope = () => { const mc = myClub(); if (S.div == null && mc?.lg != null){ S.div = 'W'; if (S.lgl == null) S.lgl = mc.lg; } if (S.div !== 'W' && S.div !== 'C') return null; loadWorld(); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : S.div === 'C' ? cupView() : lgView()); };
 const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
 function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
 function tieWinner(ms, s = season()){
@@ -522,9 +522,11 @@ const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.manager
 const mvBy = () => (S.world || []).find(d => d.id === `MGR-S${season()}`)?.by || {};
 const ofrDoc = () => (S.world || []).find(d => d.id === `OFR-S${season()}`) || {list: [], sacked: []};
 const ofrSave = d => wsave(`OFR-S${season()}`, {season: season(), list: d.list || [], sacked: d.sacked || []});
-function bestManager(skipId){ const sc = new Map(); ['A', 'B'].forEach(dv => { if (dv === 'B' && !hasB()) return; try { standings(season(), dv).forEach(x => { if (x.c.managerId && x.g) sc.set(x.c.managerId, {id: x.c.managerId, cid: x.c.id, v: x.pt / x.g + (dv === 'A' ? 0.4 : 0)}); }); } catch {} });
+function bestManager(skipId){ const sc = new Map(), put = (c, v) => { if (c.managerId && c.id !== skipId) sc.set(c.managerId, {id: c.managerId, cid: c.id, v}); };
+  ['A', 'B'].forEach(dv => { if (dv === 'B' && !hasB()) return; try { standings(season(), dv).forEach(x => { if (x.g) put(x.c, x.pt / x.g + (dv === 'A' ? 0.4 : 0)); }); } catch {} });
+  S.clubs.filter(c => c.managerId && c.lg != null).forEach(c => { const doc = lgDoc(c.lg), x = doc && lgTable(doc).find(r => 'w' + r.i === c.id); if (x && x.g) put(c, x.pt / x.g + (LG_TOP.test(WORLD?.leagues?.[c.lg] || '') ? 0.4 : 0)); });
   const by = mvBy(), busy = new Set(ofrDoc().list.filter(o => o.st === 'open').map(o => o.uid));
-  return [...sc.values()].filter(x => x.cid !== skipId && !by[x.id] && !busy.has(x.id)).sort((a, b) => b.v - a.v)[0] || null; }
+  return [...sc.values()].filter(x => !by[x.id] && !busy.has(x.id)).sort((a, b) => b.v - a.v)[0] || null; }
 let sackBusy = false;
 async function sackTick(){ if (!S.comm || sackBusy || !S.loaded.clubs || !S.loaded.matches || !S.loaded.world) return; sackBusy = true;
   try { const d = JSON.parse(JSON.stringify(ofrDoc())); d.list ||= []; d.sacked ||= [];
@@ -546,7 +548,7 @@ async function takeClub(key, uid, free){
   const old = S.clubs.find(c => c.managerId === uid); let cid = key.slice(2);
   if (key[0] === 'w'){ const wc = WORLD.clubs.find(c => String(c.i) === cid); if (!wc) throw new Error('Squadra non trovata.'); cid = 'w' + wc.i;
     if (!S.clubs.some(c => c.id === cid)){ const ps = wc.players;
-      await db.doc('clubs/' + cid).set({name: wc.name, short: wc.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: divBudget('A'), wage0: Math.round(ps.reduce((a, x) => a + autoWage(x.ovr, x.age), 0) * (1 + wageMargin() / 100)), div: 'X', lg: wc.li, managerId: uid, objectives: [], createdAt: now(), logo: null});
+      await db.doc('clubs/' + cid).set({name: wc.name, short: wc.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: roundM(divBudget('A') * (0.35 + 1.6 * Math.pow(Math.max(0, Math.min(1, ((wc.avg || 64) - 64) / 20)), 1.5))), wage0: Math.round(ps.reduce((a, x) => a + autoWage(x.ovr, x.age), 0) * (1 + wageMargin() / 100)), div: 'X', lg: wc.li, managerId: uid, objectives: [], createdAt: now(), logo: null});
       for (let j = 0; j < ps.length; j += 10) await Promise.all(ps.slice(j, j + 10).map(x => db.doc('players/fc' + x.fc).set({name: x.name, pos: x.pos, age: x.age, ageSeason: season(), ovr: x.ovr, value: autoValue(x.ovr, x.age), wage: autoWage(x.ovr, x.age), injured: false, clubId: cid, loan: null, fcId: x.fc, contractUntil: season() + 1 + Math.floor(WH('c' + x.fc) * 3)}))); }
     else await db.doc('clubs/' + cid).update({managerId: uid}); }
   else await db.doc('clubs/' + cid).update({managerId: uid, coach: null, vacant: false});
@@ -1190,7 +1192,7 @@ function sellPlayer(p){
   wireLoan(f, 'Incasso dal prestito (milioni €)', 'Incasso (milioni €)');
 }
 /* ---------- mercato equilibrato ---------- */
-const MK = () => { const m = S.settings?.mkt || {}; return {on: !!m.on, bonusB: 0, tax: m.tax ?? 20, prio: m.prio ?? 0, maxTop: m.maxTop ?? 0, topOvr: m.topOvr ?? 82, start: m.start || 0}; };
+const MK = () => { const m = S.settings?.mkt || {}; return {on: false, bonusB: 0, tax: m.tax ?? 20, prio: m.prio ?? 0, maxTop: m.maxTop ?? 0, topOvr: m.topOvr ?? 82, start: m.start || 0}; };
 const mkHasB = () => S.clubs.some(c => divOf(c) === 'B');
 const mkLeft = () => { const k = MK(); return k.on && k.start ? k.start + k.prio * 36e5 - now() : 0; };
 const mkOvr = id => S.players.find(p => p.id === id)?.ovr || 0;
@@ -2152,7 +2154,7 @@ function clubPlayedW(ci){ let n = 0; (S.world || []).filter(d => d.season === se
 function wStatus(fc){ const w = worldState(); if (w.inj?.[fc]?.left > 0) return {t: 'inj', left: w.inj[fc].left}; if (w.sus?.[fc]?.left > 0) return {t: 'sus'}; return null; }
 function lgRes(li, r, j){
   const s = season(), doc = lgDoc(li, s); if (!doc) return; const m = doc.rounds[r].m[j];
-  wResultModal(`${doc.name} · giornata ${r + 1}`, m, async res => { const d2 = JSON.parse(JSON.stringify(doc)); d2.rounds[r].m[j] = res; d2.rounds[r].ts = now(); await wsave(doc.id, d2); if (!lgPlayed(m)){ const st = stLoad(); stAfter(st, res); await stSave(st); } toast('Risultato salvato'); });
+  wResultModal(`${doc.name} · giornata ${r + 1}`, m, async res => { const d2 = JSON.parse(JSON.stringify(doc)); d2.rounds[r].m[j] = res; d2.rounds[r].ts = now(); await wsave(doc.id, d2); if (!lgPlayed(m)){ const st = stLoad(); stAfter(st, res); await stSave(st); const hc = S.clubs.find(c => c.lg != null && c.id === 'w' + res[0]); if (hc){ const g = gateFor(hc, null); await ledger(hc.id, g.rev, `Incasso stadio: ${nf(g.att)} spettatori × €${g.price}`); } } toast('Risultato salvato'); });
 }
 /* incolla risultati (anche da screenshot trascritti): «Arsenal 2-1 Chelsea; Saka, Havertz; Palmer» */
 function lgBulk(li){
@@ -2179,7 +2181,7 @@ function lgView(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
   const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>
-    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p>${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0"><b>Questo campionato ha un manager vero: lo gestisci tu</b> (calendario e partite a mano), il sito non lo simula.</p>' : ''}
+    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Qui trovi tutti i campionati: dove c'è almeno un manager vero i risultati li inserisce il commissario.</p>${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0"><b>Questo campionato ha un manager vero: lo gestisci tu</b> (calendario e partite a mano), il sito non lo simula.</p>' : ''}
     ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
   const firstOpen = doc ? doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) : -1, r = Math.min(Math.max(1, +S.lgr || (firstOpen >= 0 ? firstOpen + 1 : nR)), nR || 1), rd = doc?.rounds[r - 1], sc = doc ? lgScorerTable(doc) : [];
@@ -2522,7 +2524,7 @@ function moraleBadge(p){
 }
 function moraleModal(pid){
   const p = S.players.find(x => x.id === pid), c = club(p?.clubId); if (!p || !c) return;
-  const can = canManage(c.id) || S.comm, v = moraleOf(p), r = roleOf(p), sNow = season(), lastR = divPlayed(divOf(c));
+  const can = canManage(c.id) || S.comm, v = moraleOf(p), r = roleOf(p), sNow = season(), lastR = playedOf(c);
   const promised = (p.promiseUntil || 0) > lastR;
   const raise = Math.round((p.wage || 0) * 0.15 / 500) * 500;
   openModal(`${p.name} · morale e ruolo`, `<p>${moraleIc(v)} Morale <b>${Math.round(v)}/100</b> · ruolo promesso <b>${PROLES[r][0]}</b> (si aspetta di giocare titolare almeno ${PROLES[r][2]} partite su 10).</p>
@@ -2549,7 +2551,7 @@ async function moraleTick(){
     const news = [], cur = new Map();
     for (const m of todo.sort((a, b) => a.round - b.round)) for (const cid of [m.homeId, m.awayId]){
       const c = club(cid); if (!c?.managerId) continue;
-      const L = lineupOf(m.id, cid), xi = new Set(L?.xi || []), ins = new Set((L?.subs || []).map(x => x.in)), lastR = divPlayed(divOf(c));
+      const L = lineupOf(m.id, cid), xi = new Set(L?.xi || []), ins = new Set((L?.subs || []).map(x => x.in)), lastR = playedOf(c);
       for (const p0 of roster(cid).filter(x => !x.loan)){
         const p = {...p0, ...(cur.get(p0.id) || {})};
         if (p.injured) continue;
@@ -3612,12 +3614,18 @@ function startPresence(){
   ch.subscribe(async st => { if (st === 'SUBSCRIBED') await ch.track({name: S.myName || '', at: Date.now()}); });
 }
 /* ================= GESTIONE SOCIETÀ: budget, sponsor, stadio, staff medico, sorteggio ================= */
-const DEF_BUDGET = {A: 50 * M, B: 30 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K};
+const DEF_BUDGET = {A: 50 * M, B: 30 * M}, DEF_WAGE = {A: 1500 * K, B: 700 * K, X: 1500 * K};
 const divBudget = d => S.settings?.['budget' + d] ?? DEF_BUDGET[d] ?? DEF_BUDGET.A;
 const divWage = d => S.settings?.['wage' + d] ?? DEF_WAGE[d];
 const divPlayed = d => roundInfo(d).played || 0;
 const divSize = d => S.clubs.filter(c => divOf(c) === d).length;
 
+/* prestigio 0..1 del club (forza della rosa): decide stadio, sponsor, costi medici e budget in modo realistico */
+const prestige = c => Math.max(0, Math.min(1, (clubStrength(c) - 64) / 20));
+const stDef = c => { const p = prestige(c), cap = Math.round((7000 + 48000 * Math.pow(p, 1.1)) / 500) * 500, price = Math.round(14 + 42 * p); return {cap, price, ref: price, fans: Math.round(cap * (0.7 + 0.3 * p))}; };
+const medK = c => 0.6 + 1.0 * prestige(c);
+const medAt = (c, l) => { const m = MED[l]; if (!m) return m; const k = medK(c); return {...m, cost: roundM(m.cost * k), yearly: roundM(m.yearly * k)}; };
+const playedOf = c => c?.lg != null ? Math.max(0, ...(lgDoc(c.lg)?.rounds || []).map((r, i) => r.m.some(lgPlayed) ? i + 1 : 0)) : playedOf(c);
 /* forza della rosa: media OVR dei migliori 16 */
 function clubStrength(c){
   const o = roster(c.id).map(p => p.ovr || 0).sort((a, b) => b - a).slice(0, 16);
@@ -3625,7 +3633,7 @@ function clubStrength(c){
 }
 /* rango atteso nella divisione (1 = più forte) e debolezza 0..1 */
 function strengthRank(c){
-  const d = divOf(c), list = S.clubs.filter(x => divOf(x) === d).map(x => ({id: x.id, s: clubStrength(x)})).sort((a, b) => b.s - a.s);
+  const d = divOf(c), list = (c.lg != null && WORLD && !WORLD.err ? WORLD.clubs.filter(x => x.li === c.lg).map(x => ({id: 'w' + x.i, s: 'w' + x.i === c.id ? clubStrength(c) : x.avg})) : S.clubs.filter(x => divOf(x) === d).map(x => ({id: x.id, s: clubStrength(x)}))).sort((a, b) => b.s - a.s);
   const n = list.length, r = list.findIndex(x => x.id === c.id) + 1;
   return {rank: r || n, n, weak: n > 1 ? (r - 1) / (n - 1) : 0};
 }
@@ -3646,7 +3654,7 @@ function sponsorGoal(c, tier, slot){
     return {type: 'goals', v: Math.max(5, g), label: `Segnare almeno ${Math.max(5, g)} gol in campionato`};
   }
   const weakSide = e > n / 2;
-  if (d === 'A'){
+  if (d !== 'B'){
     if (weakSide){
       if (tier === 'safe') return {type: 'pos', v: Math.max(1, n - 1), label: 'Non arrivare ultimi'};
       if (tier === 'bal') return {type: 'pos', v: Math.max(1, n - RELEG), label: `Salvezza (evitare le ultime ${RELEG})`};
@@ -3668,7 +3676,7 @@ function sponsorGoal(c, tier, slot){
 }
 function sponsorOffers(c, slot){
   const s = season(), d = divOf(c), rnd = seeded(`${c.id}|${s}|${slot}`), {weak} = strengthRank(c);
-  const base = (slot === 'main' ? (d === 'A' ? 6 * M : 2.5 * M) : (d === 'A' ? 3.5 * M : 1.5 * M)) * (1 + 0.6 * weak);
+  const base = (slot === 'main' ? (2 + 9 * prestige(c)) * M : (1 + 5 * prestige(c)) * M) * (1 + 0.6 * weak);
   const pool = BRANDS[slot].slice(); const brands = [];
   for (let i = 0; i < 3; i++) brands.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
   return SP_TIER.map((t, i) => { const j = 0.9 + rnd() * 0.2;
@@ -3709,14 +3717,14 @@ const ST_DEF = {A: {cap: 30000, price: 35, ref: 35, fans: 30000}, B: {cap: 12000
 const ST_SEATS = [{seats: 2500, cost: 3.5 * M, rounds: 2}, {seats: 5000, cost: 6.5 * M, rounds: 4}, {seats: 10000, cost: 12 * M, rounds: 8}];
 const ST_HOSP = [null, {cost: 4 * M, rounds: 2}, {cost: 8 * M, rounds: 3}, {cost: 14 * M, rounds: 4}];
 const ST_MAX = 80000;
-function stadium(c){ const d = divOf(c), st = c.stadium || {}; return {name: st.name || `Stadio ${c.name}`, cap: st.cap || ST_DEF[d].cap, price: st.price || ST_DEF[d].price, hosp: st.hosp || 0, build: st.build || null}; }
-function buildReady(c, b = stadium(c).build){ return b && (b.season < season() || divPlayed(divOf(c)) >= b.readyRound); }
+function stadium(c){ const d = divOf(c), st = c.stadium || {}; return {name: st.name || `Stadio ${c.name}`, cap: st.cap || stDef(c).cap, price: st.price || stDef(c).price, hosp: st.hosp || 0, build: st.build || null}; }
+function buildReady(c, b = stadium(c).build){ return b && (b.season < season() || playedOf(c) >= b.readyRound); }
 function effStadium(c){ const st = stadium(c), b = st.build; let cap = st.cap, hosp = st.hosp;
   if (b && buildReady(c, b)){ if (b.kind === 'seats') cap = Math.min(ST_MAX, cap + b.seats); else hosp = Math.min(3, hosp + 1); }
   return {...st, cap, hosp}; }
 function gateFor(home, away){
-  const d = divOf(home), def = ST_DEF[d], st = effStadium(home), {weak} = strengthRank(home);
-  const rows = standings(season(), d), n = rows.length || 1, pos = rows.findIndex(x => x.c.id === home.id), played = divPlayed(d);
+  const d = divOf(home), def = stDef(home), st = effStadium(home), {weak} = strengthRank(home);
+  const rows = standings(season(), d), n = rows.length || 1, pos = rows.findIndex(x => x.c.id === home.id), played = playedOf(home);
   const form = played ? 0.85 + 0.3 * (1 - Math.max(0, pos) / Math.max(1, n - 1)) : 1;
   const oppPos = rows.findIndex(x => x.c.id === away?.id), opp = played && oppPos >= 0 ? 0.95 + 0.15 * (1 - oppPos / Math.max(1, n - 1)) : 1;
   const priceF = Math.max(0.3, Math.min(1.6, Math.pow(def.ref / st.price, 0.8)));
@@ -3746,7 +3754,7 @@ function stadiumModal(c){
   const st = stadium(c), b = st.build, busy = b && !buildReady(c, b), d = divOf(c);
   const f = openModal(`${st.name}`, `<div class="fgrid">
     ${fld('stname', 'Nome dello stadio', `maxlength="40" value="${esc(st.name)}"`, '', true)}
-    ${fld('stprice', 'Prezzo medio del biglietto (€)', `type="number" min="5" max="200" step="1" value="${st.price}"`, `Riferimento ${DIVS[d]}: circa €${ST_DEF[d].ref}. Più alto = più incasso a spettatore ma meno pubblico.`, true)}
+    ${fld('stprice', 'Prezzo medio del biglietto (€)', `type="number" min="5" max="200" step="1" value="${st.price}"`, `Riferimento ${DIVS[d] || 'club'}: circa €${stDef(c).ref}. Più alto = più incasso a spettatore ma meno pubblico.`, true)}
     <p class="sub full" id="stprev" style="grid-column:1/-1"></p>
     <div class="f full"><label for="stwork">Lavori allo stadio</label><select id="stwork" name="stwork" ${busy ? 'disabled' : ''}>
       <option value="">Nessun lavoro</option>
@@ -3759,8 +3767,8 @@ function stadiumModal(c){
       if (base.build && buildReady(cur, base.build)){ if (base.build.kind === 'seats') upd.cap = Math.min(ST_MAX, upd.cap + base.build.seats); else upd.hosp = Math.min(3, upd.hosp + 1); upd.build = null; }
       const w = String(fd.get('stwork') || ''); let cost = 0, label = '';
       if (w && !(upd.build && !buildReady(cur, upd.build))){
-        if (w === 'h'){ const o = ST_HOSP[upd.hosp + 1]; if (!o) fail('Hospitality già al massimo.'); cost = o.cost; upd.build = {kind: 'hosp', season: season(), readyRound: divPlayed(divOf(cur)) + o.rounds}; label = `Lavori hospitality livello ${upd.hosp + 1}`; }
-        else { const o = ST_SEATS[+w.slice(1)]; if (upd.cap + o.seats > ST_MAX) fail('Supereresti la capienza massima.'); cost = o.cost; upd.build = {kind: 'seats', seats: o.seats, season: season(), readyRound: divPlayed(divOf(cur)) + o.rounds}; label = `Ampliamento stadio +${nf(o.seats)} posti`; }
+        if (w === 'h'){ const o = ST_HOSP[upd.hosp + 1]; if (!o) fail('Hospitality già al massimo.'); cost = o.cost; upd.build = {kind: 'hosp', season: season(), readyRound: playedOf(cur) + o.rounds}; label = `Lavori hospitality livello ${upd.hosp + 1}`; }
+        else { const o = ST_SEATS[+w.slice(1)]; if (upd.cap + o.seats > ST_MAX) fail('Supereresti la capienza massima.'); cost = o.cost; upd.build = {kind: 'seats', seats: o.seats, season: season(), readyRound: playedOf(cur) + o.rounds}; label = `Ampliamento stadio +${nf(o.seats)} posti`; }
         if (budget(cur) < cost) fail(`Budget insufficiente: servono ${fmtM(cost)}.`);
       }
       await db.doc('clubs/' + c.id).update({stadium: upd});
@@ -3785,7 +3793,7 @@ const medLevel = c => Math.max(1, Math.min(5, c?.medical || 1));
 const injLeft = p => { const i = p.injury; if (!i || !p.injured) return 0; const c = club(p.clubId); const d = i.div || (c ? divOf(c) : 'A');
   return i.season < season() ? 0 : Math.max(0, i.untilRound - divPlayed(d)); };
 function medicalPanel(c){
-  const mine = canManage(c.id), L = medLevel(c), cur = MED[L], nx = MED[L + 1];
+  const mine = canManage(c.id), L = medLevel(c), cur = medAt(c, L), nx = medAt(c, L + 1);
   const inj = roster(c.id).filter(p => p.injured);
   return `<div class="panel"><div class="ph"><h3>Staff medico</h3>${mine && nx ? `<button class="btn sm" data-act="med-up" data-id="${c.id}">Potenzia (${fmtM(nx.cost)})</button>` : ''}</div>
     <div class="list"><div class="li"><span>Livello ${L} · ${esc(cur.t)}</span><b>${cur.red ? `recupero −${Math.round(cur.red * 100)}%` : 'tempi di recupero normali'}</b></div>
@@ -3798,7 +3806,7 @@ function medicalPanel(c){
 }
 const cureCost = c => divOf(c) === 'A' ? 1 * M : 0.4 * M;
 async function medUpgrade(cid){
-  const c = club(cid), L = medLevel(c), nx = MED[L + 1]; if (!nx) fail('Staff medico già al massimo.');
+  const c = club(cid), L = medLevel(c), nx = medAt(c, L + 1); if (!nx) fail('Staff medico già al massimo.');
   if (budget(c) < nx.cost) fail(`Budget insufficiente: servono ${fmtM(nx.cost)}.`);
   confirmBox('Potenzia lo staff medico', `Passi al livello ${L + 1} (${esc(nx.t)}): recupero −${Math.round(nx.red * 100)}%. Costo ${fmtM(nx.cost)} subito e ${fmtM(nx.yearly)} all’anno.`, 'Conferma', async () => {
     await db.doc('clubs/' + cid).update({medical: L + 1}); await ledger(cid, -nx.cost, `Staff medico livello ${L + 1}`); toast('Staff medico potenziato'); });
@@ -3819,7 +3827,7 @@ function injuryData(p, fd){
   const gg = Math.max(0, Math.round(num(fd, 'pinjg')));
   if (!gg) return {injured: false, injury: null};
   if (p.injured && p.injury && p.injury.gg === gg) return {};
-  const c = club(p.clubId), d = c ? divOf(c) : 'A', red = MED[medLevel(c)].red, eff = Math.max(1, Math.round(gg * (1 - red)));
+  const c = club(p.clubId), d = c ? (divOf(c) === 'X' ? 'A' : divOf(c)) : 'A', red = MED[medLevel(c)].red, eff = Math.max(1, Math.round(gg * (1 - red)));
   return {injured: true, injury: {gg, eff, season: season(), div: d, fromRound: divPlayed(d), untilRound: divPlayed(d) + eff}};
 }
 async function autoHeal(){
@@ -3897,7 +3905,7 @@ async function seasonEndFinance(s, upIds){
     const sp = c.sponsors && c.sponsors.season === s ? c.sponsors : null;
     if (sp) for (const k of ['main', 'tech']) if (sp[k] && sponsorReached(c, sp[k], {promoted: upIds, div: divOf(c)})) await ledger(c.id, sp[k].bonus, `Bonus sponsor ${sp[k].brand}: obiettivo raggiunto (${sp[k].goal.label})`);
     const cap = effStadium(c).cap; await ledger(c.id, -cap * 25, `Manutenzione stadio stagione ${s} (${nf(cap)} posti)`);
-    const med = MED[medLevel(c)]; if (med.yearly) await ledger(c.id, -med.yearly, `Staff medico stagione ${s}`);
+    const med = medAt(c, medLevel(c)); if (med.yearly) await ledger(c.id, -med.yearly, `Staff medico stagione ${s}`);
   }
 }
 /* ---------- SARTORIA: divise della società ---------- */
@@ -4049,7 +4057,7 @@ function releaseModal(p){
 }
 const DEF_PRIZES_B = [12, 10, 8, 6, 5, 4, 3, 2].map(x => x * M);
 const prizesB = () => S.settings?.prizesB ?? DEF_PRIZES_B;
-const KIT_COST = {A: 1 * M, B: 0.5 * M};
+const KIT_COST = {A: 1 * M, B: 0.5 * M, X: 1 * M};
 const kitLocked = (c, slot) => ((c.kits || {})[slot] || {}).season === season();
 /* ---------- importa svincolati da file CSV (commissario) ---------- */
 function normKey(s){ const SP = {'ł':'l','ø':'o','đ':'d','ð':'d','ı':'i','ß':'ss','æ':'ae','œ':'oe'};
