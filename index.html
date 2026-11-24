@@ -2639,7 +2639,8 @@ async function pushEnable(){
     const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
     const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Notifiche non consentite: puoi attivarle dalle impostazioni del browser.');
     const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlB64(VAPID)});
-    const {error} = await sb.from('push_subs').upsert({endpoint: sub.endpoint, user_id: S.me, sub: sub.toJSON()}); if (error) throw error;
+    const {error} = await sb.from('push_subs').upsert({endpoint: sub.endpoint, user_id: S.me, sub: sub.toJSON()}); if (error) throw new Error('salvataggio: ' + (error.message || error.code));
+    const {data: chk} = await sb.from('push_subs').select('endpoint').eq('endpoint', sub.endpoint); if (!chk?.length) throw new Error('registrazione non salvata');
     try { localStorage.setItem('lmPush', 'on'); } catch {}
     toast('🔔 Notifiche attive su questo telefono', 5000); schedule();
   } catch (e){ toast('Non sono riuscito ad attivare le notifiche: ' + (e.message || 'riprova')); }
@@ -2648,7 +2649,7 @@ async function pushSend(to, title, body, url, key){
   try {
     if (!sb || !S.me || (Array.isArray(to) && !to.filter(Boolean).length)) return;
     const {data} = await sb.auth.getSession(); const tok = data?.session?.access_token; if (!tok) return;
-    fetch(`${SB_URL}/functions/v1/push`, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: SB_KEY}, body: JSON.stringify({action: 'send', to, title, body, url: url || './', key})}).catch(() => {});
+    return fetch(`${SB_URL}/functions/v1/push`, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: SB_KEY}, body: JSON.stringify({action: 'send', to, title, body, url: url || './', key})}).then(r => r.json()).catch(() => null);
   } catch {}
 }
 const mgrOf = cid => club(cid)?.managerId || null;
@@ -2660,7 +2661,12 @@ function pushBanner(){
 }
 /* avvisi legati alle trattative con i club CPU */
 function pushDeal(d, txt, tag){ if (!d || d.rival || !d.buyerId) return; const u = mgrOf(d.buyerId); if (u) pushSend([u], `🤝 ${d.playerName}`, txt, "./#mercato", `deal-${d.id}-${tag}`); }
-async function pushTest(){ await pushSend([S.me], '✅ League Manager', 'Le notifiche funzionano: riceverai offerte, trattative e scadenze delle distinte.', './#home', 'test-' + S.me + '-' + now()); try { localStorage.setItem('lmPushTest', '1'); } catch {} toast('Notifica di prova inviata: arriva entro pochi secondi'); schedule(); }
+async function pushTest(){
+  const r = await pushSend([S.me], '✅ League Manager', 'Le notifiche funzionano: riceverai offerte, trattative e scadenze delle distinte.', './#home', 'test-' + S.me + '-' + now());
+  const {data} = await sb.from('push_subs').select('endpoint'); const mine = (data || []).length;
+  if (!mine){ try { localStorage.removeItem('lmPush'); } catch {} toast('Questo account non ha nessun telefono registrato: premi «Attiva notifiche».', 7000); return schedule(); }
+  toast(r?.sent ? `Notifica inviata a ${r.sent} ${r.sent === 1 ? 'dispositivo' : 'dispositivi'}: arriva entro pochi secondi` : `Invio non riuscito (${r?.error || 'nessuna risposta'}). Premi «Riattiva» e riprova.`, 7000);
+}
 /* ---------- valutazioni aggiornate (dagli aggiornamenti di EA) + collegamento a SoFIFA ---------- */
 const sofifa = name => `<a class="sub" href="https://sofifa.com/players?keyword=${encodeURIComponent(name)}" target="_blank" rel="noopener" title="Apri su SoFIFA">SoFIFA ↗</a>`;
 let OVRV = null;
