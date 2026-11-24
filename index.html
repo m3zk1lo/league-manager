@@ -1,5 +1,6 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>League Manager</title>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0d1220">
 <meta name="description" content="League Manager: lega carriera allenatore su FC 27 tra manager. Mercato, aste, distinte e classifica.">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1637,6 +1638,7 @@ function wOffer(fc){
       const pub = cur.length ? `${mc.name} entra nella trattativa` : free ? `${mc.name} contatta ${p.name}` : `${mc.name} presenta un’offerta a ${c.name}`;
       await db.doc('offers/' + id).set({cpu: true, dir: 'buy', fcId: key, playerName: p.name, pos: p.pos, ovr: p.ovr, age: p.age, cpuClub: free ? 'Svincolato' : c.name, buyerId: mc.id, sellerId: null,
         stage: free ? 'player' : 'club', status: 'open', fee, round: 1, [free ? 'playerEnd' : 'windowEnd']: wEnd, ts: t, season: season(), hist: [{who: 'user', t: free ? 'Contatto il giocatore' : `Offerta di ${fmtM(fee)}`, pub, ts: t}]});
+      cur.filter(x => !x.rival && x.buyerId !== mc.id).forEach(x => pushDeal(x, `${mc.name} entra nella trattativa: decisione tra ${timeLeft(wEnd - t)}.`, 'in-' + mc.id));
       toast(`Sei in trattativa: decisione tra ${timeLeft(wEnd - t)}`, 5000);
     }, free ? 'Contatta il giocatore' : 'Invia offerta');
 }
@@ -1663,6 +1665,7 @@ function cpuReply(d){
       mkGuard(mc, d.ovr, fee); const t = now();
       if ((cur.windowEnd || 0) - t < WIN_SNIPE) await extendTable(d.fcId, t + WIN_SNIPE);
       await db.doc('offers/' + d.id).update({fee, ts: t, hist: pubH(cur, 'user', `Rilancio a ${fmtM(fee)}`, `${mc.name} migliora la sua offerta`)});
+      tableOf(d.fcId).filter(x => !x.rival && x.buyerId !== d.buyerId).forEach(x => pushDeal(x, `${mc.name} ha rilanciato: se vuoi restare in corsa, rilancia anche tu.`, 'raise-' + d.id + '-' + fee));
       toast('Rilancio sul tavolo');
     }, 'Rilancia');
   if (d.stage !== 'agent') return toast('Il giocatore sta valutando: aspetta la sua risposta.');
@@ -1684,7 +1687,7 @@ function cpuReply(d){
 async function resolveClub(fc){
   const tb = tableOf(fc).filter(d => d.stage === 'club'); if (!tb.length) return;
   const w = wPlayer(fc), t = now();
-  const upd = (d, o, txt, pub) => db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, 'cpu', txt, pub)} : {})});
+  const upd = (d, o, txt, pub) => { if (txt) pushDeal(d, txt, (o.status || o.stage || 'r') + (o.round || '')); return db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, 'cpu', txt, pub)} : {})}); };
   if (!w || takenFc().has(fc)) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p), round = Math.max(...tb.map(d => d.round || 1));
   const ask = Math.max(...tb.map(d => d.ask || 0)) || Math.round(pr.value * pr.mult / 1e5) * 1e5;
@@ -1723,7 +1726,7 @@ function playerView(p, B, key){
 async function resolvePlayer(fc){
   const tb = tableOf(fc).filter(d => d.stage === 'player'); if (!tb.length) return;
   const w = wPlayer(fc), t = now();
-  const upd = (d, o, txt, pub) => db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, 'player', txt, pub)} : {})});
+  const upd = (d, o, txt, pub) => { if (txt) pushDeal(d, txt, 'p' + (o.status || o.stage || '')); return db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, 'player', txt, pub)} : {})}); };
   if (!w || (!isFreeKey(fc) && takenFc().has(fc))) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p);
   await Promise.all(tb.map(d => {
@@ -1743,7 +1746,7 @@ function rivalView(p, d, key){
 async function resolveAgent(fc){
   const tb = tableOf(fc).filter(d => d.stage === 'agent'); if (!tb.length) return;
   const w = wPlayer(fc), t = now(), free = isFreeKey(fc);
-  const upd = (d, o, txt, pub, who) => db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, who || 'agent', txt, pub)} : {})});
+  const upd = (d, o, txt, pub, who) => { if (txt) pushDeal(d, txt, 'a' + (o.status || '') + (o.round || '')); return db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, who || 'agent', txt, pub)} : {})}); };
   if (!w || (!free && takenFc().has(fc))) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p), kind = pr.agency.kind;
   const scored = tb.map(d => {
@@ -1816,10 +1819,12 @@ async function cpuGenerate(){
     const p = hot.length && WH(id + 'h') < 0.7 ? hot[Math.floor(WH(id + 'q') * hot.length)] : rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
     const buyers = WORLD.clubs.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
     if (p.req === 'loan'){ const lb = WORLD.clubs.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
+      pushSend([c.managerId], `🔁 Richiesta di prestito per ${p.name}`, `${bc.name} lo chiede in prestito: hai 6 minuti per rispondere.`, './#mercato', id);
       await db.doc('offers/' + id).set({cpu: true, dir: 'sell', loan: true, playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee: 0, round: 1, waiting: 'user', respondAt: t + 6 * 6e4, ts: t, season: season(), msg: `${bc.name} chiede ${p.name} in prestito per una stagione: gioca titolare e paga il 100% dell’ingaggio. Hai 6 minuti per rispondere.`, hist: [{who: 'cpu', t: 'Richiesta di prestito', ts: t}]});
       continue; }
     const bc = buyers[Math.floor(WH(id + 'c') * buyers.length)], base = p.value || autoValue(p.ovr, ageOf(p)), fee = Math.round(base * (0.85 + WH(id + 'f') * 0.3) / 1e5) * 1e5, t = now();
     if (!fee) continue;
+    pushSend([c.managerId], `💰 Offerta per ${p.name}`, `${bc.name} offre ${fmtM(fee)}: hai 6 minuti per rispondere.`, './#mercato', id);
     await db.doc('offers/' + id).set({cpu: true, dir: 'sell', playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee, maxPay: Math.round(fee * (1.05 + WH(id + 'm') * 0.2) / 1e5) * 1e5,
       round: 1, waiting: 'user', respondAt: t + 6 * 6e4, ts: t, season: season(), msg: `${bc.name} offre ${fmtM(fee)} per ${p.name}. Hai 6 minuti per rispondere.`, hist: [{who: 'cpu', t: `Offerta di ${fmtM(fee)}`, ts: t}]});
   }
@@ -1838,6 +1843,7 @@ async function rivalJoin(tb){
   if (cpuDeals().some(d => d.id === id)) return;
   if (tb.end - t < WIN_SNIPE) await extendTable(tb.fc, t + WIN_SNIPE);
   const d0 = tb.deals[0];
+  tb.deals.forEach(x => pushDeal(x, `${rc.name} si inserisce nella trattativa!`, 'rival'));
   await db.doc('offers/' + id).set({cpu: true, dir: 'buy', fcId: tb.fc, playerName: d0.playerName, pos: d0.pos, ovr: d0.ovr, age: d0.age, cpuClub: d0.cpuClub, buyerId: null, sellerId: null, rival: rc.name,
     stage: st, status: 'open', fee: 0, round: d0.round || 1, [st === 'club' ? 'windowEnd' : 'playerEnd']: Math.max(tb.end, t + WIN_SNIPE), ts: t, season: season(), hist: [{who: 'cpu', t: 'Si inserisce nella trattativa', pub: `${rc.name} si inserisce nella trattativa`, ts: t}]});
 }
@@ -1865,6 +1871,7 @@ async function cpuResolve(d){
   if ((d.ask || 0) <= max) return cpuSellDone(d, d.ask, true);
   if ((d.round || 1) >= 3 || d.ask > max * 1.25) return ref.update({status: 'rejected', waiting: null, ts: t, msg: `${d.cpuClub} si ritira: «Cifre fuori mercato».`, hist: H('cpu', 'Si ritirano')});
   const nf = Math.round((d.fee + Math.min(max, d.ask)) / 2 / 1e5) * 1e5;
+  pushSend([mgrOf(d.sellerId)], `💰 ${d.cpuClub} rilancia`, `Per ${d.playerName} arrivano a ${fmtM(nf)}: hai 6 minuti per rispondere.`, './#mercato', d.id + '-r' + (d.round || 1));
   return ref.update({fee: nf, waiting: 'user', respondAt: t + 6 * 6e4, msg: `«Possiamo arrivare a ${fmtM(nf)}, non oltre.» Hai 6 minuti per rispondere.`, ts: t, hist: H('cpu', `Rilanciano a ${fmtM(nf)}`)});
 }
 function cpuNews(){
@@ -2409,6 +2416,7 @@ function luWinModal(){
       const rr = Math.round(num(fd, 'lr')), o = new Date(String(fd.get('lo'))).getTime(), cl = new Date(String(fd.get('lc'))).getTime();
       if (!rr || !o || !cl) fail('Compila giornata e orari.'); if (cl <= o) fail('La chiusura deve essere dopo l’apertura.');
       await db.doc('league/settings').update({luWin: {...(S.settings.luWin || {}), [`${s}-L-${rr}`]: {open: o, close: cl, closed: false}}});
+      if (o <= now()) pushSend(allMgrs(), `📝 Distinte aperte · giornata ${rr}`, `Consegna la distinta entro ${fmtDT(cl)}.`, './#home', `luopen-${s}-L-${rr}`);
       toast(`Giornata ${rr}: distinte dal ${fmtDT(o)} al ${fmtDT(cl)}`, 6000);
     }, 'Salva');
 }
@@ -2430,6 +2438,7 @@ async function luTick(){
         const miss = missCount(cid) + 1;
         await db.doc('lineups/' + luId(m.id, cid)).set({matchId: m.id, clubId: cid, round: m.round, season: m.season, def: true, missed: true, auto: true, mgr: c.managerId, xi: [], draft: false, ts: now(), by: S.me || null});
         if (miss >= MISS_MAX) await db.doc('clubs/' + cid).update({managerId: null});
+        pushSend([c.managerId], '❌ Distinta non consegnata', `${c.name} gioca con la formazione di default di FC 27. Distinte mancate: ${miss}/${MISS_MAX}.`, './#home', `lumiss-${key}-${cid}`);
         n++;
       }
       await db.doc('league/settings').update({luWin: {...(S.settings.luWin || {}), [key]: {...w, closed: true}}});
@@ -2494,6 +2503,7 @@ async function moraleTick(){
         if (v < 25 && !p.req){ upd.req = young ? 'loan' : ['fond', 'imp'].includes(r) && !p.raiseAsked ? 'raise' : 'sale'; if (upd.req === 'raise') upd.raiseAsked = true; news.push(upd.req === 'loan' ? `🔁 ${p.name} (${c.name}) chiede di andare in prestito` : upd.req === 'sale' ? `✈️ ${p.name} (${c.name}) chiede di essere ceduto` : `💰 ${p.name} (${c.name}) chiede la rivalutazione`); }
         else if (v < 15 && p.req === 'raise'){ upd.req = 'sale'; news.push(`✈️ ${p.name} (${c.name}) ora chiede di essere ceduto`); }
         else if (v >= 50 && p.req){ upd.req = null; }
+        if (upd.req && upd.req !== p.req) pushSend([c.managerId], `😠 ${p.name}`, {loan: 'Chiede di andare a giocare in prestito.', sale: 'Chiede di essere ceduto.', raise: 'Chiede la rivalutazione: vuole un aumento.'}[upd.req], './#societa', `mor-${p.id}-${upd.req}-${season()}`);
         cur.set(p.id, {...(cur.get(p.id) || {}), ...upd});
       }
     }
@@ -2612,6 +2622,40 @@ function logosBulk(){
     box.insertAdjacentHTML('afterbegin', `<p class="sub">${ok} file abbinati in automatico. Controlla e correggi dove serve, poi premi «Salva tutti i loghi».</p>`);
   };
 }
+/* ---------- notifiche sul telefono ---------- */
+const VAPID = 'BMm_NzmQz7O93KClRuoTOR0JGJzmtPbNSyVYtkuY3pooouGWdLnlL8OIGx1rKDuoY_RZYQwftFVrU1yFNwAgfXo';
+const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent), isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+const pushState = () => { try { return localStorage.getItem('lmPush') || ''; } catch { return ''; } };
+function urlB64(b){ const p = '='.repeat((4 - b.length % 4) % 4), s = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...s].map(c => c.charCodeAt(0))); }
+async function pushEnable(){
+  if (!S.me) return toast('Entra con il tuo account per attivare le notifiche.');
+  if (isIOS() && !isStandalone()) return openModal('Notifiche su iPhone', `<p>Su iPhone le notifiche arrivano solo se il sito è sulla schermata Home:</p><ol><li>Apri <b>manager.ivpl.it</b> con <b>Safari</b>.</li><li>Tocca <b>Condividi</b> (il quadrato con la freccia).</li><li>Scegli <b>«Aggiungi alla schermata Home»</b>.</li><li>Apri League Manager dall’icona e premi di nuovo <b>«Attiva notifiche»</b>.</li></ol>`, null, 'Ho capito');
+  if (!pushOk()) return toast('Questo browser non supporta le notifiche. Usa Chrome su Android o Safari su iPhone.');
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+    const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Notifiche non consentite: puoi attivarle dalle impostazioni del browser.');
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlB64(VAPID)});
+    const {error} = await sb.from('push_subs').upsert({endpoint: sub.endpoint, user_id: S.me, sub: sub.toJSON()}); if (error) throw error;
+    try { localStorage.setItem('lmPush', 'on'); } catch {}
+    toast('🔔 Notifiche attive su questo telefono', 5000); schedule();
+  } catch (e){ toast('Non sono riuscito ad attivare le notifiche: ' + (e.message || 'riprova')); }
+}
+async function pushSend(to, title, body, url, key){
+  try {
+    if (!sb || !S.me || (Array.isArray(to) && !to.filter(Boolean).length)) return;
+    const {data} = await sb.auth.getSession(); const tok = data?.session?.access_token; if (!tok) return;
+    fetch(`${SB_URL}/functions/v1/push`, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: SB_KEY}, body: JSON.stringify({action: 'send', to, title, body, url: url || './', key})}).catch(() => {});
+  } catch {}
+}
+const mgrOf = cid => club(cid)?.managerId || null;
+const allMgrs = () => S.clubs.map(c => c.managerId).filter(Boolean);
+function pushBanner(){
+  if (!S.me || pushState() === 'on' || (pushOk() && typeof Notification !== 'undefined' && Notification.permission === 'denied')) return '';
+  return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Ricevi sul telefono offerte, trattative e scadenze delle distinte.</span><button class="btn sm primary" data-act="push-on">Attiva notifiche</button></div>`;
+}
+/* avvisi legati alle trattative con i club CPU */
+function pushDeal(d, txt, tag){ if (!d || d.rival || !d.buyerId) return; const u = mgrOf(d.buyerId); if (u) pushSend([u], `🤝 ${d.playerName}`, txt, "./#mercato", `deal-${d.id}-${tag}`); }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -3990,7 +4034,7 @@ function viewHome(){
     ['statistiche', 'Statistiche', 'Marcatori e assist'],
     ['precampionato', 'Precampionato', preOn() ? (S.pre.done ? 'Concluso' : preAllIn() ? 'Partite in corso' : 'Scelta dei gironi') : '4 gironi, premi per il mercato'],
     ['lega', 'Lega', S.comm ? 'Gestione commissario' : 'Regolamento e manager']];
-  return `<section class="hhero">
+  return `${pushBanner()}<section class="hhero">
       ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${hasB() ? DIVS[divOf(mc)] + ' · ' : ''}Stagione ${season()}</span></div></div>`
         : `<div class="hwho"><div><span class="hsub">${S.me ? 'Non alleni ancora nessuna squadra' : 'Benvenuto'}</span><h2>League Manager</h2><span class="hsub">Stagione ${season()}</span></div></div>
           <a class="btn primary hbtn" href="#lega">${S.me ? 'Prendi una panchina' : 'Vai alla Lega'}</a>`}
@@ -4296,7 +4340,7 @@ document.addEventListener('click', async e => {
       case 'mkt-edit': mkModal(); break;
       case 'news-copy': newsCopy(); break;
       case 'mkt-start': mkStart(); break;
-      case 'window': await db.doc('league/settings').update({windowOpen: !window_()}); toast(window_() ? 'Mercato chiuso' : 'Mercato aperto'); break;
+      case 'window': { const op = !window_(); await db.doc('league/settings').update({windowOpen: op}); toast(op ? 'Mercato aperto' : 'Mercato chiuso'); pushSend('all', op ? '🟢 Mercato aperto' : '🔴 Mercato chiuso', op ? 'La sessione di mercato è aperta: entra nel Mondo e tratta!' : 'La sessione di mercato è chiusa.', './#mondo', 'mkt-' + now()); break; }
       case 'export': exportSQL(); break;
       case 'account': if (S.me) confirmBox('Esci', 'Vuoi uscire dal tuo account?', 'Esci', async () => { await sb.auth.signOut(); location.reload(); }); else authModal(); break;
       case 'gen': confirmBox(roundInfo().total ? 'Rigenera calendario' : 'Genera calendario', `Andata e ritorno per ${S.clubs.length} società (${(S.clubs.length - 1 + S.clubs.length % 2) * 2} giornate).${roundInfo().total ? ' Il calendario attuale viene sostituito.' : ''}`, 'Genera', async () => { await generateFixtures(season()); toast('Calendario pronto'); }); break;
@@ -4306,6 +4350,7 @@ document.addEventListener('click', async e => {
       case 'fx-del': fxDelete(id); break;
       case 'fx-clear': fxClear(); break;
       case 'cpu-clubs': cpuClubsImport(); break;
+      case 'push-on': pushEnable(); break;
       case 'logos-bulk': logosBulk(); break;
       case 'rule-go': { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); break; }
       case 'morale': moraleModal(id); break;
