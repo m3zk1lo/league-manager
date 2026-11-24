@@ -697,7 +697,7 @@ function auctionRow(a, mc){
     ${S.comm ? `<button class="btn sm ghost" data-act="auc-cancel" data-id="${a.id}">Annulla asta</button>` : ''}</div></div>`;
 }
 function notifPanel(nl, unread){
-  return `<div class="panel notif"><div class="ph"><h3>Notifiche di mercato</h3><div class="row">
+  return `<div class="panel notif"><div class="ph"><h3>Notifiche di mercato</h3><div class="row"><button class="btn sm primary" data-act="push-on">🔔 ${pushState() === 'on' ? 'Riattiva notifiche telefono' : 'Attiva notifiche telefono'}</button>${pushState() === 'on' ? '<button class="btn sm" data-act="push-test">Manda una prova</button>' : ''}
     ${unread ? '<button class="btn sm" data-act="notif-read">Segna come lette</button>' : ''}<a class="btn sm" href="#mercato">Vai al mercato</a><button class="btn sm ghost" data-act="bell">Chiudi</button></div></div>
     ${nl.length ? `<div class="list">${nl.map(n => `<div class="li${n.unread ? ' unread' : ''}"><div class="main"><b>${esc(n.text)}</b></div><span class="sub">${day(n.ts)}</span></div>`).join('')}</div>`
       : '<p class="muted">Nessuna notifica. Qui compaiono offerte ricevute, rilanci, offerte accettate o rifiutate, nuove aste e rilanci che ti superano.</p>'}</div>`;
@@ -2651,7 +2651,7 @@ async function pushSend(to, title, body, url, key){
 const mgrOf = cid => club(cid)?.managerId || null;
 const allMgrs = () => S.clubs.map(c => c.managerId).filter(Boolean);
 function pushBanner(){
-  if (S.me && pushState() === 'on' && !(() => { try { return localStorage.getItem('lmPushTest'); } catch { return 1; } })()) return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Notifiche attive. Vuoi provarle?</span><button class="btn sm" data-act="push-test">Manda una prova</button></div>`;
+  if (S.me && pushState() === 'on') return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Notifiche attive su questo telefono.</span><span class="row"><button class="btn sm" data-act="push-test">Manda una prova</button><button class="btn sm ghost" data-act="push-on">Riattiva</button></span></div>`;
   if (!S.me || pushState() === 'on' || (pushOk() && typeof Notification !== 'undefined' && Notification.permission === 'denied')) return '';
   return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Ricevi sul telefono offerte, trattative e scadenze delle distinte.</span><button class="btn sm primary" data-act="push-on">Attiva notifiche</button></div>`;
 }
