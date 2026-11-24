@@ -2050,7 +2050,8 @@ async function lgTick(){
     }
     const mv = s > 1 ? lgMembers(s) : null;
     for (const L of lgList()){
-      if (human.has(L.li)) continue;
+      if (human.has(L.li)){ /* campionato con manager reale: via il calendario automatico mai toccato, lo crea il commissario */
+        const d0 = lgDoc(L.li, s); if (d0 && !d0.manual && !d0.rounds.some(r => r.m.some(lgPlayed))){ await db.doc('world/' + d0.id).delete(); toast(`${L.name}: calendario automatico tolto, ora lo inserisci tu`, 5000); return; } continue; }
       const doc = lgDoc(L.li, s);
       const ids = doc ? doc.clubs : (mv?.base.get(L.name) || L.clubs.map(c => c.i));
       const rounds = doc ? JSON.parse(JSON.stringify(doc.rounds)) : lgSchedule(ids, s, L.li).map(m => ({m: m.map(([h, a]) => [h, a, null, null, [], []])}));
@@ -2060,7 +2061,7 @@ async function lgTick(){
         rounds[k].m = rounds[k].m.map(m => { if (lgPlayed(m)) return m; const H = lgClub(m[0]), A = lgClub(m[1]); if (!H || !A) return m; const res = lgPlay(H, A, `g${L.li}-${s}-${k}-${m[0]}-${m[1]}`, st); stAfter(st, res); dirty = true; return res; });
         rounds[k].ts = now(); ch = true;
       }
-      if (ch) await wsave(`L${L.li}-S${s}`, {li: L.li, name: L.name, season: s, clubs: ids, total, rounds, moves: doc?.moves || mv?.moves[L.name] || null});
+      if (ch) await wsave(`L${L.li}-S${s}`, {li: L.li, name: L.name, manual: !!doc?.manual, season: s, clubs: ids, total, rounds, moves: doc?.moves || mv?.moves[L.name] || null});
     }
     if (dirty) await stSave(st);
     await cupTick(frac);
@@ -2092,7 +2093,7 @@ function lgGen(li){
   const {ids, moves} = doc ? {ids: doc.clubs, moves: doc.moves} : lgMembersNow(L);
   confirmBox(`Genera calendario · ${L.name}`, `Andata e ritorno per <b>${ids.length}</b> squadre (${(ids.length - 1 + ids.length % 2) * 2} giornate). Poi inserisci tu i risultati giornata per giornata.`, 'Genera', async () => {
     const rounds = lgSchedule(ids, s, li).map(m => ({m: m.map(([h, a]) => [h, a, null, null, [], []])}));
-    await wsave(`L${li}-S${s}`, {li, name: L.name, season: s, clubs: ids, total: rounds.length, rounds, moves: moves || null}); S.lgr = 1; toast('Calendario creato');
+    await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: rounds.length, rounds, moves: moves || null}); S.lgr = 1; toast('Calendario creato');
   });
 }
 function lgRoundAdd(li){
@@ -2109,7 +2110,7 @@ function lgRoundAdd(li){
       if (!pairs.length) fail('Inserisci almeno una partita.');
       const rounds = (doc?.rounds || []).slice(); while (rounds.length <= r) rounds.push({m: []});
       rounds[r] = {m: [...rounds[r].m.filter(x => !used.has(String(x[0])) && !used.has(String(x[1]))), ...pairs]};
-      await wsave(`L${li}-S${s}`, {li, name: L.name, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
+      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
       S.lgr = r + 1; toast(`Giornata ${r + 1} salvata`);
     }, 'Salva giornata');
 }
@@ -4571,7 +4572,7 @@ function lgCalPaste(li){
       const {rounds, errs} = lgCalParse(String(fd.get('calpaste') || ''), ids, lgCN, normKey);
       if (errs.length) fail(`Righe non riconosciute (${errs.length}): ${errs.slice(0, 3).join(' | ')}${errs.length > 3 ? '…' : ''}`);
       if (!rounds.some(r => r.m.length)) fail('Incolla almeno una giornata con le sue partite.');
-      await wsave(`L${li}-S${s}`, {li, name: L.name, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
+      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
       S.lgr = 1; toast(`Calendario salvato: ${rounds.length} giornate`);
     }, 'Salva calendario');
 }
