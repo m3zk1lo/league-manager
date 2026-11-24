@@ -413,7 +413,12 @@ const hexOk = c => /^#[0-9a-f]{6}$/i.test(c||'') ? c : '#5b6b63';
 function textOn(hex){ const h = hexOk(hex); const r=parseInt(h.slice(1,3),16), g=parseInt(h.slice(3,5),16), b=parseInt(h.slice(5,7),16); return (0.299*r+0.587*g+0.114*b) > 150 ? '#101a15' : '#ffffff'; }
 
 /* ---------- derived data ---------- */
-const club = id => S.clubs.find(c => c.id === id);
+const club = id => S.clubs.find(c => c.id === id) || (typeof id === 'string' && /^w\d+$/.test(id) && WORLD && !WORLD.err ? wClub(id) : undefined);
+const WCL = new Map(); function wClub(id){ if (!WCL.has(id)){ const c = WORLD.clubs.find(x => x.i === +id.slice(1)); WCL.set(id, c ? {id, name: c.name, short: c.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', cpu: true, world: true, div: 'X', lg: c.li} : undefined); } return WCL.get(id); }
+/* partite dei campionati del Mondo in cui gioca un manager reale: stesse distinte e stesse finestre della giornata */
+const wMatches = () => { const s_ = season(), hum = new Set(S.clubs.filter(c => c.lg != null && c.managerId).map(c => c.id)), out = []; if (!hum.size) return out;
+  (S.world || []).filter(d => d.li != null && d.season === s_ && d.rounds).forEach(d => d.rounds.forEach((r, ri) => r.m.forEach((m, j) => { const h = 'w' + m[0], a = 'w' + m[1]; if (!hum.has(h) && !hum.has(a)) return;
+    out.push({id: `W${d.li}-${s_}-${ri + 1}-${j}`, w: true, li: d.li, r: ri, j, season: s_, round: ri + 1, homeId: h, awayId: a, played: m[2] != null, hg: m[2], ag: m[3], div: 'W'}); }))); return out; };
 const myClub = () => S.me ? S.clubs.find(c => c.managerId === S.me) : null;
 const season = () => S.settings?.season || 1;
 const seasonMatches = (s = season()) => S.matches.filter(m => m.season === s);
@@ -424,9 +429,10 @@ const mDiv = m => m.div || 'A';
 const hasB = () => S.clubs.some(c => divOf(c) === 'B');
 const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m) === div && !m.stage);
 const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : (divOf(myClub()) === 'B' ? 'B' : 'A');
-const divTabs = () => { const cur = (S.div === 'W' || S.div === 'C') ? S.div : curDiv(), tabs = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : []), ['W', 'Altri campionati'], ['C', 'Coppe']];
-  return `<div class="chips" role="group" aria-label="Campionato" style="margin-bottom:12px">${tabs.map(([d, l]) => `<button class="chip" aria-pressed="${cur === d}" data-act="div" data-id="${d}">${l}</button>`).join('')}</div>`; };
-const worldScope = () => { const mc = myClub(); if (S.div == null && mc?.lg != null){ S.div = 'W'; if (S.lgl == null) S.lgl = mc.lg; } if (S.div !== 'W' && S.div !== 'C') return null; loadWorld(); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : S.div === 'C' ? cupView() : lgView()); };
+const scopeNow = () => S.div || (myClub()?.lg != null ? 'L' + myClub().lg : curDiv());
+const divTabs = () => { loadWorld(); const cur = scopeNow(), ls = typeof lgList === 'function' ? lgList() : [];
+  return `<div class="panel" style="margin-bottom:12px"><div class="f full"><label for="scope">Campionato o coppa</label><select id="scope" data-wf="div"><option value="A"${cur === 'A' ? ' selected' : ''}>Serie A</option>${hasB() ? `<option value="B"${cur === 'B' ? ' selected' : ''}>Serie B</option>` : ''}${ls.map(l => `<option value="L${l.li}"${cur === 'L' + l.li ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="C"${cur === 'C' ? ' selected' : ''}>Coppe</option></select></div></div>`; };
+const worldScope = () => { const d = scopeNow(); if (d !== 'C' && !/^L\d+$/.test(d)) return null; loadWorld(); if (d !== 'C') S.lgl = +d.slice(1); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : d === 'C' ? cupView() : lgView()); };
 const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
 function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
 function tieWinner(ms, s = season()){
@@ -2180,7 +2186,7 @@ function lgBulk(li){
 function lgView(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
-  const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>
+  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
     <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Qui trovi tutti i campionati: dove c'è almeno un manager vero i risultati li inserisce il commissario.</p>${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0"><b>Questo campionato ha un manager vero: lo gestisci tu</b> (calendario e partite a mano), il sito non lo simula.</p>' : ''}
     ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
@@ -2191,7 +2197,7 @@ function lgView(){
     ${tab.map((x, k) => `<tr class="${lzone(L.name, k, tab.length)[0]}"><td class="pos">${k + 1}</td><td>${clubBtn(x.i)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('')}</tbody></table></div>${lzoneLegend(L.name, tab.length)}
     ${doc?.moves ? (() => { const mv = doc.moves, L_ = (a, t) => a?.length ? `${t}: <b>${a.map(lgCN).map(esc).join(', ')}</b>` : ''; const parts = [L_(mv.up, '⬆️ Neopromosse'), L_(mv.rin, '⬇️ Retrocesse dalla serie superiore')].filter(Boolean); return parts.length ? `<p class="sub">Novità della stagione · ${parts.join(' · ')}${mv.note?.length ? '<br>' + mv.note.map(esc).join(' · ') : ''}</p>` : ''; })() : ''}</div>
     ${rd ? `<div class="panel"><div class="ph"><h3>Giornata ${r}</h3><span class="row">${r > 1 ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r - 1}">‹</button>` : ''}${r < nR ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r + 1}">›</button>` : ''}</span></div><div class="list">
-      ${rd.m.map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) + lgEvLine(x) : ''}</div>${S.comm ? `<button class="btn sm ghost" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Correggi' : 'Risultato'}</button>` : ''}</div>`).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
+      ${rd.m.map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) + lgEvLine(x) : ''}</div>${(() => { const pm = wMatches().find(q => q.li === li && q.r === r - 1 && q.j === j); return pm ? `<button class="btn sm" data-act="w-lu" data-id="${pm.id}">Distinte</button>` : ''; })()}${S.comm ? `<button class="btn sm ghost" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Correggi' : 'Risultato'}</button>` : ''}</div>`).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
     ${S.comm && doc && (ruleOf(L.name).po || ruleOf(L.name).relpo || ruleOf(L.name).relpo3) ? (() => { const r_ = ruleOf(L.name), t = tab.map(x => x.i), out = [];
       if (r_.po){ const pool = t.slice(r_.po[0] - 1, r_.po[1]), cur = (S.world || []).find(d => d.id === `PO-${L.name}-S${season()}`)?.winner; out.push(`<div class="f full"><label>Vincitore dei playoff promozione (dalla ${r_.po[0]}ª alla ${r_.po[1]}ª)</label><select data-act-change="po" data-id="PO-${L.name}">${['', ...pool].map(i => `<option value="${i}"${String(cur ?? '') === String(i) ? ' selected' : ''}>${i === '' ? '— decidi a fine stagione —' : esc(lgCN(i))}</option>`).join('')}</select></div>`); }
       const upper = Object.entries(LG_RULES).find(([, x]) => x.lower === L.name && x.relpo);
@@ -2226,7 +2232,7 @@ async function cpuClubsImport(){
     let k = 0;
     for (const c of todo){
       const dv = c.li === 1 ? 'B' : 'A', id = 'cpu' + c.i, ps = res.p.filter(x => x[5] === c.i);
-      await db.doc('clubs/' + id).set({name: c.name, short: c.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: med(dv, 'budget0'), wage0: Math.max(med(dv, 'wage0'), ps.reduce((a, x) => a + autoWage(x[4], x[3]), 0)), div: dv, managerId: null, cpu: true, objectives: [], createdAt: now(), logo: null});
+      await db.doc('clubs/' + id).set({name: c.name, short: c.name.replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 3).toUpperCase(), color: '#1a2a6b', budget0: roundM(divBudget('A') * (0.35 + 1.6 * Math.pow(Math.max(0, Math.min(1, ((ps.map(x => x[4]).sort((a, b) => b - a).slice(0, 16).reduce((a, b) => a + b, 0) / Math.max(1, Math.min(16, ps.length))) - 64) / 20)), 1.5))), wage0: Math.max(med(dv, 'wage0'), ps.reduce((a, x) => a + autoWage(x[4], x[3]), 0)), div: dv, managerId: null, cpu: true, objectives: [], createdAt: now(), logo: null});
       for (let j = 0; j < ps.length; j += 10) await Promise.all(ps.slice(j, j + 10).map(x => db.doc('players/fc' + x[0]).set({name: x[1], pos: x[2], age: x[3], ageSeason: season(), ovr: x[4], value: autoValue(x[4], x[3]), wage: autoWage(x[4], x[3]), injured: false, clubId: id, loan: null, fcId: x[0], contractUntil: season() + 1 + Math.floor(WH('c' + x[0]) * 3)})));
       k++; toast(`Aggiunte ${k} di ${todo.length}: ${c.name}`);
     }
@@ -2493,7 +2499,7 @@ async function luTick(){
   luBusy = true;
   try {
     for (const [key, w] of due){
-      const ms = S.matches.filter(m => !m.pre && luKey(m) === key && !m.played); let n = 0;
+      const ms = [...S.matches, ...wMatches()].filter(m => !m.pre && luKey(m) === key && !m.played); let n = 0;
       for (const m of ms) for (const cid of [m.homeId, m.awayId]){
         const c = club(cid); if (!c?.managerId || luDone(m.id, cid)) continue;
         const miss = missCount(cid) + 1;
@@ -2586,21 +2592,23 @@ const RULES_SECTIONS = [
  ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione.</b></p><ol>
   <li>Si apre il mercato (il commissario lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Parte la stagione e si gioca tutto il campionato.</li><li>Finisce la stagione.</li><li>Prima della stagione successiva si riapre il mercato.</li></ol>
   <p><b>Non esiste un mercato di gennaio.</b> A mercato chiuso non si compra e non si vende nulla: si possono solo guardare le rose.</p>`],
- ['⚽ Le partite', `<p>Serie A e Serie B sono da <b>20 squadre</b>: le squadre dei manager più quelle gestite dalla CPU.</p><ul>
-  <li>Le partite delle <b>squadre con un manager vero</b> le gioca il commissario alla PlayStation, con la distinta del manager.</li>
-  <li>Le partite delle <b>squadre CPU</b> della lega le simula comunque il commissario alla PlayStation e inserisce il risultato.</li>
-  <li><b>Regola dei campionati</b>: un campionato con almeno un manager vero lo gestisce il commissario (calendario e partite); uno senza manager veri lo simula il sito.</li>
-  <li>Tutti i risultati di Serie A e B li inserisce il commissario, con marcatori, assist, cartellini e <b>infortuni</b> (il giocatore infortunato salta le giornate indicate, ridotte dallo staff medico).</li></ul>
-  <p>Sotto il nome delle squadre CPU c'è il loro allenatore reale (es. «All. De Rossi · CPU»).</p>
-  <p><b>Distinte</b></p><ul>
-  <li>Ogni giornata il commissario la <b>apre</b> con un orario di apertura e uno di chiusura (es. dalla mezzanotte di domenica alle 21:00 del giorno della partita). Li vedi in Centrale e in Calendario con il conto alla rovescia.</li>
-  <li>Prima dell'apertura non si può consegnare; <b>alla chiusura la distinta si blocca</b> e non si modifica più.</li>
-  <li>Se hai salvato una <b>formazione tipo</b> e non consegni la distinta della giornata, giochi con la formazione tipo <b>senza penalità</b>.</li>
-  <li>Se non hai né distinta né formazione tipo, giochi con la <b>formazione di default di FC 27</b> e prendi una <b>distinta mancata</b>, in automatico.</li>
-  <li><b>Alla 5ª distinta mancata il manager viene tolto dalla squadra</b>, che passa alla CPU.</li></ul>`],
- ['🏆 Campionati, promozioni e retrocessioni', `<ul><li><b>Serie A</b>: prime 4 in Champions League, 5ª e 6ª in Europa League, 7ª in Conference League. <b>Le ultime 3 retrocedono in Serie B.</b></li>
-  <li><b>Serie B</b>: le prime 2 salgono in Serie A, dalla 3ª alla 6ª playoff per il terzo posto. La Serie C nel gioco non esiste: dalla B non retrocede nessuno.</li></ul>
-  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri) li gioca il sito in modo realistico: ogni squadra schiera i suoi undici migliori disponibili, ci sono gol, assist, ammonizioni, espulsioni con squalifica, diffide (5 gialli = 1 giornata) e infortuni con giorni di stop. Avanzano insieme alle nostre giornate e il commissario può correggere qualsiasi risultato. Se in uno di questi campionati c'è almeno un manager vero, lo gestisce il commissario: il sito non lo simula e il calendario lo decide lui. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
+ ['⚽ Le partite', `<p>Ogni manager allena una squadra del campionato che preferisce: <b>Serie A, Serie B, Premier League, Bundesliga, campionati africani o qualsiasi altro</b>. Le regole sono <b>identiche per tutti i campionati</b>.</p><ul>
+  <li>Le partite delle squadre con un manager vero le gioca il commissario alla PlayStation, con la distinta del manager; il commissario inserisce risultato, marcatori, assist, cartellini e infortuni.</li>
+  <li>I campionati senza manager veri li simula il sito in modo realistico; con almeno un manager vero lo gestisce il commissario.</li>
+  <li>Vittoria 3 punti, pareggio 1. Classifiche e calendari di tutti i campionati e delle coppe sono in <b>Classifica</b> e <b>Calendario</b>: scegli il campionato dal menu.</li>
+  <li><b>Distinte uguali per tutti</b>: ogni giornata il commissario apre e chiude le distinte per tutti i campionati insieme. Chi non consegna gioca con la formazione di default di FC 27 e prende una distinta mancata; <b>alla 5ª perde la panchina</b>. Dal Calendario di ogni campionato si apre il pulsante «Distinte» sulle partite dei manager.</li></ul>`]
+ ['🏆 Campionati, promozioni e coppe', `<ul><li>Ogni campionato ha le sue regole vere di qualificazione, promozioni, retrocessioni e playoff (dove nel gioco esiste la serie inferiore o superiore).</li>
+  <li>Le coppe europee si giocano con il formato vero; ci si qualifica con le classifiche della stagione prima. Tutto in <b>Mondo → Coppe</b> e nel menu Campionato di Classifica e Calendario.</li></ul>`],
+ ['🧢 Squadre, allenatori ed esoneri', `<ul><li><b>Qualsiasi squadra di qualsiasi campionato</b>: un manager può prendere la squadra che vuole, anche di un altro campionato, dal pannello «Cambia squadra» in Lega.</li>
+  <li><b>Un cambio a stagione</b>, a mercato aperto, come il calciomercato. Vale sia scegliendo una squadra sia accettando un'offerta.</li>
+  <li>Ogni squadra CPU ha il suo allenatore reale. Se va male in classifica la società <b>lo esonera</b>, la panchina si libera e la società offre il posto al <b>miglior manager reale</b>, che può accettare o rifiutare.</li>
+  <li>Il commissario può liberare una panchina o assegnarne una in qualsiasi momento.</li></ul>`],
+ ['💶 Budget, ingaggi, stadio, sponsor e staff medico', `<p>Tutto è proporzionato alla squadra che alleni, come nella realtà, senza differenze tra campionati.</p><ul>
+  <li><b>Budget e monte ingaggi</b>: ogni società parte con un budget in base alla forza e al prestigio della rosa; il monte ingaggi segue gli stipendi della rosa più lo stesso margine per tutti.</li>
+  <li><b>Stadio</b>: capienza, prezzo e pubblico dipendono dal prestigio del club; l'incasso entra a ogni partita in casa.</li>
+  <li><b>Sponsor</b>: gli importi crescono con il prestigio e gli obiettivi sono quelli del tuo campionato.</li>
+  <li><b>Staff medico</b>: costo di potenziamento e costo annuo scalano con il prestigio.</li>
+  <li>Non esiste nessuna tassa o bonus legati alla categoria del campionato.</li></ul>`]
  ['🏆 Coppe europee', `<p><b>Champions League, Europa League e Conference League</b> con il formato vero: fase campionato a 36 squadre (8 partite, 6 in Conference), poi spareggi, ottavi, quarti, semifinali andata e ritorno e finale secca.</p><ul>
   <li><b>Prima stagione</b>: niente coppe, si gioca solo il campionato.</li>
   <li><b>Dalla seconda stagione</b> ci si qualifica con le classifiche della stagione prima (la nostra Serie A con la nostra classifica); chi vince Champions o Europa League va in Champions l'anno dopo. Sorteggio e calendario delle coppe li crea il sito in automatico.</li>
@@ -2627,9 +2635,6 @@ const RULES_SECTIONS = [
  ['🤖 La CPU nelle trattative', `<ul><li><b>La CPU può inserirsi nelle trattative</b>: se un club del Mondo vede che un giocatore gli piace, entra e fa la sua offerta come un manager (più spesso con i giocatori forti). Se vince la CPU, il giocatore va in quel club e lo vedrai giocare lì.</li>
   <li><b>La CPU può chiedere i tuoi giocatori</b>: l'offerta arriva in «Le tue trattative» e nelle notizie. <b>Decidi tu</b>: accettare, chiedere di più o rifiutare. Nessuno ti obbliga a vendere.</li>
   <li>Hai <b>6 minuti</b> per rispondere, poi l'offerta scade. Se vendi, il giocatore lascia la lega e i soldi entrano nel tuo budget.</li></ul>`],
- ['🔵 La Serie B non è svantaggiata', `<ul><li>Sotto 80 di valutazione la categoria <b>non conta</b>.</li><li><b>Il posto da titolare conta tantissimo</b>: un giocatore preferisce essere titolare in B che riserva in A.</li>
-  <li>I giovani fino a 24 anni vogliono giocare; quelli sopra i 31 guardano soprattutto il contratto.</li><li>Rifiutano la B solo i giocatori da 80 in su più ambiziosi, e quasi sempre i campioni da 85 in su.</li>
-  <li><b>Progetto promozione</b>: le prime 3 della Serie B, a campionato iniziato, non vengono rifiutate per la categoria.</li><li>Una parte di ogni acquisto della Serie A va ai club di Serie B.</li></ul>`],
  ['😀 Ruolo promesso e morale', `<p>Come nella Carriera di FC 27 ogni giocatore ha un <b>ruolo in squadra</b>: ⭐ Fondamentale, Importante, Rotazione, Panchinaro, Giovane promessa. Più è alto, più partite da titolare si aspetta (Fondamentale almeno 8 su 10, Importante 6, Rotazione 4, Giovane 3, Panchinaro 1–2).</p><ul>
   <li><b>Chi compri dal Mondo</b>: il ruolo lo prometti al procuratore nella trattativa. Un ruolo alto convince di più il giocatore, ma la promessa va mantenuta.</li>
   <li><b>Chi è già in rosa</b>: il ruolo lo assegna il sito in base al valore del giocatore nella squadra. <b>Il ruolo non si può cambiare.</b></li>
@@ -3078,7 +3083,7 @@ const maxBench = () => S.settings?.maxBench ?? 5;
 const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
 
 /* formazione tipo: si imposta una volta e vale per tutte le partite finché non la cambi */
-function luMatch(mid){ return S.matches.find(x => x.id === mid) || (typeof preOn === 'function' && preOn() ? PRE_G.flatMap(preMatches).find(x => x.id === mid) : null) || null; }
+function luMatch(mid){ return S.matches.find(x => x.id === mid) || (String(mid)[0] === 'W' ? wMatches().find(x => x.id === mid) : null) || (typeof preOn === 'function' && preOn() ? PRE_G.flatMap(preMatches).find(x => x.id === mid) : null) || null; }
 function tplFor(cid, m){
   const c = club(cid), T = c?.tpl; if (!T || !Array.isArray(T.xi) || T.xi.length !== 11) return null;
   const rs = roster(cid), out = m?.pre ? new Set() : suspended(), ok = id => { const p = rs.find(x => x.id === id); return p && !p.injured && !out.has(p.id); };
@@ -3839,7 +3844,7 @@ async function autoHeal(){
 /* ---------- BUDGET DI PARTENZA PER DIVISIONE ---------- */
 const wageMargin = () => S.settings?.wageMargin ?? 10;
 const rosterWages = cid => roster(cid).reduce((a, p) => a + (p.loan ? Math.round((p.wage || 0) * (p.loan.wagePct ?? 100) / 100) : (p.wage || 0)), 0);
-const wageMarginOf = d => d === 'B' ? (S.settings?.wageMarginB ?? 25) : wageMargin();
+const wageMarginOf = d => wageMargin();
 const promoBonus = () => S.settings?.promoBonus ?? 15 * M;
 const startWageOf = c => Math.round(rosterWages(c.id) * (1 + wageMarginOf(divOf(c)) / 100) / 1000) * 1000;
 function applyStartBudgets(){
@@ -4402,6 +4407,7 @@ document.addEventListener('click', async e => {
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'w-lu': { const m = luMatch(id); if (m) viewLineups(m); break; }
       case 'mgr-take': { const k = S.mvc; if (!S.me || !k) return; if (!S.comm && !window_()) return toast('Si cambia squadra solo a mercato aperto.'); if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
         const nm = k[0] === 'w' ? WORLD.clubs.find(c => String(c.i) === k.slice(2))?.name : club(k.slice(2))?.name;
         confirmBox('Cambia squadra', `Lasci la tua squadra e vai al <b>${esc(nm || '')}</b>. Il cambio vale una volta a stagione.`, 'Conferma', async () => { try { await takeClub(k, S.me, S.comm); S.mvc = ''; toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } }); break; }
