@@ -369,7 +369,6 @@ dialog{border-radius:0;border:0;border-top:3px solid var(--accent);background:#0
     <a href="#regolamento">Regolamento</a>
     <a href="#svincolati" hidden><span class="badge" id="aucbadge" hidden></span></a>
     <a href="#statistiche">Statistiche</a>
-    <a href="#precampionato">Precampionato</a>
     <a href="#lega">Lega</a>
   </nav>
 </header>
@@ -388,7 +387,6 @@ dialog{border-radius:0;border:0;border-top:3px solid var(--accent);background:#0
   <a href="#mondo">Mondo · club CPU</a>
   <a href="#svincolati">Svincolati e aste <b class="bbadge in" id="bauc" hidden></b></a>
   <a href="#statistiche">Statistiche</a>
-  <a href="#precampionato">Precampionato</a>
   <a href="#lega">Lega</a>
 </div>
 <dialog id="dlg"></dialog>
@@ -621,6 +619,7 @@ function render(){
   if (S.gate) return;
   let r = (location.hash || '#home').slice(1);
   if (r === 'svincolati'){ r = 'mondo'; S.wt = 'free'; history.replaceState(null, '', '#mondo'); }
+  if (r === 'precampionato'){ r = 'home'; history.replaceState(null, '', '#home'); }
   S.route = ['home','classifica','calendario','societa','mercato','regolamento','mondo','svincolati','statistiche','lega','precampionato'].includes(r) ? r : 'home';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   { const tb = $('#tabs'), on = tb && tb.querySelector('[aria-current]'); if (on && tb.scrollWidth > tb.clientWidth) tb.scrollLeft = on.offsetLeft - (tb.clientWidth - on.offsetWidth) / 2; }
@@ -848,25 +847,17 @@ function viewMarket(){
   const open = S.offers.filter(o => o.status === 'open').sort((a, b) => b.ts - a.ts);
   const mineOpen = open.filter(o => o.buyerId === mid || o.sellerId === mid);
   const others = open.filter(o => !mineOpen.includes(o));
-  const closed = S.offers.filter(o => o.status !== 'open').sort((a, b) => b.ts - a.ts).slice(0, 10);
-  const pool = S.players.filter(p => p.clubId && p.clubId !== mid && !p.loan && (S.mktPos === 'all' || GRP[p.pos] === S.mktPos)).sort((a, b) => (b.ovr||0) - (a.ovr||0)).slice(0, 40);
+  const closed = S.offers.filter(o => o.status !== 'open' && (S.comm || o.buyerId === mid || o.sellerId === mid)).sort((a, b) => b.ts - a.ts).slice(0, 10);
   const tr = [...S.transfers].sort((a, b) => b.ts - a.ts);
   return `${window_() ? mkNotice() : '<div class="notice">Sessione di mercato chiusa: le trattative ripartono quando il commissario riapre la finestra.</div>'}
-  ${newsPanel(15)}
-  ${cpuPanel()}
   <section class="grid2">
     <div class="stack">
-      <div class="panel"><div class="ph"><h3>Le tue trattative</h3><span class="sub">${mc ? esc(mc.name) : 'Non alleni nessuna società'}</span></div>
-        ${mineOpen.length ? `<div class="list">${mineOpen.map(o => offerRow(o, mid)).join('')}</div>` : `<p class="muted">${mc ? 'Nessuna trattativa aperta. Apri una società rivale o usa la lista qui sotto per fare un’offerta.' : 'Crea o prendi una società da Lega per trattare.'}</p>`}
-        ${S.comm && others.length ? `<h3 style="margin-top:14px">Altre trattative aperte</h3><div class="list">${others.map(o => offerRow(o, mid)).join('')}</div>` : ''}
+      ${cpuPanel(true)}
+      <div class="panel"><div class="ph"><h3>Trattative con gli altri manager</h3><span class="sub">${mc ? esc(mc.name) : 'Non alleni nessuna società'}</span></div>
+        ${mineOpen.length ? `<div class="list">${mineOpen.map(o => offerRow(o, mid)).join('')}</div>` : `<p class="muted">${mc ? 'Nessuna trattativa aperta. Per fare un’offerta a un altro manager apri la sua squadra e premi «Fai un’offerta» sul giocatore.' : 'Prendi una società per fare mercato.'}</p>`}
+        ${S.comm && others.length ? `<h3 style="margin-top:14px">Altre trattative tra manager</h3><div class="list">${others.map(o => offerRow(o, mid)).join('')}</div>` : ''}
       </div>
-      <div class="panel"><div class="ph"><h3>Osservatori</h3>
-        <select class="inl" id="mktpos" data-act="mktpos" aria-label="Filtra per reparto">${[['all','Tutti i ruoli'],['gk','Portieri'],['def','Difensori'],['mid','Centrocampisti'],['att','Attaccanti']].map(([v, l]) => `<option value="${v}"${S.mktPos === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
-        ${pool.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th>Società</th><th class="r">OVR</th><th class="r">Età</th><th class="r">Valore</th><th></th></tr></thead><tbody>
-        ${pool.map(p => `<tr><td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b></td><td>${clubLink(club(p.clubId))}</td><td class="r ovr">${p.ovr || '—'}</td><td class="r">${ageOf(p) || '—'}</td><td class="r">${fmtM(p.value || 0)}</td>
-          <td class="r">${mc && window_() ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Offerta</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="muted">Nessun giocatore delle altre società da mostrare.</p>'}
-      </div>
+      ${newsPanel(10)}
     </div>
     <aside class="stack">
       <div class="panel"><div class="ph"><h3>Registro trasferimenti</h3><span class="sub">${tr.length} operazioni</span></div>
@@ -1598,18 +1589,18 @@ function salaView(){
     ${live.length ? live.map(t => salaCard(t.fc, t.deals, true)).join('') : '<div class="panel"><p class="muted">Nessuna trattativa in corso in questo momento.</p></div>'}
     ${pl.length ? `<h3 style="margin:8px 0 0">Concluse nelle ultime ore</h3>${pl.map(([k, ds]) => salaCard(k, ds, false)).join('')}` : ''}`;
 }
-function cpuPanel(){
+function cpuPanel(noBoard){
   const mc = myClub(), all = cpuDeals().sort((a, b) => b.ts - a.ts);
   const mine = mc ? all.filter(d => (d.buyerId === mc.id || d.sellerId === mc.id) && (d.status === 'open' || now() - d.ts < 864e5)) : [];
-  return `${boardPanel()}<div class="panel"><div class="ph"><h3>Le tue trattative</h3><span class="sub">${mc ? esc(mc.name) : ''}</span></div>
-    ${mine.length ? `<div class="list">${mine.map(cpuRow).join('')}</div>` : '<p class="muted">Nessuna trattativa in corso.</p>'}</div>`;
+  return `${noBoard ? '' : boardPanel()}<div class="panel"><div class="ph"><h3>${noBoard ? 'Trattative con i club CPU' : 'Le tue trattative'}</h3><span class="sub">${mc ? esc(mc.name) : ''}</span></div>
+    ${mine.length ? `<div class="list">${mine.map(cpuRow).join('')}</div>` : `<p class="muted">Nessuna trattativa in corso.${noBoard ? ' Per comprare da un club CPU vai nel <a href="#mondo">Mondo</a>.' : ''}</p>`}</div>`;
 }
 function cpuRow(d){
   const mc = myClub(), mineB = mc && d.buyerId === mc.id, mineS = mc && d.sellerId === mc.id, open = d.status === 'open';
   const end = d.dir === 'sell' ? d.respondAt : endOf(d);
   const st = !open ? {done: 'Conclusa', rejected: 'Saltata', withdrawn: 'Ritirata', expired: 'Scaduta'}[d.status]
     : d.dir === 'sell' ? (d.waiting === 'user' ? 'Tocca a te' : `${d.cpuClub} sta valutando`) : d.stage === 'agent' ? (d.proposed ? 'Proposta consegnata al procuratore' : 'Fai la tua proposta al procuratore') : d.stage === 'player' ? 'Il giocatore sta valutando' : 'Offerta sul tavolo della società';
-  const last = (d.hist || []).slice(-3).map(h => `<span class="sub">${WHO_IC[h.who] || '•'} ${esc(h.t)}</span>`).join('<br>');
+  const last = (d.hist || []).slice(-3).map(h => `<span class="sub">${WHO_IC[h.who] || '•'} ${esc(h.t || h.pub || '')}</span>`).join('<br>');
   const act = open && mineB ? (d.stage === 'agent' ? (d.proposed ? 'Modifica proposta' : 'Proposta al procuratore') : d.stage === 'club' ? 'Rilancia' : '') : open && mineS && d.waiting === 'user' ? 'Rispondi' : '';
   return `<div class="li"><div class="main"><b>${esc(d.playerName)}</b> <span class="sub">${d.dir === 'sell' ? `${esc(cname(d.sellerId))} → ${esc(d.cpuClub)} · offerta ${fmtM(d.fee)}` : `${esc(d.cpuClub)} → ${esc(dn(d))}${d.fee ? ` · tua offerta ${fmtM(d.fee)}` : ''}`}</span><br>${last}
     <div class="row" style="margin-top:6px"><span class="pill ${d.status === 'done' ? 'good' : open ? (act ? 'warn' : 'info') : 'neutral'}">${st}</span>${open && end ? ` <span class="sub">tra <b class="cd" data-end="${end}">${timeLeft(end - now())}</b></span>` : ''}
@@ -2436,7 +2427,7 @@ async function luTick(){
 const RULES_SECTIONS = [
  ['🧭 Il sito in breve', `<p>Il sito è in stile <b>Carriera allenatore di FC 27</b>. Dal menu in alto:</p><ul>
   <li><b>Centrale</b>: la tua squadra, la prossima partita con la distinta da consegnare, budget, monte ingaggi, bacheca trattative, notizie e classifica.</li>
-  <li><b>Squadra</b>: rosa, stadio, sponsor, bilancio.</li><li><b>Mercato</b>: le tue trattative e le notizie di mercato.</li>
+  <li><b>Squadra</b>: rosa, stadio, sponsor, bilancio.</li><li><b>Mercato</b>: le tue trattative (con i club CPU e con gli altri manager), le notizie di mercato e il registro trasferimenti.</li>
   <li><b>Mondo</b>: tutte le squadre vere di FC 27, campionati, coppe e trattative in diretta.</li><li><b>Calendario</b>, <b>Classifica</b>, <b>Statistiche</b>, <b>Lega</b>, <b>Regolamento</b>.</li></ul>`],
  ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione.</b></p><ol>
   <li>Si apre il mercato (il commissario lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Parte la stagione e si gioca tutto il campionato.</li><li>Finisce la stagione.</li><li>Prima della stagione successiva si riapre il mercato.</li></ol>
@@ -2484,7 +2475,7 @@ const RULES_SECTIONS = [
  ['🔵 La Serie B non è svantaggiata', `<ul><li>Sotto 80 di valutazione la categoria <b>non conta</b>.</li><li><b>Il posto da titolare conta tantissimo</b>: un giocatore preferisce essere titolare in B che riserva in A.</li>
   <li>I giovani fino a 24 anni vogliono giocare; quelli sopra i 31 guardano soprattutto il contratto.</li><li>Rifiutano la B solo i giocatori da 80 in su più ambiziosi, e quasi sempre i campioni da 85 in su.</li>
   <li><b>Progetto promozione</b>: le prime 3 della Serie B, a campionato iniziato, non vengono rifiutate per la categoria.</li><li>Una parte di ogni acquisto della Serie A va ai club di Serie B.</li></ul>`],
- ['🔁 Trattative tra manager', `<p>Dalla pagina <b>Mercato</b>, sempre e solo a mercato aperto, con tutte le formule reali: acquisto definitivo, scambio, prestito, prestito con diritto o con obbligo di riscatto, pagamento a rate, bonus, percentuale sulla futura rivendita, diritto di recompra, prelazione, clausola rescissoria.</p>
+ ['🔁 Trattative tra manager', `<p>Sempre e solo a mercato aperto: apri la squadra di un altro manager e premi <b>«Fai un’offerta»</b> sul giocatore. Le trattative le segui nella pagina <b>Mercato</b>. Ci sono tutte le formule reali: acquisto definitivo, scambio, prestito, prestito con diritto o con obbligo di riscatto, pagamento a rate, bonus, percentuale sulla futura rivendita, diritto di recompra, prelazione, clausola rescissoria.</p>
   <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita di 20 settimane di ingaggio: il giocatore finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
  ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
   <li>Società (5 min) → Giocatore (circa 1 min e mezzo) → Procuratore (4 min) → Firma.</li><li>Ultimo minuto = +1 minuto per tutti.</li><li>Tutti vedono chi tratta; <b>le cifre si scoprono solo alla firma</b>.</li>
@@ -4109,7 +4100,7 @@ function viewPre(){
   </div>
   <section class="prgrid">${PRE_G.map(g => preGroupCard(g, mc)).join('')}</section>`;
 }
-const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
+const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
