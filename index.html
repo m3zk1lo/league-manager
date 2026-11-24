@@ -561,11 +561,21 @@ async function takeClub(key, uid, free){
   if (old && old.id !== cid) await db.doc('clubs/' + old.id).update({managerId: null});
   if (!free) await wsave(`MGR-S${season()}`, {season: season(), by: {...mvBy(), [uid]: true}}); }
 const benches = () => S.clubs.filter(c => !c.managerId && !c.coach);
+function realismPanel(){ return `<div class="panel"><div class="ph"><h3>Realismo economico</h3></div><p class="sub">Ricalcola per <b>tutte</b> le società, anche quelle già assegnate: budget iniziale, monte ingaggi, capienza e prezzo dello stadio, sponsor firmati (con conguaglio) e costi dello staff medico, in base a forza e prestigio della rosa. Le spese già fatte restano registrate.</p><button class="btn primary" data-act="realism">Ricalcola tutto</button></div>`; }
+async function realismAll(){ let n = 0;
+  for (const c of S.clubs){ if (!roster(c.id).length) continue; const p = prestige(c), d = stDef(c);
+    const b0 = roundM(divBudget('A') * (0.35 + 1.6 * Math.pow(p, 1.5))), w0 = Math.round(wageUsed(c.id) * (1 + wageMargin() / 100) / (10 * K)) * 10 * K;
+    const upd = {budget0: b0, wage0: Math.max(w0, wageUsed(c.id)), stadium: {...(c.stadium || {}), cap: d.cap, price: d.price}};
+    const sp = c.sponsors && c.sponsors.season === season() ? c.sponsors : null;
+    if (sp){ const ns = {...sp}; for (const k of ['main', 'tech']){ const o = sp[k], nw = o && sponsorOffers(c, k).find(x => x.tier === o.tier); if (!nw) continue;
+      if (nw.upfront !== o.upfront) await ledger(c.id, nw.upfront - o.upfront, `Adeguamento sponsor ${o.brand} a valori reali`); ns[k] = {...o, upfront: nw.upfront, bonus: nw.bonus, goal: nw.goal}; } upd.sponsors = ns; }
+    await db.doc('clubs/' + c.id).update(upd); n++; toast(`Ricalcolate ${n} società: ${c.name}`); }
+  toast(`Fatto: ${n} società adeguate`, 6000); }
 function benchPanel(){ const b = benches(), by = mvBy(), used = !!S.me && !!by[S.me] && !S.comm, mine = ofrDoc().list.filter(o => o.st === 'open' && o.uid === S.me);
   const mineN = new Set(S.clubs.map(c => normKey(c.name))); loadWorld();
   const opts = []; (WORLD?.leagues || []).forEach((ln, li) => { const cs = (WORLD.clubs || []).filter(c => c.li === li && !mineN.has(normKey(c.name))); if (cs.length) opts.push(`<optgroup label="${esc(ln)}">${cs.map(c => `<option value="w:${c.i}"${S.mvc === 'w:' + c.i ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`); });
   const vac = b.map(c => `<option value="s:${c.id}"${S.mvc === 's:' + c.id ? ' selected' : ''}>${esc(c.name)} (panchina libera)</option>`).join('');
-  return `${mine.length ? `<div class="panel"><div class="ph"><h3>Offerte di panchina</h3></div><div class="list">${mine.map(o => `<div class="li"><div class="main"><b>${esc(o.club)}</b><br><span class="sub">${o.prev ? 'Ha esonerato ' + esc(o.prev) + ' · ' : ''}ti ha scelto come miglior manager</span></div><button class="btn sm good" data-act="ofr-ok" data-id="${o.id}">Accetta</button><button class="btn sm ghost" data-act="ofr-no" data-id="${o.id}">Rifiuta</button></div>`).join('')}</div></div>` : ''}
+  return `${S.comm ? realismPanel() : ''}${mine.length ? `<div class="panel"><div class="ph"><h3>Offerte di panchina</h3></div><div class="list">${mine.map(o => `<div class="li"><div class="main"><b>${esc(o.club)}</b><br><span class="sub">${o.prev ? 'Ha esonerato ' + esc(o.prev) + ' · ' : ''}ti ha scelto come miglior manager</span></div><button class="btn sm good" data-act="ofr-ok" data-id="${o.id}">Accetta</button><button class="btn sm ghost" data-act="ofr-no" data-id="${o.id}">Rifiuta</button></div>`).join('')}</div></div>` : ''}
   <div class="panel"><div class="ph"><h3>Cambia squadra</h3><span class="sub">Una volta a stagione · ${used ? 'già usato' : 'disponibile'}</span></div>
   ${S.me ? `<p class="sub">Puoi allenare una squadra di qualsiasi campionato del Mondo. Si cambia a mercato aperto e una sola volta a stagione.</p><div class="f full"><label for="mvc">Squadra</label><select id="mvc" data-wf="mvc"><option value="">Scegli…</option>${vac ? `<optgroup label="Panchine libere">${vac}</optgroup>` : ''}${opts.join('')}</select></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="mgr-take" ${used || !S.mvc ? 'disabled' : ''}>Passa a questa squadra</button></div>` : '<p class="muted">Accedi per cambiare squadra.</p>'}</div>
   <div class="panel"><div class="ph"><h3>Panchine libere</h3></div>
@@ -4171,7 +4181,7 @@ function homeTable(mc){
 }
 function viewHome(){
   const mc = myClub(), nA = openAuctions().length, open = window_();
-  const myNext = mc ? seasonMatches().filter(m => !m.played && (m.homeId === mc.id || m.awayId === mc.id)).sort((a, b) => (a.stage ? 1 : 0) - (b.stage ? 1 : 0) || a.round - b.round)[0] : null;
+  const myNext = mc ? [...seasonMatches(), ...wMatches()].filter(m => !m.played && (m.homeId === mc.id || m.awayId === mc.id)).sort((a, b) => (a.stage ? 1 : 0) - (b.stage ? 1 : 0) || a.round - b.round)[0] : null;
   const lu = myNext ? lineupOf(myNext.id, mc.id) : null;
   const H = myNext && club(myNext.homeId), A = myNext && club(myNext.awayId);
   const tiles = [
@@ -4185,7 +4195,7 @@ function viewHome(){
     ['precampionato', 'Precampionato', preOn() ? (S.pre.done ? 'Concluso' : preAllIn() ? 'Partite in corso' : 'Scelta dei gironi') : '4 gironi, premi per il mercato'],
     ['lega', 'Lega', S.comm ? 'Gestione commissario' : 'Regolamento e manager']];
   return `${pushBanner()}<section class="hhero">
-      ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${hasB() ? DIVS[divOf(mc)] + ' · ' : ''}Stagione ${season()}</span></div></div>`
+      ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${DIVS[divOf(mc)] && hasB() ? DIVS[divOf(mc)] + ' · ' : mc.lg != null ? (WORLD?.leagues?.[mc.lg] || '') + ' · ' : ''}Stagione ${season()}</span></div></div>`
         : `<div class="hwho"><div><span class="hsub">${S.me ? 'Non alleni ancora nessuna squadra' : 'Benvenuto'}</span><h2>League Manager</h2><span class="hsub">Stagione ${season()}</span></div></div>
           <a class="btn primary hbtn" href="#lega">${S.me ? 'Prendi una panchina' : 'Vai alla Lega'}</a>`}
       ${myNext ? `<div class="hnext"><div class="hnl"><span>Prossima · ${myNext.stage ? 'Playoff' : 'Giornata ' + myNext.round}</span><span class="${lu ? 'ok' : 'todo'}">${lu ? 'Distinta consegnata' : 'Distinta da consegnare'}</span></div>${luWinLine(myNext) ? `<div class="hsub">${luWinLine(myNext)}</div>` : ''}
@@ -4407,6 +4417,7 @@ document.addEventListener('click', async e => {
       case 'club-new': clubModal(); break;
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
+      case 'realism': confirmBox('Ricalcola tutto in modo realistico', 'Budget, monte ingaggi, stadio, sponsor e staff medico di tutte le società vengono ricalcolati in base alla rosa. Non chiudere la pagina finché non compare il messaggio finale.', 'Ricalcola', async () => { try { await realismAll(); } catch (e) { toast(e.message || 'Errore'); } }); break;
       case 'w-lu': { const m = luMatch(id); if (m) viewLineups(m); break; }
       case 'mgr-take': { const k = S.mvc; if (!S.me || !k) return; if (!S.comm && !window_()) return toast('Si cambia squadra solo a mercato aperto.'); if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
         const nm = k[0] === 'w' ? WORLD.clubs.find(c => String(c.i) === k.slice(2))?.name : club(k.slice(2))?.name;
