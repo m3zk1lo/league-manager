@@ -371,7 +371,7 @@ dialog{border-radius:0;border:0;border-top:3px solid var(--accent);background:#0
     <a href="#regolamento">Regolamento</a>
     <a href="#svincolati" hidden><span class="badge" id="aucbadge" hidden></span></a>
     <a href="#statistiche">Statistiche</a>
-    <a href="#lega">Lega</a>
+    <a href="#lega">Lega</a><a href="#admin" id="admlink" hidden>Admin</a>
   </nav>
 </header>
 <main class="wrap" id="main">
@@ -524,6 +524,11 @@ const window_ = () => !!S.settings?.windowOpen;
 const COACHES = {Lecce: 'Eusebio Di Francesco', Fiorentina: 'Paolo Vanoli', Sassuolo: 'Alberto Aquilani', Bologna: 'Raffaele Palladino', Torino: 'Ignazio Abate', Cagliari: 'Fabio Pisacane', Frosinone: 'Massimiliano Alvini', Udinese: 'Paolo Zanetti', Venezia: 'Davide Nicola', Genoa: 'Daniele De Rossi', Monza: 'Ivan Juric', Parma: 'Alberto Gilardino',
   Padova: 'Antonio Calabro', Mantova: 'Francesco Modesto', Cesena: 'Alessandro Diamanti', 'Südtirol': 'Davide Possanzini', Carrarese: 'Guido Pagliuca', Benevento: 'Antonio Floro Flores', Ascoli: 'Francesco Tomei', 'Juve Stabia': 'Pietro De Giorgio', Entella: 'Andrea Chiappella', Arezzo: 'Cristian Bucchi', Empoli: 'Matteo Andreoletti', Vicenza: 'Fabio Gallo'};
 const mgrName = c => c?.managerId ? (S.profiles[c.managerId]?.name || (c.managerId === S.me ? 'Tu' : 'Allenatore')) : c?.coach ? 'All. ' + c.coach + ' · CPU' : c?.prevCoach ? 'Panchina libera · esonerato ' + c.prevCoach : 'Panchina libera';
+/* allenatori reali dei club CPU di tutti i campionati: nomi salvati nell'area Admin (doc COACHES), con quelli già noti di Serie A e B */
+const coachMap = () => (S.world || []).find(d => d.id === 'COACHES')?.names || {};
+const wCoachName = name => coachMap()[name] ?? COACHES[name] ?? '';
+const wCoachLine = name => { const sc = S.clubs.find(c => normKey(c.name) === normKey(name)); if (sc?.managerId) return mgrName(sc); const cn = wCoachName(name);
+  if (ofrDoc().sacked?.includes(name)) return 'Panchina libera' + (cn ? ' · esonerato ' + cn : ''); return cn ? 'All. ' + cn + ' · CPU' : ''; };
 /* esonero CPU: se la squadra va male la società esonera (1 volta a stagione per club) e offre la panchina al miglior manager reale */
 const mvBy = () => (S.world || []).find(d => d.id === `MGR-S${season()}`)?.by || {};
 const ofrDoc = () => (S.world || []).find(d => d.id === `OFR-S${season()}`) || {list: [], sacked: []};
@@ -547,7 +552,7 @@ async function sackTick(){ if (!S.comm || sackBusy || !S.loaded.clubs || !S.load
     if (WORLD && !WORLD.err){ const mine = new Set(S.clubs.map(c => normKey(c.name)));
       for (const L of lgList()){ const doc = lgDoc(L.li); if (!doc) continue; const t = lgTable(doc), n = t.length;
         for (let i = Math.max(0, n - 3); i < n; i++){ const x = t[i], wc = x && lgClub(x.i); if (!wc || mine.has(normKey(wc.name)) || d.sacked.includes(wc.name) || x.g < 10 || x.pt / x.g >= 0.8) continue;
-          if (WH('wsack' + wc.i + season() + x.g) < 0.3) return await fire('w:' + wc.i, wc.name, COACHES[wc.name] || '', null); } } }
+          if (WH('wsack' + wc.i + season() + x.g) < 0.3) return await fire('w:' + wc.i, wc.name, wCoachName(wc.name), null); } } }
   } finally { sackBusy = false; } }
 /* un manager prende una squadra di QUALSIASI campionato: la squadra del Mondo diventa sua (rosa, budget, mercato) */
 async function takeClub(key, uid, free){
@@ -561,6 +566,22 @@ async function takeClub(key, uid, free){
   if (old && old.id !== cid) await db.doc('clubs/' + old.id).update({managerId: null});
   if (!free) await wsave(`MGR-S${season()}`, {season: season(), by: {...mvBy(), [uid]: true}}); }
 const benches = () => S.clubs.filter(c => !c.managerId && !c.coach);
+const moveOpts = sel => { const mineN = new Set(S.clubs.map(c => normKey(c.name))), vac = S.clubs.filter(c => !c.managerId).map(c => `<option value="s:${c.id}"${sel === 's:' + c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+  const w = (WORLD?.leagues || []).map((ln, li) => { const cs = (WORLD.clubs || []).filter(c => c.li === li && !mineN.has(normKey(c.name))); return cs.length ? `<optgroup label="${esc(ln)}">${cs.map(c => `<option value="w:${c.i}"${sel === 'w:' + c.i ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : ''; }).join('');
+  return `<option value="">Sposta a…</option>${vac ? `<optgroup label="Squadre della lega senza manager">${vac}</optgroup>` : ''}${w}`; };
+function viewAdmin(){
+  if (!S.comm) return panelEmpty('Area riservata', 'Solo il commissario può entrare qui.');
+  loadWorld(); const s_ = season(), ls = typeof lgList === 'function' ? lgList() : [], human = lgHumanSet();
+  const cal = ls.map(l => { const d = lgDoc(l.li, s_), pl = d ? d.rounds.filter(r => r.m.length && r.m.every(lgPlayed)).length : 0;
+    return `<div class="li"><div class="main"><b>${esc(l.name)}</b><br><span class="sub">${human.has(l.li) ? 'Manager reale · calendario a mano' : 'Simulato dal sito'} · ${d ? `${pl}/${d.total} giornate giocate` : 'calendario non creato'}</span></div>${d ? `<button class="btn sm bad" data-act="adm-delcal" data-id="${l.li}">Elimina calendario</button>` : ''}</div>`; }).join('');
+  const mg = S.clubs.filter(c => c.managerId).map(c => `<div class="li"><div class="main"><b>${esc(S.profiles[c.managerId]?.name || 'Allenatore')}</b><br><span class="sub">${esc(c.name)}</span></div><select data-wf="mv_${c.managerId}" aria-label="Nuova squadra">${moveOpts(S['mv_' + c.managerId])}</select><button class="btn sm primary" data-act="adm-move" data-id="${c.managerId}">Sposta</button><button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">Libera panchina</button></div>`).join('');
+  return `<div class="panel"><div class="ph"><h2>Area admin</h2><span class="sub">Solo commissario</span></div><p class="sub">Qui gestisci calendari, allenatori e dati economici di tutti i campionati.</p></div>
+  <div class="panel"><div class="ph"><h3>Calendari</h3></div><div class="list">${cal || '<p class="muted">Campionati in caricamento…</p>'}</div>
+    <p class="sub">Serie A e B: <button class="btn sm bad" data-act="fx-clear">Svuota calendario Serie A/B</button>. Nei campionati senza manager reali il sito rigenera il calendario da solo.</p></div>
+  <div class="panel"><div class="ph"><h3>Allenatori reali</h3></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>
+  <div class="panel"><div class="ph"><h3>Allenatori delle squadre CPU</h3></div><p class="sub">Una riga per squadra: <b>Club - Allenatore</b> (anche con «;» o «:»). Vale per tutti i campionati e compare sotto il nome della squadra.</p>
+    <div class="f full"><textarea id="admcoach" style="min-height:150px" placeholder="Manchester City - Pep Guardiola&#10;Real Madrid - Xabi Alonso"></textarea></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="adm-coach">Salva allenatori</button></div></div>
+  ${realismPanel()}`; }
 function realismPanel(){ return `<div class="panel"><div class="ph"><h3>Realismo economico</h3></div><p class="sub">Ricalcola per <b>tutte</b> le società, anche quelle già assegnate: budget iniziale, monte ingaggi, capienza e prezzo dello stadio, sponsor firmati (con conguaglio) e costi dello staff medico, in base a forza e prestigio della rosa. Le spese già fatte restano registrate.</p><button class="btn primary" data-act="realism">Ricalcola tutto</button></div>`; }
 async function realismAll(){ let n = 0;
   for (const c of S.clubs){ if (!roster(c.id).length) continue; const p = prestige(c), d = stDef(c);
@@ -686,7 +707,7 @@ function render(){
   let r = (location.hash || '#home').slice(1);
   if (r === 'svincolati'){ r = 'mondo'; S.wt = 'free'; history.replaceState(null, '', '#mondo'); }
   if (r === 'precampionato'){ r = 'home'; history.replaceState(null, '', '#home'); }
-  S.route = ['home','classifica','calendario','societa','mercato','regolamento','mondo','svincolati','statistiche','lega','precampionato'].includes(r) ? r : 'home';
+  S.route = ['home','classifica','calendario','societa','mercato','regolamento','mondo','svincolati','statistiche','lega','precampionato','admin'].includes(r) ? r : 'home';
   document.querySelectorAll('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   { const tb = $('#tabs'), on = tb && tb.querySelector('[aria-current]'); if (on && tb.scrollWidth > tb.clientWidth) tb.scrollLeft = on.offsetLeft - (tb.clientWidth - on.offsetWidth) / 2; }
   $('#lname').textContent = S.settings?.name || 'Lega Carriera';
@@ -700,7 +721,7 @@ function render(){
     <button class="tag" data-act="account">${S.me ? esc(S.myName || 'Account') + ' · Esci' : 'Accedi'}</button>
     ${mc ? `<button class="tag" data-act="bell" aria-expanded="${S.notifOpen}">Notifiche${unread ? ` <span class="badge">${unread}</span>` : ''}</button>` : ''}` : '';
   const mb = $('#mktbadge'); mb.hidden = !unread; mb.textContent = unread;
-  document.title = (unread ? `(${unread}) ` : '') + 'League Manager';
+  document.title = (unread ? `(${unread}) ` : '') + 'League Manager'; { const al = document.getElementById('admlink'); if (al) al.hidden = !S.comm; }
   const ab = $('#aucbadge'), na = openAuctions().length; ab.hidden = !na; ab.textContent = na;
   if ((S.route === 'mercato' || S.route === 'svincolati') && unread) markRead();
   const main = $('#main');
@@ -710,7 +731,7 @@ function render(){
   const ae = document.activeElement, fid = ae && ae.id && main.contains(ae) ? ae.id : null;
   const selr = fid && typeof ae.selectionStart === 'number' ? [ae.selectionStart, ae.selectionEnd] : null;
   restoreFocus = fid ? () => { const el = document.getElementById(fid); if (!el) return; el.focus(); if (selr) try { el.setSelectionRange(...selr); } catch {} } : null;
-  main.innerHTML = roBanner() + drawBanner() + preBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, regolamento:viewRules, mondo:viewWorld, svincolati:viewFree, statistiche:viewStats, lega:viewLeague, precampionato:viewPre})[S.route]();
+  main.innerHTML = roBanner() + drawBanner() + preBanner() + (S.notifOpen && mc ? notifPanel(nl, unread) : '') + ({home:viewHome, classifica:viewTable, calendario:viewFixtures, societa:viewClub, mercato:viewMarket, regolamento:viewRules, mondo:viewWorld, svincolati:viewFree, statistiche:viewStats, lega:viewLeague, precampionato:viewPre, admin:viewAdmin})[S.route]();
   if (restoreFocus) restoreFocus();
   bnavSync();
 }
@@ -2199,7 +2220,7 @@ function lgView(){
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
   const firstOpen = doc ? doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) : -1, r = Math.min(Math.max(1, +S.lgr || (firstOpen >= 0 ? firstOpen + 1 : nR)), nR || 1), rd = doc?.rounds[r - 1], sc = doc ? lgScorerTable(doc) : [];
   const done = doc ? doc.rounds.filter(x => x.m.length && x.m.every(lgPlayed)).length : 0;
-  const clubBtn = i => `<button type="button" class="clublink" data-act="w-club" data-id="${i}"><span class="nm">${esc(lgCN(i))}</span></button>`;
+  const clubBtn = i => `<button type="button" class="clublink" data-act="w-club" data-id="${i}"><span><span class="nm">${esc(lgCN(i))}</span>${(() => { const cl = lgClub(i), t = cl ? wCoachLine(cl.name) : ''; return t ? `<span class="mgr">${esc(t)}</span>` : ''; })()}</span></button>`;
   return sel_ + `<div class="panel"><div class="ph"><h3>${esc(L.name)}</h3><span class="sub">${doc ? `Giornate giocate ${done} di ${doc.total}` : 'Calendario non ancora creato'}</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
     ${tab.map((x, k) => `<tr class="${lzone(L.name, k, tab.length)[0]}"><td class="pos">${k + 1}</td><td>${clubBtn(x.i)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('')}</tbody></table></div>${lzoneLegend(L.name, tab.length)}
     ${doc?.moves ? (() => { const mv = doc.moves, L_ = (a, t) => a?.length ? `${t}: <b>${a.map(lgCN).map(esc).join(', ')}</b>` : ''; const parts = [L_(mv.up, '⬆️ Neopromosse'), L_(mv.rin, '⬇️ Retrocesse dalla serie superiore')].filter(Boolean); return parts.length ? `<p class="sub">Novità della stagione · ${parts.join(' · ')}${mv.note?.length ? '<br>' + mv.note.map(esc).join(' · ') : ''}</p>` : ''; })() : ''}</div>
@@ -4415,6 +4436,15 @@ document.addEventListener('click', async e => {
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'realism': confirmBox('Ricalcola tutto in modo realistico', 'Budget, monte ingaggi, stadio, sponsor e staff medico di tutte le società vengono ricalcolati in base alla rosa. Non chiudere la pagina finché non compare il messaggio finale.', 'Ricalcola', async () => { try { await realismAll(); } catch (e) { toast(e.message || 'Errore'); } }); break;
+      case 'adm-delcal': { const L = lgList().find(l => l.li === +id), d = lgDoc(+id); if (!L || !d) return;
+        const pl = d.rounds.filter(r => r.m.some(lgPlayed)).length; confirmBox(`Elimina calendario · ${L.name}`, `${pl ? `<b>Attenzione: ci sono ${pl} giornate con risultati, andranno perse.</b><br>` : ''}Il calendario di ${esc(L.name)} viene eliminato.${lgHumanSet().has(+id) ? ' Lo reinserisci tu a mano.' : ' Senza manager reali il sito lo rigenera da solo.'}`, 'Elimina', async () => { await db.doc('world/' + d.id).delete(); toast('Calendario eliminato'); }); break; }
+      case 'adm-move': { const k = S['mv_' + id], c = S.clubs.find(x => x.managerId === id); if (!k) return toast('Scegli la squadra di destinazione.'); const nm = k[0] === 'w' ? WORLD.clubs.find(x => String(x.i) === k.slice(2))?.name : club(k.slice(2))?.name;
+        confirmBox('Sposta allenatore', `${esc(S.profiles[id]?.name || 'L’allenatore')} lascia ${esc(c?.name || 'la squadra')} e va al <b>${esc(nm || '')}</b>.`, 'Sposta', async () => { try { await takeClub(k, id, true); S['mv_' + id] = ''; toast('Allenatore spostato'); } catch (e) { toast(e.message || 'Errore'); } }); break; }
+      case 'adm-coach': { const txt = ($('#admcoach')?.value || '').split('\n').map(x => x.trim()).filter(Boolean); if (!txt.length) return toast('Incolla almeno una riga.');
+        const names = {...coachMap()}, miss = []; let n = 0;
+        txt.forEach(l => { const m = l.match(/^(.+?)\s*(?:;|:|\s[-–]\s)\s*(.+)$/); if (!m) { miss.push(l); return; } const k = normKey(m[1]), wc = (WORLD?.clubs || []).find(c => normKey(c.name) === k) || S.clubs.find(c => normKey(c.name) === k); if (!wc) { miss.push(m[1]); return; } names[wc.name] = m[2].trim(); n++; });
+        await wsave('COACHES', {names}); const od = JSON.parse(JSON.stringify(ofrDoc())); if (od.sacked?.length){ od.sacked = od.sacked.filter(x => !(x in names) || names[x] === coachMap()[x]); await ofrSave(od); }
+        toast(`Salvati ${n} allenatori${miss.length ? ` · non riconosciuti: ${miss.slice(0, 4).join(', ')}` : ''}`, 7000); break; }
       case 'w-lu': { const m = luMatch(id); if (m) viewLineups(m); break; }
       case 'mgr-take': { const k = S.mvc; if (!S.me || !k) return; if (!S.comm && !window_()) return toast('Si cambia squadra solo a mercato aperto.'); if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
         const nm = k[0] === 'w' ? WORLD.clubs.find(c => String(c.i) === k.slice(2))?.name : club(k.slice(2))?.name;
