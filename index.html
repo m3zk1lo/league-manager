@@ -1450,7 +1450,7 @@ function loadWorld(){
     const clubs = d.clubs.map((c, i) => ({i, name: c[0], league: d.leagues[c[1]], li: c[1], players: []}));
     d.p.forEach(x => clubs[x[5]]?.players.push({fc: x[0], name: x[1], pos: x[2], age: x[3], ovr: x[4], ci: x[5]}));
     clubs.forEach(c => { c.players.sort((a, b) => b.ovr - a.ovr); const top = c.players.slice(0, 16); c.avg = top.length ? top.reduce((a, p) => a + p.ovr, 0) / top.length : 60; c.mine = mine.has(normKey(c.name)); });
-    WORLD = {leagues: d.leagues, clubs: clubs.filter(c => !c.mine && c.players.length)};
+    WORLD = {leagues: d.leagues, clubs: clubs.filter(c => !c.mine && c.players.length), mineClubs: clubs.filter(c => c.mine).map(c => ({k: normKey(c.name), li: c.li}))};
     worldLoading = false; schedule();
   }).catch(() => { worldLoading = false; WORLD = {err: true, leagues: [], clubs: []}; schedule(); });
 }
@@ -1851,6 +1851,8 @@ async function rivalJoin(tb){
     stage: st, status: 'open', fee: 0, round: d0.round || 1, [st === 'club' ? 'windowEnd' : 'playerEnd']: Math.max(tb.end, t + WIN_SNIPE), ts: t, season: season(), hist: [{who: 'cpu', t: 'Si inserisce nella trattativa', pub: `${rc.name} si inserisce nella trattativa`, ts: t}]});
 }
 const RESOLVE = {club: resolveClub, player: resolvePlayer, agent: resolveAgent};
+/* le squadre CPU possono avviare proposte SOLO verso le società che hanno un manager vero (cpuGenerate guarda solo quelle); possono anche inserirsi nelle trattative aperte dai manager. Metti false per spegnere le proposte spontanee */
+const CPU_CAN_START = true;
 function cpuLeader(overdue){
   if (overdue > 40e3 || !S.online || !S.online.length) return true;
   const ids = S.online.map(o => o.id).sort(); return ids[0] === S.me;
@@ -1865,7 +1867,7 @@ function cpuTick(){
   });
   cpuDeals().filter(d => d.dir === 'sell' && d.status === 'open' && d.waiting === 'cpu' && (d.respondAt || 0) <= now() && cpuLeader(now() - d.respondAt) && !cpuBusy.has(d.id + '|' + d.respondAt)).forEach(d => { const k = d.id + '|' + d.respondAt; cpuBusy.add(k); cpuResolve(d).catch(() => cpuBusy.delete(k)); });
   cpuDeals().filter(d => d.status === 'open' && d.dir === 'sell' && d.waiting === 'user' && (d.respondAt || 0) <= now() && !cpuBusy.has('x' + d.id)).forEach(d => { cpuBusy.add('x' + d.id); db.doc('offers/' + d.id).update({status: 'expired', waiting: null, msg: 'Offerta scaduta senza risposta.'}); });
-  if (!cpuBusy.has('gen' + Math.floor(now() / 864e5))){ cpuBusy.add('gen' + Math.floor(now() / 864e5)); cpuGenerate().catch(() => {}); }
+  if (CPU_CAN_START && !cpuBusy.has('gen' + Math.floor(now() / 864e5))){ cpuBusy.add('gen' + Math.floor(now() / 864e5)); cpuGenerate().catch(() => {}); }
 }
 setInterval(() => { try { if (S.cpuDeals && S.cpuDeals.some(d => d.status === 'open' && (d.dir === 'sell' ? d.respondAt : endOf(d)) <= now())) schedule(); } catch {} }, 5000);
 async function cpuResolve(d){
@@ -1969,18 +1971,23 @@ function stAfter(st, m){
   (ev.i || []).forEach(([sd, fc, gg]) => { if (typeof fc === 'number') st.inj[fc] = {ci: sides[sd], left: gg}; });
 }
 const stSave = st => { ['inj', 'sus'].forEach(k => Object.keys(st[k]).forEach(fc => { if (!(st[k][fc].left > 0)) delete st[k][fc]; })); return wsave(`WST-S${season()}`, {season: season(), ...st}); };
+/* REGOLA: un campionato con almeno un manager vero lo gestisce il commissario (calendario e partite a mano, il sito non lo simula);
+   un campionato senza manager veri lo simula il sito. */
+function lgHumanSet(){ const out = new Set(); if (!WORLD || WORLD.err || !WORLD.mineClubs) return out;
+  const hm = new Set(S.clubs.filter(c => c.managerId).map(c => normKey(c.name))); WORLD.mineClubs.forEach(c => { if (hm.has(c.k)) out.add(c.li); }); return out; }
 let lgBusy = false;
 async function lgTick(){
   if (!S.comm || lgBusy || !S.loaded.world || !S.loaded.matches || !WORLD || WORLD.err) return;
   const frac = lgProgress(), s = season(); lgBusy = true;
   try {
-    const st = stLoad(); let dirty = false;
-    if (s > 1) for (const d of (S.world || []).filter(d => d.season === s - 1 && d.li != null && d.rounds.some(r => r.m.some(m => m[2] == null)))){
+    const st = stLoad(); let dirty = false; const human = lgHumanSet();
+    if (s > 1) for (const d of (S.world || []).filter(d => d.season === s - 1 && d.li != null && !human.has(d.li) && d.rounds.some(r => r.m.some(m => m[2] == null)))){
       const d2 = JSON.parse(JSON.stringify(d)); d2.rounds.forEach((r, k) => r.m = r.m.map(m => m[2] == null ? lgPlay(lgClub(m[0]) || {i: m[0], players: []}, lgClub(m[1]) || {i: m[1], players: []}, `g${d.li}-${s - 1}-${k}-${m[0]}-${m[1]}`) : m));
       await wsave(d.id, d2); return;
     }
     const mv = s > 1 ? lgMembers(s) : null;
     for (const L of lgList()){
+      if (human.has(L.li)) continue;
       const doc = lgDoc(L.li, s);
       const ids = doc ? doc.clubs : (mv?.base.get(L.name) || L.clubs.map(c => c.i));
       const rounds = doc ? JSON.parse(JSON.stringify(doc.rounds)) : lgSchedule(ids, s, L.li).map(m => ({m: m.map(([h, a]) => [h, a, null, null, [], []])}));
@@ -2123,7 +2130,7 @@ function lgView(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
   const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>
-    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p>
+    <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Serie A e Serie B sono le nostre: le trovi in Classifica e Calendario.</p>${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0"><b>Questo campionato ha un manager vero: lo gestisci tu</b> (calendario e partite a mano), il sito non lo simula.</p>' : ''}
     ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
   const firstOpen = doc ? doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) : -1, r = Math.min(Math.max(1, +S.lgr || (firstOpen >= 0 ? firstOpen + 1 : nR)), nR || 1), rd = doc?.rounds[r - 1], sc = doc ? lgScorerTable(doc) : [];
@@ -2531,6 +2538,7 @@ const RULES_SECTIONS = [
  ['⚽ Le partite', `<p>Serie A e Serie B sono da <b>20 squadre</b>: le squadre dei manager più quelle gestite dalla CPU.</p><ul>
   <li>Le partite delle <b>squadre con un manager vero</b> le gioca il commissario alla PlayStation, con la distinta del manager.</li>
   <li>Le partite delle <b>squadre CPU</b> della lega le simula comunque il commissario alla PlayStation e inserisce il risultato.</li>
+  <li><b>Regola dei campionati</b>: un campionato con almeno un manager vero lo gestisce il commissario (calendario e partite); uno senza manager veri lo simula il sito.</li>
   <li>Tutti i risultati di Serie A e B li inserisce il commissario, con marcatori, assist, cartellini e <b>infortuni</b> (il giocatore infortunato salta le giornate indicate, ridotte dallo staff medico).</li></ul>
   <p>Sotto il nome delle squadre CPU c'è il loro allenatore reale (es. «All. De Rossi · CPU»).</p>
   <p><b>Distinte</b></p><ul>
@@ -2541,7 +2549,7 @@ const RULES_SECTIONS = [
   <li><b>Alla 5ª distinta mancata il manager viene tolto dalla squadra</b>, che passa alla CPU.</li></ul>`],
  ['🏆 Campionati, promozioni e retrocessioni', `<ul><li><b>Serie A</b>: prime 4 in Champions League, 5ª e 6ª in Europa League, 7ª in Conference League. <b>Le ultime 3 retrocedono in Serie B.</b></li>
   <li><b>Serie B</b>: le prime 2 salgono in Serie A, dalla 3ª alla 6ª playoff per il terzo posto. La Serie C nel gioco non esiste: dalla B non retrocede nessuno.</li></ul>
-  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri) li gioca il sito in modo realistico: ogni squadra schiera i suoi undici migliori disponibili, ci sono gol, assist, ammonizioni, espulsioni con squalifica, diffide (5 gialli = 1 giornata) e infortuni con giorni di stop. Avanzano insieme alle nostre giornate e il commissario può correggere qualsiasi risultato. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
+  <p><b>Gli altri campionati del Mondo</b> (Premier League, LaLiga, Bundesliga, Ligue 1, Portogallo, Olanda e molti altri) li gioca il sito in modo realistico: ogni squadra schiera i suoi undici migliori disponibili, ci sono gol, assist, ammonizioni, espulsioni con squalifica, diffide (5 gialli = 1 giornata) e infortuni con giorni di stop. Avanzano insieme alle nostre giornate e il commissario può correggere qualsiasi risultato. Se in uno di questi campionati c'è almeno un manager vero, lo gestisce il commissario: il sito non lo simula e il calendario lo decide lui. Hanno classifiche, marcatori e <b>promozioni e retrocessioni vere</b> (Inghilterra con 4 serie e playoff, Spagna, Germania con gli spareggi, Francia). Dove nel gioco non c'è la serie inferiore non retrocede nessuno; dove non c'è la superiore c'è solo il campione. Tutto in <b>Mondo → Campionati</b>.</p>`],
  ['🏆 Coppe europee', `<p><b>Champions League, Europa League e Conference League</b> con il formato vero: fase campionato a 36 squadre (8 partite, 6 in Conference), poi spareggi, ottavi, quarti, semifinali andata e ritorno e finale secca.</p><ul>
   <li><b>Prima stagione</b>: niente coppe, si gioca solo il campionato.</li>
   <li><b>Dalla seconda stagione</b> ci si qualifica con le classifiche della stagione prima (la nostra Serie A con la nostra classifica); chi vince Champions o Europa League va in Champions l'anno dopo. Sorteggio e calendario delle coppe li crea il sito in automatico.</li>
@@ -2872,6 +2880,7 @@ function autoClose(){
   openAuctions().filter(a => a.endsAt <= now() && !closing.has(a.id)).forEach(a => { closing.add(a.id); closeAuction(a).catch(() => closing.delete(a.id)); });
   try { cpuTick(); } catch {}
   try { lgTick(); } catch {}
+  try { cpuMatchTick(); } catch {}
   try { coachTick(); } catch {}
   try { luTick(); } catch {}
   try { moraleTick(); } catch {}
@@ -4510,6 +4519,35 @@ function coachModal(name){
       if (other){ await coachSave([{...me, coach: other.coach}, {...other, coach: me.coach}]); toast(`Allenatori scambiati: ${me.name} ↔ ${other.name}`); }
       else { await coachSave([{...me, coach: String(fd.get('cn') || '').trim()}]); toast('Allenatore aggiornato'); }
     }, 'Salva');
+}
+
+/* ---------- divisioni della lega (Serie A/B) senza nessun manager vero: le simula il sito. Con almeno un manager vero gestisce tutto il commissario ---------- */
+const CPU_AUTOSIM = true;
+let cpuSimBusy = false; const cpuSimDone = new Set();
+async function cpuMatchTick(){
+  if (!CPU_AUTOSIM || !S.comm || cpuSimBusy || !db || !WORLD || WORLD.err || window_()) return;
+  if (!S.loaded.matches || !S.loaded.clubs || !S.loaded.players || !S.clubs.some(c => c.managerId)) return;
+  const ms = seasonMatches().filter(m => !m.stage && !m.pre && !m.played), hum = m => !!(club(m.homeId)?.managerId || club(m.awayId)?.managerId);
+  const hm = ms.filter(hum), cur = hm.length ? Math.min(...hm.map(m => m.round)) : Infinity, divHuman = new Set(S.clubs.filter(c => c.managerId).map(c => divOf(c)));
+  const todo = ms.filter(m => !divHuman.has(mDiv(m)) && m.round <= cur && club(m.homeId) && club(m.awayId) && !cpuSimDone.has(m.id)).sort((a, b) => a.round - b.round).slice(0, 10);
+  if (!todo.length) return;
+  cpuSimBusy = true;
+  try {
+    const sus = suspended();
+    const lc = id => { const c = lmCpuClubs().find(x => x.lm === id); if (!c) return null; const ok = c.players.filter(p => !p.inj && !sus.has(p.pid)); return {...c, players: ok.length >= 11 ? ok : c.players}; };
+    const pn = fc => { const pid = String(fc).slice(2), p = S.players.find(x => x.id === pid); return p ? {p: pid, n: p.name} : null; };
+    for (const m of todo){
+      cpuSimDone.add(m.id);
+      const H = lc(m.homeId), A = lc(m.awayId); if (!H || !A || H.players.length < 11 || A.players.length < 11) continue;
+      const res = lgPlay(H, A, `cpu-${season()}-${m.id}`, null), ev = res[6], events = [];
+      [[res[4], ev.a1, m.homeId], [res[5], ev.a2, m.awayId]].forEach(([gs, as, cid]) => gs.forEach((fc, k) => { const g = pn(fc); if (!g) return; const e = {t: 'g', c: cid, p: g.p, n: g.n}; const a = as[k] != null ? pn(as[k]) : null; if (a){ e.a = a.p; e.an = a.n; } events.push(e); }));
+      [['y', ev.y], ['r', ev.r]].forEach(([t, arr]) => arr.forEach(([sd, fc]) => { const cid = sd ? m.awayId : m.homeId, x = pn(fc); if (x) events.push({t, c: cid, p: x.p, n: x.n}); }));
+      ev.i.forEach(([sd, fc, gg]) => { const cid = sd ? m.awayId : m.homeId, x = pn(fc); if (x) events.push({t: 'i', c: cid, p: x.p, n: x.n, gg}); });
+      await db.doc('matches/' + m.id).update({hg: res[2], ag: res[3], events, played: true, playedAt: now(), by: S.me || null, auto: true});
+      for (const e of events.filter(x => x.t === 'i')){ const pl = S.players.find(x => x.id === e.p); if (pl) await db.doc('players/' + pl.id).update(injuryData(pl, {get: () => String(e.gg || 1)})); }
+      try { await creditGate(m); } catch {}
+    }
+  } finally { cpuSimBusy = false; }
 }
 
 /* ---------- boot ---------- */
