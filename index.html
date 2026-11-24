@@ -984,13 +984,9 @@ function viewLeague0(){
         </div>
         ${S.comm ? `<div class="row" style="margin-top:14px">
           <button class="btn sm" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button>
-          <button class="btn sm" data-act="mkt-edit">Mercato equilibrato A/B${MK().on ? ' · attivo' : ''}</button>
-          ${MK().on && (MK().prio || MK().maxTop) ? '<button class="btn sm" data-act="mkt-start">Avvia sessione di mercato</button>' : ''}
-          <button class="btn sm" data-act="cpu-clubs">Squadre CPU Serie A e B</button>
           <button class="btn sm" data-act="logos-bulk">Carica loghi</button>
           <button class="btn sm" data-act="ratings">Aggiorna valutazioni</button>
           <button class="btn sm" data-act="draw-new">Nuovo sorteggio</button>
-          <button class="btn sm" data-act="start-budgets">Budget di partenza</button>
           <button class="btn sm" data-act="recalc">Ricalcola valori e ingaggi</button>
           <button class="btn sm bad" data-act="reset-league">Azzera torneo</button>
           <button class="btn sm" data-act="gen" ${anyPlayed || S.clubs.length < 2 ? 'disabled' : ''}>${ri.total ? 'Rigenera calendario' : 'Genera calendario'}</button>
