@@ -282,6 +282,9 @@ button.tag:hover{border-color:var(--on-pitch)}
 .feed{display:grid;gap:6px;border-left:2px solid #22304f;padding-left:10px}
 .feed div{display:grid;grid-template-columns:40px 20px minmax(0,1fr);gap:4px;font-size:.88rem}
 .feed .t{color:var(--muted);font-variant-numeric:tabular-nums}
+.zl.z-cl{background:#4fc3ff}.zl.z-el{background:#ff8a3d}.zl.z-ecl{background:#3ee07a}.zl.z-rpo{background:#c792ea}.zl.z-top{background:var(--accent)}
+tr.z-cl .pos{color:#4fc3ff}tr.z-el .pos{color:#ff8a3d}tr.z-ecl .pos{color:#3ee07a}tr.z-rpo .pos{color:#c792ea}tr.z-top .pos{color:var(--accent)}tr.z-po .pos{color:#2f9bff}
+tr.z-cl td:first-child,tr.z-el td:first-child,tr.z-ecl td:first-child,tr.z-top td:first-child,tr.z-po td:first-child,tr.z-bot td:first-child,tr.z-rpo td:first-child{box-shadow:inset 3px 0 0 currentColor}
 html:root,html:root:not([data-theme="light"]),html:root[data-theme]{
   --bg:#07090f; --surface:#111829; --surface-2:#141b2e; --ink:#eef1f6; --muted:#9aa3b8; --line:#1d2640;
   --accent:#d7ff3c; --accent-soft:#2a3410; --on-accent:#07090f;
@@ -705,12 +708,12 @@ function viewSetup(){
 
 function zoneOf(i, n){
   if (!hasB()) return i === 0 ? 'z-top' : i === n - 1 && n > 2 ? 'z-bot' : '';
-  if (curDiv() === 'A') return i === 0 ? 'z-top' : i >= n - RELEG ? 'z-bot' : '';
+  if (curDiv() === 'A') return i < 4 ? 'z-cl' : i < 6 ? 'z-el' : i === 6 ? 'z-ecl' : i >= n - RELEG ? 'z-bot' : '';
   return i < PROMO ? 'z-top' : i >= 2 && i <= 5 && n >= 6 ? 'z-po' : '';
 }
 function zoneLegend(){
   if (!hasB()) return '';
-  return curDiv() === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Campione · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>`
+  return curDiv() === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> Champions League · <span class="zl z-el"></span> Europa League · <span class="zl z-ecl"></span> Conference League · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>`
     : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
 }
 function viewTable(){
@@ -1218,6 +1221,7 @@ function newsItems(){
     html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}` : `Cessione · <b>${esc(t.playerName)}</b>: <b>${esc(t.fromLabel)}</b> → ${esc(t.toLabel || 'svincolato')}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
   out.push(...cpuNews());
   try { out.push(...lgNews()); } catch {}
+  try { out.push(...cupNews()); } catch {}
   return out.sort((a, b) => b.ts - a.ts);
 }
 const newsWhen = ts => { const d = now() - ts; if (d < 6e4) return 'ora'; if (d < 36e5) return Math.floor(d / 6e4) + ' min fa'; if (d < 864e5) return Math.floor(d / 36e5) + ' h fa';
@@ -1456,6 +1460,16 @@ function wPlayer(fc){
   if (isFreeKey(fc)){ const x = S.players.find(q => q.id === fc.slice(2) && !q.clubId && !q.loan); return x ? {p: {fc, name: x.name, pos: x.pos, age: ageOf(x), ovr: x.ovr || 0}, c: {name: 'Svincolato', free: true, players: [], avg: 0, league: 'Senza squadra'}} : null; }
   for (const c of allClubs()){ const p = c.players.find(x => x.fc === fc); if (p) return {p, c}; } return null; }
 let TK = null, LMC = null;
+const MOVED = new Set();
+function applyMoves(){
+  if (!WORLD || WORLD.err) return;
+  cpuDeals().filter(d => d.rival && d.status === 'done' && typeof d.fcId === 'number' && !MOVED.has(d.id)).forEach(d => {
+    MOVED.add(d.id); let pl = null;
+    WORLD.clubs.forEach(c => { const i = c.players.findIndex(x => x.fc === d.fcId); if (i >= 0) pl = c.players.splice(i, 1)[0]; });
+    const rc = WORLD.clubs.find(c => c.name === d.rival); if (pl && rc){ pl.ci = rc.i; rc.players.push(pl); rc.players.sort((a, b) => b.ovr - a.ovr); }
+    FCN = null;
+  });
+}
 function lmCpuClubs(){
   if (!WORLD || WORLD.err) return [];
   if (LMC && LMC.p === S.players && LMC.c === S.clubs) return LMC.v;
@@ -1465,7 +1479,7 @@ function lmCpuClubs(){
   });
   LMC = {p: S.players, c: S.clubs, v}; return v;
 }
-const allClubs = () => { const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
+const allClubs = () => { applyMoves(); const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
 function wAvailable(c){ if (c.lm) return c.players; if (!TK || TK.ref !== S.players){ TK = {ref: S.players, t: takenFc(), n: takenNames()}; } const t = TK.t, n = TK.n; return c.players.filter(p => !t.has(p.fc) && !n.has(normKey(p.name))); }
 /* carattere del club e del giocatore */
 function cpuProfile(c, p){
@@ -1491,18 +1505,19 @@ function viewWorld(){
   if (!WORLD) return '<div class="panel"><div class="empty"><strong>Carico il calcio mondiale…</strong><span>Squadre e rose vere di FC 27.</span></div></div>';
   if (WORLD.err) return panelEmpty('Database non trovato', 'Manca il file fc27.json sul sito: il commissario deve caricarlo su GitHub insieme a index.html.');
   const mc = myClub(), q = normKey(S.wq || ''), li = S.wl ?? 0, minO = +(S.wo || 0);
-  const AC = allClubs(), clubs = AC.filter(c => q ? true : c.li === +li);
+  const AC = allClubs(), LIO = lgLiOf(), clubs = AC.filter(c => q ? true : (c.lm ? c.li : LIO.get(c.i) ?? c.li) === +li);
   let list = [];
   if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
   const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr} · ${p.age} anni · ${esc(c.name)}</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
   const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
-  const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
+  const subtabs = `<nav class="subtabs">${[['club', 'Club e rose'], ['lg', 'Campionati'], ['cup', 'Coppe'], ['sala', `Sala trattative${nl ? ` · ${nl}` : ''}`], ['free', `Senza squadra${fl.length ? ` · ${fl.length}` : ''}`]].map(([k, l]) => `<button type="button" class="${wt === k ? 'on' : ''}" data-act="w-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
   const head = `${window_() ? mkNotice() : '<div class="notice">Mercato chiuso: puoi guardare le rose, le trattative ripartono quando il commissario riapre la finestra.</div>'}${subtabs}`;
   if (wt === 'sala') return head + salaView();
   if (wt === 'lg') return head + lgView();
+  if (wt === 'cup') return head + cupView();
   if (wt === 'free'){
-    const fr = x => { const key = 'p_' + x.id, d = dealsFor(key); return `<div class="li"><div class="main"><span class="posb ${GRP[x.pos] || 'mid'}">${esc(x.pos || '')}</span> <b>${esc(x.name)}</b> <span class="sub">${x.ovr || ''} · ${ageOf(x)} anni · svincolato</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(y => esc(cname(y.buyerId))).join(', ')}</span>` : ''}</div>
+    const fr = x => { const key = 'p_' + x.id, d = dealsFor(key); return `<div class="li"><div class="main"><span class="posb ${GRP[x.pos] || 'mid'}">${esc(x.pos || '')}</span> <b>${esc(x.name)}</b> <span class="sub">${x.ovr || ''} · ${ageOf(x)} anni · svincolato</span>${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(y => esc(dn(y))).join(', ')}</span>` : ''}</div>
       <span class="num">${fmtM(autoValue(x.ovr || 0, ageOf(x)))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${key}">Tratta</button>` : ''}</div>`; };
     return head + `<div class="panel"><div class="ph"><h3>Senza squadra</h3><span class="sub">Giocatori svincolati dai manager: niente cartellino, si tratta subito con giocatore e procuratore.</span></div>
       ${fl.length ? `<div class="list">${wByRole(fl).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(fr).join('')).join('')}</div>` : '<p class="muted">Nessun giocatore senza squadra. Quando un manager svincola un giocatore, lo trovi qui.</p>'}</div>`;
@@ -1531,6 +1546,7 @@ const tableEnd = t => { const st = tableStage(t); return Math.max(0, ...t.filter
 const canJoin = t => !t.length || (isFreeKey(t[0].fcId) ? t.every(d => d.stage === 'player') : t.every(d => d.stage === 'club'));
 const pubH = (d, who, txt, pub) => [...(d.hist || []), {who, t: txt, pub: pub ?? null, ts: now()}];
 const cname = id => club(id)?.name || '—';
+const dn = d => d.rival || cname(d.buyerId);
 function tables(){
   const m = new Map(); cpuDeals().filter(d => d.dir === 'buy' && d.status === 'open').forEach(d => { if (!m.has(d.fcId)) m.set(d.fcId, []); m.get(d.fcId).push(d); });
   return [...m.values()].map(t => ({fc: t[0].fcId, name: t[0].playerName, pos: t[0].pos, ovr: t[0].ovr, club: t[0].cpuClub, free: isFreeKey(t[0].fcId), stage: tableStage(t), end: tableEnd(t), deals: t})).sort((a, b) => a.end - b.end);
@@ -1547,7 +1563,7 @@ function boardPanel(compact){
   const mc = myClub();
   return `<div class="panel"><div class="ph"><h3>Bacheca trattative</h3><a class="sub" href="#mondo" data-act="w-tab" data-id="sala">Sala trattative ›</a></div><div class="list">${tb.map(t => `<div class="li"><div class="main">
     <span class="posb ${GRP[t.pos] || 'mid'}">${esc(t.pos || '')}</span> <b>${esc(t.name)}</b> <span class="sub">${t.ovr || ''} · ${esc(t.club)}</span><br>
-    <span class="sub">${STAGE_TXT[t.stage]} · in corsa: <b>${t.deals.map(d => esc(cname(d.buyerId))).join(', ')}</b></span></div>
+    <span class="sub">${STAGE_TXT[t.stage]} · in corsa: <b>${t.deals.map(d => esc(dn(d))).join(', ')}</b></span></div>
     <div style="text-align:right"><b class="cd" data-end="${t.end}">${timeLeft(t.end - now())}</b>
     ${mc && window_() && canJoin(t.deals) && !t.deals.some(d => d.buyerId === mc.id) ? `<br><button class="btn sm primary" data-act="w-offer" data-id="${t.fc}">Entra</button>` : ''}</div></div>`).join('')}</div></div>`;
 }
@@ -1565,7 +1581,7 @@ function salaCard(key, deals, live){
   return `<div class="panel sala"><div class="ph"><div><span class="posb ${GRP[d0.pos] || 'mid'}">${esc(d0.pos || '')}</span> <b class="sala-n">${esc(d0.playerName)}</b> <span class="sub">${d0.ovr || ''} · ${esc(d0.cpuClub)}</span></div>
     ${live ? `<span class="sub">${stage === 'club' ? 'decisione' : stage === 'player' ? 'risposta' : 'firma'} tra <b class="cd" data-end="${end}">${timeLeft(end - now())}</b></span>` : `<span class="pill ${won ? 'good' : 'neutral'}">${won ? 'Firmato' : 'Saltata'}</span>`}</div>
     ${stepsBar(stage, free, !!won)}
-    <p class="sub" style="margin:8px 0">In corsa: ${deals.map(d => `<b>${esc(cname(d.buyerId))}</b>${d.status === 'done' ? ' ✅' : d.status !== 'open' ? ' ✖' : ''}`).join(', ')}</p>
+    <p class="sub" style="margin:8px 0">In corsa: ${deals.map(d => `<b>${esc(dn(d))}</b>${d.status === 'done' ? ' ✅' : d.status !== 'open' ? ' ✖' : ''}`).join(', ')}</p>
     <div class="feed">${ev.slice(-10).map(h => `<div><span class="t">${hhmm(h.ts)}</span><span>${WHO_IC[h.who] || '•'}</span><span>${esc(h.pub)}</span></div>`).join('') || '<div><span class="sub">In attesa delle prime mosse…</span></div>'}</div>
     ${live && mc && window_() && canJoin(deals) && !deals.some(d => d.buyerId === mc.id) ? `<button class="btn primary" style="margin-top:10px;width:100%" data-act="w-offer" data-id="${key}">Entra nella trattativa</button>` : ''}</div>`;
 }
@@ -1590,7 +1606,7 @@ function cpuRow(d){
     : d.dir === 'sell' ? (d.waiting === 'user' ? 'Tocca a te' : `${d.cpuClub} sta valutando`) : d.stage === 'agent' ? (d.proposed ? 'Proposta consegnata al procuratore' : 'Fai la tua proposta al procuratore') : d.stage === 'player' ? 'Il giocatore sta valutando' : 'Offerta sul tavolo della società';
   const last = (d.hist || []).slice(-3).map(h => `<span class="sub">${WHO_IC[h.who] || '•'} ${esc(h.t)}</span>`).join('<br>');
   const act = open && mineB ? (d.stage === 'agent' ? (d.proposed ? 'Modifica proposta' : 'Proposta al procuratore') : d.stage === 'club' ? 'Rilancia' : '') : open && mineS && d.waiting === 'user' ? 'Rispondi' : '';
-  return `<div class="li"><div class="main"><b>${esc(d.playerName)}</b> <span class="sub">${d.dir === 'sell' ? `${esc(cname(d.sellerId))} → ${esc(d.cpuClub)} · offerta ${fmtM(d.fee)}` : `${esc(d.cpuClub)} → ${esc(cname(d.buyerId))}${d.fee ? ` · tua offerta ${fmtM(d.fee)}` : ''}`}</span><br>${last}
+  return `<div class="li"><div class="main"><b>${esc(d.playerName)}</b> <span class="sub">${d.dir === 'sell' ? `${esc(cname(d.sellerId))} → ${esc(d.cpuClub)} · offerta ${fmtM(d.fee)}` : `${esc(d.cpuClub)} → ${esc(dn(d))}${d.fee ? ` · tua offerta ${fmtM(d.fee)}` : ''}`}</span><br>${last}
     <div class="row" style="margin-top:6px"><span class="pill ${d.status === 'done' ? 'good' : open ? (act ? 'warn' : 'info') : 'neutral'}">${st}</span>${open && end ? ` <span class="sub">tra <b class="cd" data-end="${end}">${timeLeft(end - now())}</b></span>` : ''}
     ${act ? `<button class="btn sm good" data-act="cpu-reply" data-id="${d.id}">${act}</button>` : ''}
     ${open && (mineB || mineS) ? `<button class="btn sm ghost" data-act="cpu-quit" data-id="${d.id}">${mineS ? 'Rifiuta' : 'Abbandona'}</button>` : ''}</div></div></div>`;
@@ -1606,7 +1622,7 @@ function wOffer(fc){
   if (!canJoin(tb)) return toast('Troppo tardi: la trattativa è già passata alla fase successiva.');
   const end = tb.length ? tableEnd(tb) : now() + WIN_CLUB;
   openModal(free ? `${p.name} · svincolato` : `Offerta a ${c.name} per ${p.name}`, `<p class="sub">${esc(p.pos)} · OVR ${p.ovr} · ${p.age} anni · valore ${fmtM(pr.value)}${free ? '' : ` · ${pr.role} · ${esc(c.name)}`} · procuratore: ${esc(pr.agency.name)}</p>
-    ${others.length ? `<div class="notice">⚠️ In corsa ci sono già: <b>${others.map(d => esc(cname(d.buyerId))).join(', ')}</b>. Le loro cifre sono segrete.</div>` : ''}
+    ${others.length ? `<div class="notice">⚠️ In corsa ci sono già: <b>${others.map(d => esc(dn(d))).join(', ')}</b>. Le loro cifre sono segrete.</div>` : ''}
     <div class="notice">⏳ ${free ? `${esc(p.name)} sceglie con chi parlare` : `${esc(c.name)} decide`} tra <b>${timeLeft(end - now())}</b>. Fino ad allora chiunque può entrare. Se qualcuno entra nell’ultimo minuto, il tempo si allunga di un minuto.</div>
     ${free ? '<p class="sub">Svincolato: nessun costo di cartellino. Dopo, il giocatore sceglie le squadre che gli interessano e si tratta l’ingaggio con il procuratore.</p><input type="hidden" name="fee" value="0">'
       : `<div class="fgrid">${fld('fee', 'La tua offerta alla società (milioni €)', `type="number" min="0.1" step="0.1" value="${(pr.value / M).toFixed(1)}" required`, '', true)}</div>
@@ -1673,18 +1689,19 @@ async function resolveClub(fc){
   if (!w || takenFc().has(fc)) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p), round = Math.max(...tb.map(d => d.round || 1));
   const ask = Math.max(...tb.map(d => d.ask || 0)) || Math.round(pr.value * pr.mult / 1e5) * 1e5;
+  for (const d of tb) if (d.rival){ const f = Math.round(ask * (round > 1 ? 0.97 + WH(d.id + 'r' + round) * 0.15 : 0.88 + WH(d.id + 'f') * 0.3) / 1e5) * 1e5; if (f > (d.fee || 0)) d.fee = f; await db.doc('offers/' + d.id).update({fee: d.fee}); }
   const best = Math.max(...tb.map(d => d.fee || 0));
   if (pr.untouchable && best < ask * 1.5) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, `${c.name}: «${p.name} non è in vendita. È un pilastro della squadra.»`, `${c.name}: «${p.name} non è in vendita»`)));
   const ok = tb.filter(d => d.fee >= ask);
   if (ok.length){
-    const names = ok.map(d => cname(d.buyerId)).join(', ');
-    await Promise.all(tb.map(d => d.fee < ask ? upd(d, {status: 'rejected'}, `${c.name} ha preferito altre offerte per ${p.name}.`, `${c.name} scarta l’offerta di ${cname(d.buyerId)}`)
+    const names = ok.map(dn).join(', ');
+    await Promise.all(tb.map(d => d.fee < ask ? upd(d, {status: 'rejected'}, `${c.name} ha preferito altre offerte per ${p.name}.`, `${c.name} scarta l’offerta di ${dn(d)}`)
       : upd(d, {stage: 'player', playerEnd: t + WIN_PLAYER}, `${c.name} accetta ${fmtM(d.fee)}. Ora ${p.name} valuta le squadre.`, `${c.name} trova l’accordo con ${names}. Ora decide ${p.name}`)));
     return;
   }
   if (best < ask * 0.6 || round >= 3) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, round >= 3 ? `${c.name} chiude la trattativa: «Non ci siamo, ${p.name} resta qui.»` : `${c.name}: «Offerte irricevibili per ${p.name}.»`, round >= 3 ? `${c.name} chiude: ${p.name} resta qui` : `${c.name} respinge tutte le offerte`)));
   const nask = Math.round(ask * (1 - 0.03 - (pr.needMoney ? 0.03 : 0)) / 1e5) * 1e5, wEnd = t + WIN_RAISE;
-  await Promise.all(tb.map(d => d.fee < ask * 0.6 ? upd(d, {status: 'rejected'}, `${c.name}: «La vostra offerta per ${p.name} è troppo lontana.»`, `${c.name} scarta l’offerta di ${cname(d.buyerId)}`)
+  await Promise.all(tb.map(d => d.fee < ask * 0.6 ? upd(d, {status: 'rejected'}, `${c.name}: «La vostra offerta per ${p.name} è troppo lontana.»`, `${c.name} scarta l’offerta di ${dn(d)}`)
     : upd(d, {ask: nask, round: round + 1, windowEnd: wEnd}, `${c.name}: «Per ${p.name} servono ${fmtM(nask)}.» Hai 3 minuti per rilanciare.`, `${c.name} chiede di più: nuovo giro di offerte`)));
 }
 /* 2) il giocatore sceglie le squadre che gli interessano: la Serie B non è un muro */
@@ -1710,13 +1727,17 @@ async function resolvePlayer(fc){
   if (!w || (!isFreeKey(fc) && takenFc().has(fc))) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p);
   await Promise.all(tb.map(d => {
-    const B = club(d.buyerId), v = playerView(p, B, fc);
+    const B = d.rival ? {name: d.rival} : club(d.buyerId), v = d.rival ? rivalView(p, d, fc) : playerView(p, B, fc);
     if (v.why) return upd(d, {status: 'rejected'}, `${p.name} ${v.why}.`, `${p.name} dice no a ${B.name}: ${v.why}`);
     const wage = Math.round(pr.wage * pr.agency.wm * (v.divB && v.amb > 0.5 ? 1.08 : 1) * (1 + WH('w' + fc) * 0.15) / 500) * 500;
     const agentAsk = {wage, years: p.age >= 31 ? 2 : p.age <= 23 ? 5 : 3 + Math.floor(WH('y' + fc) * 2), comm: Math.round(Math.max(d.fee * pr.agency.comm / 100, (c.free ? wage * 52 * 0.08 : 0)) / 1e5) * 1e5};
     return upd(d, {stage: 'agent', agentEnd: t + WIN_AGENT, agentAsk, agency: pr.agency.name, pref: v.pref, proposed: false, wage: 0},
       `${p.name} è interessato${v.titolare ? ': avrebbe il posto da titolare' : ''}. Ora tratta il procuratore (${pr.agency.name}).`, `${p.name} apre a ${B.name}${v.titolare ? ': lì sarebbe titolare' : ''}`);
   }));
+}
+function rivalView(p, d, key){
+  const rc = (WORLD?.clubs || []).find(c => c.name === d.rival), amb = WH('amb' + key), avg = rc ? rc.avg : 75;
+  return {why: avg < p.ovr - 14 && amb > 0.65 ? 'la squadra non è al suo livello' : '', titolare: true, pref: 1.04 + (avg - 75) / 250, amb, divB: false};
 }
 /* 3) il procuratore porta il giocatore dalla proposta migliore */
 async function resolveAgent(fc){
@@ -1726,7 +1747,9 @@ async function resolveAgent(fc){
   if (!w || (!free && takenFc().has(fc))) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p), kind = pr.agency.kind;
   const scored = tb.map(d => {
-    const B = club(d.buyerId), a = d.agentAsk || {}, need = a.wage * ({esosa: 1.03, big: 1.05, dura: 1, collaborativa: 0.96}[kind] || 1);
+    const a = d.agentAsk || {}, need = a.wage * ({esosa: 1.03, big: 1.05, dura: 1, collaborativa: 0.96}[kind] || 1);
+    if (d.rival){ const w = Math.round(need * (0.96 + WH(d.id + 'w' + (d.round || 1)) * 0.16) / 500) * 500; return {d, B: {name: d.rival}, a, need, why: w < need ? `Ingaggio troppo basso: chiedevamo ${fmtW(Math.round(need / 500) * 500)}.` : '', score: w / need * (d.pref || 1) * 1.03, rw: w}; }
+    const B = club(d.buyerId);
     let why = '';
     if (!d.proposed || !d.wage) why = 'Nessuna proposta arrivata in tempo.';
     else if (d.wage < need) why = `Ingaggio troppo basso: chiedevamo ${fmtW(Math.round(need / 500) * 500)}.`;
@@ -1737,6 +1760,14 @@ async function resolveAgent(fc){
   });
   const ok = scored.filter(x => !x.why).sort((a, b) => b.score - a.score);
   for (const win of ok){
+    if (win.d.rival){
+      const d = win.d, lmp = String(fc).startsWith('l_') || free;
+      if (lmp) await db.doc('players/' + String(fc).slice(2)).delete();
+      await Promise.all([c.lm && d.fee ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${d.rival}`) : null,
+        upd(d, {status: 'done', wage: win.rw, years: 3}, `${p.name} sceglie ${d.rival}.`, `UFFICIALE: ${p.name} firma con ${d.rival}${d.fee ? ` · ${fmtM(d.fee)} a ${c.name}` : ''}`, 'sign'),
+        ...scored.filter(x => x.d.id !== d.id).map(x => upd(x.d, {status: 'rejected'}, `${p.name} ha scelto ${d.rival}.${x.why ? ' ' + x.why : ''}`, null))]);
+      return;
+    }
     try { squadRoom(win.B.id); } catch (e){ win.why = 'La rosa è piena.'; continue; }
     const d = win.d, B = win.B, until = season() + (d.years || 3) - 1;
     if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name}); }
@@ -1752,8 +1783,8 @@ async function resolveAgent(fc){
   const round = Math.max(...tb.map(d => d.round || 1)), close = scored.filter(x => x.d.proposed && x.d.wage >= x.need * 0.8 && !/budget|monte|rosa/.test(x.why));
   if (close.length && round < 3){
     const end = t + WIN_AGENT2;
-    return Promise.all(scored.map(x => close.includes(x) ? upd(x.d, {round: round + 1, agentEnd: end, agentAsk: {...x.a, wage: Math.round(x.need / 500) * 500}}, `${pr.agency.name}: «${x.why} Avete altri 2 minuti.»`, `${pr.agency.name} alza la richiesta a ${cname(x.d.buyerId)}: altri 2 minuti`)
-      : upd(x.d, {status: 'rejected'}, `${pr.agency.name}: «${x.why || 'Non ci sono le condizioni.'}»`, `${pr.agency.name} chiude con ${cname(x.d.buyerId)}`)));
+    return Promise.all(scored.map(x => close.includes(x) ? upd(x.d, {round: round + 1, agentEnd: end, agentAsk: {...x.a, wage: Math.round(x.need / 500) * 500}}, `${pr.agency.name}: «${x.why} Avete altri 2 minuti.»`, `${pr.agency.name} alza la richiesta a ${dn(x.d)}: altri 2 minuti`)
+      : upd(x.d, {status: 'rejected'}, `${pr.agency.name}: «${x.why || 'Non ci sono le condizioni.'}»`, `${pr.agency.name} chiude con ${dn(x.d)}`)));
   }
   return Promise.all(scored.map(x => upd(x.d, {status: 'rejected'}, `${pr.agency.name}: «${x.why || 'Non ci sono le condizioni.'} ${p.name} resta ${c.free ? 'svincolato' : 'a ' + c.name}.»`, `${pr.agency.name}: nessun accordo, ${p.name} resta ${c.free ? 'svincolato' : 'a ' + c.name}`)));
 }
@@ -1785,6 +1816,21 @@ async function cpuGenerate(){
 }
 
 const cpuBusy = new Set();
+/* un club CPU può inserirsi nella trattativa se il giocatore gli piace */
+async function rivalJoin(tb){
+  const st = tb.stage, free = tb.free; if (!(st === 'club' || (free && st === 'player')) || tb.deals.some(d => d.rival)) return;
+  const first = Math.min(...tb.deals.map(d => d.ts || now())), seed = 'rv' + tb.fc + '|' + first;
+  const p = wPlayer(tb.fc)?.p; if (!p) return;
+  const chance = Math.max(0.12, Math.min(0.6, 0.25 + (p.ovr - 75) * 0.03)); if (WH(seed) > chance) return;
+  const when = first + (0.35 + WH(seed + 't') * 0.4) * WIN_CLUB; if (now() < when || tb.end <= now()) return;
+  const pool = (WORLD?.clubs || []).filter(c => c.name !== tb.club && c.avg >= p.ovr - 5 && c.avg <= p.ovr + 7); if (!pool.length) return;
+  const rc = pool[Math.floor(WH(seed + 'c') * pool.length)], t = now(), id = `cpur-${String(tb.fc).replace(/[^\w]/g, '')}-${first}`;
+  if (cpuDeals().some(d => d.id === id)) return;
+  if (tb.end - t < WIN_SNIPE) await extendTable(tb.fc, t + WIN_SNIPE);
+  const d0 = tb.deals[0];
+  await db.doc('offers/' + id).set({cpu: true, dir: 'buy', fcId: tb.fc, playerName: d0.playerName, pos: d0.pos, ovr: d0.ovr, age: d0.age, cpuClub: d0.cpuClub, buyerId: null, sellerId: null, rival: rc.name,
+    stage: st, status: 'open', fee: 0, round: d0.round || 1, [st === 'club' ? 'windowEnd' : 'playerEnd']: Math.max(tb.end, t + WIN_SNIPE), ts: t, season: season(), hist: [{who: 'cpu', t: 'Si inserisce nella trattativa', pub: `${rc.name} si inserisce nella trattativa`, ts: t}]});
+}
 const RESOLVE = {club: resolveClub, player: resolvePlayer, agent: resolveAgent};
 function cpuLeader(overdue){
   if (overdue > 40e3 || !S.online || !S.online.length) return true;
@@ -1795,6 +1841,7 @@ function cpuTick(){
   loadWorld(); if (!WORLD || WORLD.err || !window_()) return;
   tables().forEach(tb => {
     const e = tb.end, k = tb.stage + tb.fc + '|' + e;
+    if (e > now() && cpuLeader(0) && !cpuBusy.has('rv' + tb.fc + tb.stage)){ const kr = 'rv' + tb.fc + tb.stage; rivalJoin(tb).then(() => {}, () => {}); if (tb.deals.some(d => d.rival)) cpuBusy.add(kr); }
     if (e <= now() && cpuLeader(now() - e) && !cpuBusy.has(k)){ cpuBusy.add(k); RESOLVE[tb.stage](tb.fc).catch(() => cpuBusy.delete(k)); }
   });
   cpuDeals().filter(d => d.dir === 'sell' && d.status === 'open' && d.waiting === 'cpu' && (d.respondAt || 0) <= now() && cpuLeader(now() - d.respondAt) && !cpuBusy.has(d.id + '|' + d.respondAt)).forEach(d => { const k = d.id + '|' + d.respondAt; cpuBusy.add(k); cpuResolve(d).catch(() => cpuBusy.delete(k)); });
@@ -1812,7 +1859,7 @@ async function cpuResolve(d){
 }
 function cpuNews(){
   const out = [], n = id => club(id)?.name || 'un club';
-  tables().forEach(tb => { const ts = Math.max(...tb.deals.map(d => d.ts || 0)), names = tb.deals.map(d => `<b>${esc(n(d.buyerId))}</b>`).join(', ');
+  tables().forEach(tb => { const ts = Math.max(...tb.deals.map(d => d.ts || 0)), names = tb.deals.map(d => `<b>${esc(dn(d))}</b>`).join(', ');
     out.push({ts, ic: tb.stage === 'agent' ? '🧑‍💼' : tb.stage === 'player' ? '👤' : '🗞️', live: true, html: `<b>${esc(tb.name)}</b> (${esc(tb.club)}) · ${STAGE_TXT[tb.stage].replace(/^\S+ /, '').toLowerCase()} · in corsa: ${names}`}); });
   cpuDeals().forEach(d => {
     const pl = `<b>${esc(d.playerName)}</b>${d.ovr ? ` (${esc(d.pos || '')}${d.pos ? ' · ' : ''}${d.ovr})` : ''}`, ts = d.ts || 0;
@@ -1829,10 +1876,18 @@ document.addEventListener('change', e => { const el = e.target.closest && e.targ
 /* ---------- campionati virtuali della CPU: avanzano insieme alle giornate della lega ---------- */
 const LG_SKIP = /Libertadores|Sudamericana|^Serie [AB]$/;
 const lgRng = seed => { let k = 0; return () => WH(seed + '#' + (k++)); };
-function lgList(){
+function lgList0(){
   if (!WORLD || WORLD.err) return [];
   return WORLD.leagues.map((name, li) => ({li, name, clubs: WORLD.clubs.filter(c => c.li === li)})).filter(l => !LG_SKIP.test(l.name) && l.clubs.length >= 6);
 }
+let LGM = null;
+function lgList(){
+  const L0 = lgList0(), s = season(); if (!L0.length) return L0;
+  const need = L0.some(L => !lgDoc(L.li, s));
+  let base = null; if (need && s > 1){ if (!LGM || LGM.w !== S.world || LGM.s !== s) LGM = {w: S.world, s, m: lgMembers(s)}; base = LGM.m.base; }
+  return L0.map(L => { const d = lgDoc(L.li, s), ids = d ? d.clubs : base ? base.get(L.name) : null; return ids ? {...L, clubs: ids.map(lgClub).filter(Boolean)} : L; });
+}
+const lgLiOf = () => { const m = new Map(); lgList().forEach(L => L.clubs.forEach(c => m.set(c.i, L.li))); return m; };
 const lgDoc = (li, s = season()) => (S.world || []).find(d => d.id === `L${li}-S${s}`);
 function lgSchedule(ids, s, li){
   const a = ids.slice(); const r = lgRng(`sch${li}-${s}`);
@@ -1869,14 +1924,23 @@ async function lgTick(){
   if (!S.comm || lgBusy || !S.loaded.world || !S.loaded.matches || !WORLD || WORLD.err) return;
   const frac = lgProgress(), s = season(); lgBusy = true;
   try {
+    if (s > 1) for (const d of (S.world || []).filter(d => d.season === s - 1 && d.li != null && d.rounds.length < d.total)){
+      const sched = lgSchedule(d.clubs, s - 1, d.li), rounds = d.rounds.slice();
+      for (let k = rounds.length; k < sched.length; k++) rounds.push({ts: now(), m: sched[k].map(([h, a]) => { const H = lgClub(h), A = lgClub(a); return H && A ? lgPlay(H, A, `g${d.li}-${s - 1}-${k}-${h}-${a}`) : [h, a, 0, 0, [], []]; })});
+      await db.doc(`world/L${d.li}-S${s - 1}`).set({...d, rounds}); return;
+    }
+    const mv = s > 1 ? lgMembers(s) : null;
     for (const L of lgList()){
       let doc = lgDoc(L.li, s);
       const ids = doc ? doc.clubs : L.clubs.map(c => c.i), sched = lgSchedule(ids, s, L.li), target = Math.floor(frac * sched.length + 1e-9);
-      const played = doc ? doc.rounds.length : 0; if (played >= target) continue;
+      const played = doc ? doc.rounds.length : 0;
+      if (!doc && played >= target){ await db.doc(`world/L${L.li}-S${s}`).set({li: L.li, name: L.name, season: s, clubs: ids, total: sched.length, rounds: [], moves: mv?.moves[L.name] || null}); continue; }
+      if (played >= target) continue;
       const rounds = doc ? doc.rounds.slice() : [];
       for (let k = played; k < target; k++){ rounds.push({ts: now(), m: sched[k].map(([h, a]) => { const H = lgClub(h), A = lgClub(a); return H && A ? lgPlay(H, A, `g${L.li}-${s}-${k}-${h}-${a}`) : [h, a, 0, 0, [], []]; })}); }
-      await db.doc(`world/L${L.li}-S${s}`).set({li: L.li, name: L.name, season: s, clubs: ids, total: sched.length, rounds});
+      await db.doc(`world/L${L.li}-S${s}`).set({li: L.li, name: L.name, season: s, clubs: ids, total: sched.length, rounds, moves: doc?.moves || mv?.moves[L.name] || null});
     }
+    await cupTick(frac);
   } finally { lgBusy = false; }
 }
 function lgTable(doc){
@@ -1904,7 +1968,8 @@ function lgView(){
   const last = doc && doc.rounds[played - 1], next = played < total ? lgSchedule(doc ? doc.clubs : L.clubs.map(c => c.i), season(), li)[played] : null, sc = doc ? lgScorerTable(doc) : [];
   const clubBtn = i => `<button type="button" class="clublink" data-act="w-club" data-id="${i}"><span class="nm">${esc(lgCN(i))}</span></button>`;
   return sel_ + `<div class="panel"><div class="ph"><h3>${esc(L.name)}</h3><span class="sub">Giornata ${played} di ${total}</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
-    ${tab.map((r, k) => `<tr${k === 0 && played ? ' class="z-top"' : ''}><td class="pos">${k + 1}</td><td>${clubBtn(r.i)}</td><td class="r">${r.g}</td><td class="r">${r.v}</td><td class="r">${r.n}</td><td class="r">${r.p}</td><td class="r">${r.gf - r.gs > 0 ? '+' : ''}${r.gf - r.gs}</td><td class="r pts">${r.pt}</td></tr>`).join('')}</tbody></table></div></div>
+    ${tab.map((r, k) => `<tr class="${lzone(L.name, k, tab.length)[0]}"><td class="pos">${k + 1}</td><td>${clubBtn(r.i)}</td><td class="r">${r.g}</td><td class="r">${r.v}</td><td class="r">${r.n}</td><td class="r">${r.p}</td><td class="r">${r.gf - r.gs > 0 ? '+' : ''}${r.gf - r.gs}</td><td class="r pts">${r.pt}</td></tr>`).join('')}</tbody></table></div>${lzoneLegend(L.name, tab.length)}
+    ${doc?.moves ? (() => { const mv = doc.moves, L_ = (a, t) => a?.length ? `${t}: <b>${a.map(lgCN).map(esc).join(', ')}</b>` : ''; const parts = [L_(mv.up, '⬆️ Neopromosse'), L_(mv.rin, '⬇️ Retrocesse dalla serie superiore')].filter(Boolean); return parts.length ? `<p class="sub">Novità della stagione · ${parts.join(' · ')}${mv.note?.length ? '<br>' + mv.note.map(esc).join(' · ') : ''}</p>` : ''; })() : ''}</div>
     ${last ? `<div class="panel"><div class="ph"><h3>Risultati · giornata ${played}</h3></div><div class="list">${last.m.map(x => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))}</b> ${x[2]}-${x[3]} <b>${esc(lgCN(x[1]))}</b><br>${lgScoreLine(x)}</div></div>`).join('')}</div></div>` : ''}
     ${next ? `<div class="panel"><div class="ph"><h3>Prossimo turno · giornata ${played + 1}</h3></div><div class="list">${next.map(([h, a]) => `<div class="li"><div class="main">${esc(lgCN(h))} <span class="sub">vs</span> ${esc(lgCN(a))}</div></div>`).join('')}</div></div>` : ''}
     <div class="panel"><div class="ph"><h3>Marcatori</h3></div>${sc.length ? `<div class="list">${sc.map((e, k) => { const p = fcName(e.fc); return `<div class="li"><div class="main"><b>${k + 1}.</b> ${p ? `<span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> ` : ''}<b>${esc(p?.name || '?')}</b> <span class="sub">${esc(lgCN(e.ci))}${p && !wAvailable(lgClub(e.ci) || {players: []}).some(q => q.fc === e.fc) ? ' · ora in un club della lega' : ''}</span></div><b class="pts">${e.g}</b></div>`; }).join('')}</div>` : '<p class="muted">Ancora nessun gol: si parte con la prima giornata della lega.</p>'}</div>`;
@@ -1959,6 +2024,198 @@ function fxRound(){
       await Promise.all(pairs.map(([h, a]) => db.doc('matches/' + `s${s}-${div0}-r${round}-${h}-${a}-${Date.now().toString(36)}`).set({season: s, div: div0, round, homeId: h, awayId: a, played: false, hg: 0, ag: 0, events: []})));
       S.round = round; toast(`Giornata ${round}: ${pairs.length} partite salvate`);
     }, 'Salva giornata');
+}
+/* ---------- regole reali: zone, promozioni/retrocessioni, coppe europee ---------- */
+const LG_RULES = {
+  'Premier League': {cl: 4, el: 2, ecl: 1, down: 3, lower: 'EFL Championship'},
+  'EFL Championship': {up: 2, po: [3, 6], down: 3, lower: 'EFL League One'},
+  'EFL League One': {up: 2, po: [3, 6], down: 4, lower: 'EFL League Two'},
+  'EFL League Two': {up: 3, po: [4, 7]},
+  'LaLiga': {cl: 4, el: 2, ecl: 1, down: 3, lower: 'LaLiga 2'},
+  'LaLiga 2': {up: 2, po: [3, 6]},
+  'Bundesliga': {cl: 4, el: 2, ecl: 1, down: 2, relpo: true, lower: 'Bundesliga 2'},
+  'Bundesliga 2': {up: 2, relpo3: true, down: 2, relpo: true, lower: '3. Liga'},
+  '3. Liga': {up: 2, relpo3: true},
+  'Ligue 1': {cl: 4, el: 1, ecl: 1, down: 2, relpo: true, lower: 'Ligue 2'},
+  'Ligue 2': {up: 2, po: [3, 5]},
+  'Eredivisie': {cl: 2, el: 2, ecl: 1}, 'Liga Portugal': {cl: 2, el: 2, ecl: 1}, '1A Pro League': {cl: 1, el: 2, ecl: 2},
+  'Trendyol Süper Lig': {cl: 2, el: 1, ecl: 1}, 'Eliteserien': {cl: 2, el: 1, ecl: 1}, 'Ö. Bundesliga': {cl: 1, el: 2, ecl: 0},
+  'Scottish Premiership': {cl: 1, el: 1, ecl: 1}, 'Metropolitan Division': {cl: 1, el: 0, ecl: 3}, 'SUPERLIGA': {cl: 0, el: 0, ecl: 1},
+  'Ekstraklasa': {cl: 0, el: 2, ecl: 0}, 'Allsvenskan': {cl: 0, el: 0, ecl: 1}, 'Brack Super League': {cl: 0, el: 0, ecl: 2},
+  'Serie A': {cl: 4, el: 2, ecl: 1}
+};
+const ruleOf = name => LG_RULES[name] || {champ: true};
+function lzone(name, k, n){
+  const r = ruleOf(name), cl = r.cl || 0, el = r.el || 0, ecl = r.ecl || 0;
+  if (k < cl) return ['z-cl', 'Champions League'];
+  if (k < cl + el) return ['z-el', 'Europa League'];
+  if (k < cl + el + ecl) return ['z-ecl', 'Conference League'];
+  if (r.up && k < r.up) return ['z-top', 'Promozione'];
+  if (r.po && k >= r.po[0] - 1 && k <= r.po[1] - 1) return ['z-po', 'Playoff promozione'];
+  if (r.relpo3 && k === 2) return ['z-po', 'Spareggio promozione'];
+  if (r.lower && r.down){ if (k >= n - r.down) return ['z-bot', 'Retrocessione']; if (r.relpo && k === n - r.down - 1) return ['z-rpo', 'Spareggio salvezza']; }
+  if (r.champ && k === 0) return ['z-top', 'Campione'];
+  return ['', ''];
+}
+function lzoneLegend(name, n){
+  const seen = new Map(); for (let k = 0; k < n; k++){ const [c, l] = lzone(name, k, n); if (c && !seen.has(l)) seen.set(l, c); }
+  return seen.size ? `<p class="sub" style="margin-top:8px">${[...seen].map(([l, c]) => `<span class="zl ${c}"></span> ${l}`).join(' · ')}</p>` : '';
+}
+/* doppia sfida simulata */
+function tie2(A, B, seed){
+  const l1 = lgPlay(A, B, seed + 'a'), l2 = lgPlay(B, A, seed + 'b'), ga = l1[2] + l2[3], gb = l1[3] + l2[2];
+  return {w: ga > gb ? A : gb > ga ? B : (WH(seed + 'p') < 0.5 ? A : B), txt: `${A.name} ${l1[2]}-${l1[3]} / ${l2[3]}-${l2[2]} ${B.name}`};
+}
+/* nuova stagione: chi sale e chi scende, calcolato dalle classifiche della stagione prima */
+function lgMembers(s){
+  const prev = name => (S.world || []).find(d => d.name === name && d.season === s - 1 && d.rounds?.length >= d.total);
+  const base = new Map(); lgList0().forEach(L => base.set(L.name, (S.world || []).find(d => d.name === L.name && d.season === s - 1)?.clubs || L.clubs.map(c => c.i)));
+  const moves = {};
+  Object.entries(LG_RULES).forEach(([U, r]) => {
+    if (!r.lower || !r.down) return; const pu = prev(U), pd = prev(r.lower); if (!pu || !pd) return;
+    const tu = lgTable(pu).map(x => x.i), td = lgTable(pd).map(x => x.i), rl = ruleOf(r.lower), n = tu.length, note = [];
+    let down = tu.slice(n - r.down), up = td.slice(0, rl.up || 0);
+    if (rl.po){ const pool = td.slice(rl.po[0] - 1, rl.po[1]).map(lgClub).filter(Boolean); if (pool.length >= 2){
+      let rd = pool; const sd = `po${r.lower}${s}`; while (rd.length > 1){ const nx = []; for (let i = 0; i < rd.length / 2; i++){ const t = tie2(rd[i], rd[rd.length - 1 - i], sd + rd.length + i); nx.push(t.w); } rd = nx; }
+      up.push(rd[0].i); note.push(`${rd[0].name} vince i playoff`); } }
+    if (r.relpo){ const a = lgClub(tu[n - r.down - 1]), b = lgClub(td[2]); if (a && b){ const t = tie2(b, a, `rp${U}${s}`); note.push(`Spareggio: ${t.txt}`); if (t.w === b){ down.push(a.i); up.push(b.i); } } }
+    base.set(U, base.get(U).filter(i => !down.includes(i)).concat(up)); base.set(r.lower, base.get(r.lower).filter(i => !up.includes(i)).concat(down));
+    moves[U] = {...(moves[U] || {}), up, down, note}; moves[r.lower] = {...(moves[r.lower] || {}), gone: up, rin: down};
+  });
+  return {base, moves};
+}
+/* ---------- coppe ---------- */
+const CUPS = [
+  {code: 'UCL', name: 'Champions League', n: 36, md: 8, offs: [1, 2, 3, 6], ko: true},
+  {code: 'UEL', name: 'Europa League', n: 36, md: 8, offs: [1, 2, 3, 6], ko: true},
+  {code: 'UECL', name: 'Conference League', n: 36, md: 6, offs: [1, 2, 3], ko: true}];
+const CUP26 = {
+  UCL: ['LASK', 'Club Brugge', 'Slavia Praha', 'Arsenal', 'Aston Villa', 'Liverpool', 'Manchester City', 'Man Utd', 'RC Lens', 'LOSC Lille', 'Paris SG', 'FC Bayern München', 'Borussia Dortmund', 'RB Leipzig', 'VfB Stuttgart', 'AEK Athens', 'Como', 'Inter', 'Napoli', 'Roma', 'Feyenoord', 'PSV', 'FK Bodø/Glimt', 'Viking FK', 'FC Porto', 'Sporting CP', 'Atlético de Madrid', 'FC Barcelona', 'Real Betis', 'Real Madrid', 'Villarreal CF', 'Fenerbahçe', 'Galatasaray', 'Shakhtar Donetsk', 'Qarabağ FK'],
+  UEL: ['TSG Hoffenheim', 'Leverkusen', 'AFC Bournemouth', 'Crystal Palace', 'Sunderland', 'RB Salzburg', 'SK Sturm Graz', 'RSC Anderlecht', 'R. Union St.-G.', 'Omonia FC', 'Dinamo Zagreb', 'Celtic', 'Real Sociedad', 'Celta', 'OL', 'OM', 'Stade Rennais FC', 'Olympiacos FC', 'Ferencvárosi TC', 'Milan', 'Juventus', 'Lillestrøm SK', 'AZ', 'N.E.C. Nijmegen', 'Jagiellonia', 'Lech Poznań', 'SL Benfica', 'Sparta Praha', 'Viktoria Plzeň', 'Beşiktaş', 'PFC Ludogorets'],
+  UECL: ['SC Freiburg', 'Brighton', 'KAA Gent', 'STVV', 'Hajduk Split', 'AGF', 'F.C. København', 'FC Midtjylland', 'FC Nordsjælland', 'Hearts', 'Getafe CF', 'AS Monaco', 'Panathinaikos', 'Atalanta', 'SK Brann', 'Ajax', 'FC Twente', 'SC Braga', 'Univ. Craiova', 'Mjällby AIF', 'FC Lugano', 'FC Thun', 'Trabzonspor', 'APOEL FC', 'HJK Helsinki']};
+const UEFA_LEAGUES = /Premier League|EFL|LaLiga|Bundesliga|3\. Liga|Ligue|Serie|Eredivisie|Portugal|Pro League|Süper Lig|Ekstraklasa|SUPERLIGA|Allsvenskan|Eliteserien|Brack|Metropolitan|Scottish|Ö\. Bundesliga|SSE|Hellas|Česká|Ukrayina|Hrvatska|Cyprus|Magyar|Azerbaijan|Finnliiga|Bulgaria/;
+/* una squadra di coppa: club CPU del Mondo oppure club della nostra lega (partite giocate dal commissario) */
+const cupKey = name => { const l = S.clubs.find(c => normKey(c.name) === normKey(name)); if (l) return 'L' + l.id; const w = (WORLD?.clubs || []).find(c => c.name === name); return w ? w.i : null; };
+const cupTeam = k => typeof k === 'string' && k[0] === 'L' ? (() => { const c = club(k.slice(1)); return c ? {i: k, name: c.name, lm: true} : null; })() : lgClub(k);
+const cupName = k => cupTeam(k)?.name || '—';
+const isLM = k => typeof k === 'string' && k[0] === 'L';
+function cupFill(list, n, used, seed){
+  const pool = (WORLD?.clubs || []).filter(c => UEFA_LEAGUES.test(c.league) && !used.has(c.i) && !S.clubs.some(x => normKey(x.name) === normKey(c.name))).sort((a, b) => b.avg - a.avg);
+  for (const c of pool){ if (list.length >= n) break; list.push(c.i); used.add(c.i); }
+  return list;
+}
+function cupParticipants(s){
+  const out = {}, used = new Set();
+  if (s <= 1 || !(S.world || []).some(d => d.season === s - 1 && d.li != null)){
+    ['UCL', 'UEL', 'UECL'].forEach(code => { const l = CUP26[code].map(cupKey).filter(k => k != null && !used.has(k)); l.forEach(k => used.add(k)); out[code] = l; });
+  } else {
+    ['UCL', 'UEL', 'UECL'].forEach(code => out[code] = []);
+    const prevCup = code => (S.world || []).find(d => d.id === `C${code}-S${s - 1}`)?.winner;
+    ['UCL', 'UEL'].forEach(code => { const w = prevCup(code); if (w != null && !used.has(w)){ out.UCL.push(w); used.add(w); } });
+    const add = (code, k) => { if (k != null && !used.has(k)){ out[code].push(k); used.add(k); } };
+    Object.entries(LG_RULES).forEach(([name, r]) => {
+      let order = [];
+      if (name === 'Serie A'){ try { order = standings(s - 1, 'A').map(x => 'L' + x.c.id); } catch {} }
+      else { const d = (S.world || []).find(x => x.name === name && x.season === s - 1); if (d) order = lgTable(d).map(x => x.i); }
+      let k = 0; for (const [code, c] of [['UCL', r.cl], ['UEL', r.el], ['UECL', r.ecl]]) for (let j = 0; j < (c || 0); j++) add(code, order[k++]);
+    });
+  }
+  ['UCL', 'UEL', 'UECL'].forEach(code => cupFill(out[code], 36, used, code + s));
+  ['UCL', 'UEL', 'UECL'].forEach(code => out[code] = out[code].slice(0, 36));
+  CUPS.filter(c => c.from).forEach(c => { const li = WORLD.leagues.indexOf(c.from); out[c.code] = WORLD.clubs.filter(x => x.li === li).map(x => x.i).slice(0, c.n); });
+  return out;
+}
+/* calendario della fase campionato: ogni squadra affronta avversari diversi, metà in casa e metà fuori */
+function cupLeagueSched(teams, offs, seed){
+  const a = teams.slice(), r = lgRng(seed); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  const n = a.length, mds = [];
+  offs.forEach(o => {
+    const seen = new Set(), cyc = [];
+    for (let s0 = 0; s0 < n; s0++){ if (seen.has(s0)) continue; const c = []; let x = s0; while (!seen.has(x)){ seen.add(x); c.push(x); x = (x + o) % n; } cyc.push(c); }
+    const A = [], B = []; cyc.forEach(c => c.forEach((x, k) => (k % 2 ? B : A).push([a[x], a[(x + o) % n]])));
+    mds.push(A, B.map(([h, w]) => [w, h]));
+  });
+  return mds;
+}
+const CUP_STEPS = c => [...Array.from({length: c.md}, (_, k) => ['md' + (k + 1), 0.05 + k * (c.md === 8 ? 0.07 : 0.085)]), ...(c.ko ? [['po', 0.62], ['r16', 0.70]] : []), ['qf', 0.80], ['sf', 0.88], ['f', 0.96]];
+function cupTable(doc){
+  const t = new Map(doc.teams.map(k => [String(k), {k, g: 0, pt: 0, gf: 0, gs: 0}]));
+  (doc.md || []).forEach(md => md.forEach(m => { if (m[2] == null) return; const H = t.get(String(m[0])), A = t.get(String(m[1])); if (!H || !A) return; H.g++; A.g++; H.gf += m[2]; H.gs += m[3]; A.gf += m[3]; A.gs += m[2];
+    if (m[2] > m[3]) H.pt += 3; else if (m[2] < m[3]) A.pt += 3; else { H.pt++; A.pt++; } }));
+  return [...t.values()].sort((x, y) => y.pt - x.pt || (y.gf - y.gs) - (x.gf - x.gs) || y.gf - x.gf);
+}
+function cupMatch(h, a, seed){ if (isLM(h) || isLM(a)) return [h, a, null, null, [], []]; const H = cupTeam(h), A = cupTeam(a); return H && A ? lgPlay(H, A, seed) : [h, a, 0, 0, [], []]; }
+const tieWin = (t, seed) => { if (!t.l1 || t.l1[2] == null || (t.l2 && t.l2[2] == null)) return null; const ga = t.l1[2] + (t.l2 ? t.l2[3] : 0), gb = t.l1[3] + (t.l2 ? t.l2[2] : 0);
+  return ga > gb ? t.a : gb > ga ? t.b : (t.pen ?? (WH(seed) < 0.5 ? t.a : t.b)); };
+function cupPending(doc){ const p = []; (doc.md || []).forEach((md, k) => md.forEach((m, j) => { if (m[2] == null) p.push({where: 'md', k, j, m}); }));
+  Object.entries(doc.ko || {}).forEach(([st, ties]) => ties.forEach((t, j) => ['l1', 'l2'].forEach(l => { if (t[l] && t[l][2] == null) p.push({where: st, j, l, m: t[l]}); }))); return p; }
+function cupNextKO(c, doc, st){
+  const s = doc.season, seed = `${c.code}${s}${st}`, mk = (a, b, single) => ({a, b, l1: cupMatch(a, b, seed + a + 'x' + b + '1'), l2: single ? null : cupMatch(b, a, seed + a + 'x' + b + '2')});
+  const win = (stp) => (doc.ko[stp] || []).map((t, j) => tieWin(t, seed + stp + j));
+  if (st === 'po'){ const tb = cupTable(doc).map(x => x.k); return Array.from({length: 8}, (_, k) => mk(tb[8 + k], tb[23 - k])); }
+  if (st === 'r16'){ const tb = cupTable(doc).map(x => x.k), pw = win('po'); return Array.from({length: 8}, (_, k) => mk(pw[7 - k], tb[k])); }
+  if (st === 'qf'){ if (c.ko8){ const tb = cupTable(doc).map(x => x.k); return [[0, 7], [3, 4], [1, 6], [2, 5]].map(([x, y]) => mk(tb[7 - (7 - y)], tb[x])); } const w = win('r16'); return [[0, 7], [3, 4], [1, 6], [2, 5]].map(([x, y]) => mk(w[y], w[x])); }
+  if (st === 'sf'){ const w = win('qf'); return [mk(w[1], w[0]), mk(w[3], w[2])]; }
+  if (st === 'f'){ const w = win('sf'); return [mk(w[0], w[1], true)]; }
+  return [];
+}
+let cupBusy = false;
+async function cupTick(frac){
+  if (cupBusy || !S.comm || !WORLD || WORLD.err) return; cupBusy = true;
+  try {
+    const s = season(); let parts = null;
+    for (const c of CUPS){
+      const id = `C${c.code}-S${s}`; let doc = (S.world || []).find(d => d.id === id);
+      if (!doc){ parts = parts || cupParticipants(s); const teams = parts[c.code] || []; if (teams.length < 8) continue;
+        doc = {code: c.code, name: c.name, season: s, teams, step: 0, md: [], ko: {}, winner: null, updated: now()}; await db.doc('world/' + id).set(doc); continue; }
+      if (doc.winner != null) continue;
+      const steps = CUP_STEPS(c); let changed = false, d2 = JSON.parse(JSON.stringify(doc));
+      while (d2.step < steps.length && frac >= steps[d2.step][1] && !cupPending(d2).length){
+        const [st] = steps[d2.step];
+        if (st.startsWith('md')){ const sched = cupLeagueSched(d2.teams, c.offs, `${c.code}${s}`); const k = +st.slice(2) - 1; d2.md.push(sched[k].map(([h, a]) => cupMatch(h, a, `${c.code}${s}m${k}${h}${a}`))); }
+        else d2.ko[st] = cupNextKO(c, d2, st);
+        d2.step++; changed = true;
+      }
+      if (d2.step >= steps.length && !cupPending(d2).length && d2.ko.f){ d2.winner = tieWin(d2.ko.f[0], `${c.code}${s}ff0`); changed = true; }
+      if (changed){ d2.updated = now(); await db.doc('world/' + id).set(d2); }
+    }
+  } finally { cupBusy = false; }
+}
+function cupResult(code, where, j, l, k){
+  const doc = (S.world || []).find(d => d.id === `C${code}-S${season()}`); if (!doc) return;
+  const m = where === 'md' ? doc.md[k][j] : doc.ko[where][j][l];
+  openModal(`${doc.name} · risultato`, `<p><b>${esc(cupName(m[0]))}</b> – <b>${esc(cupName(m[1]))}</b></p><div class="fgrid">${fld('hg', esc(cupName(m[0])), 'type="number" min="0" max="20" required value="0"')}${fld('ag', esc(cupName(m[1])), 'type="number" min="0" max="20" required value="0"')}</div>
+    ${where !== 'md' && (l === 'l2' || !doc.ko[where][j].l2) ? sel('pen', 'Se in parità complessiva, ai rigori passa', [['', '—'], [String(doc.ko[where][j].a), cupName(doc.ko[where][j].a)], [String(doc.ko[where][j].b), cupName(doc.ko[where][j].b)]], '') : ''}`,
+    async fd => {
+      const hg = Math.max(0, Math.round(num(fd, 'hg'))), ag = Math.max(0, Math.round(num(fd, 'ag'))), d2 = JSON.parse(JSON.stringify(doc));
+      if (where === 'md') d2.md[k][j] = [m[0], m[1], hg, ag, [], []];
+      else { d2.ko[where][j][l] = [m[0], m[1], hg, ag, [], []]; const pv = String(fd.get('pen') || ''); if (pv){ const t = d2.ko[where][j]; t.pen = String(t.a) === pv ? t.a : t.b; } }
+      d2.updated = now(); const {id: _i, ...dd} = d2; void _i; await db.doc('world/' + doc.id).set(dd); toast('Risultato salvato');
+    }, 'Salva');
+}
+function cupView(){
+  const s = season(), docs = CUPS.map(c => (S.world || []).find(d => d.id === `C${c.code}-S${s}`)).filter(Boolean);
+  if (!docs.length) return '<div class="panel"><p class="muted">Le coppe partono con la prima giornata della stagione (servono i risultati inseriti dal commissario).</p></div>';
+  const code = docs.some(d => d.code === S.cupc) ? S.cupc : docs[0].code, doc = docs.find(d => d.code === code), c = CUPS.find(x => x.code === code);
+  const pend = cupPending(doc).filter(p => isLM(p.m[0]) || isLM(p.m[1]));
+  const line = (m, act) => `<div class="li"><div class="main">${isLM(m[0]) ? '<b>' + esc(cupName(m[0])) + '</b>' : esc(cupName(m[0]))} ${m[2] == null ? '<span class="sub">vs</span>' : `<b>${m[2]}-${m[3]}</b>`} ${isLM(m[1]) ? '<b>' + esc(cupName(m[1])) + '</b>' : esc(cupName(m[1]))}${m[2] != null ? '<br>' + lgScoreLine(m) : ''}</div>${act || ''}</div>`;
+  const tb = cupTable(doc), ko = ['po', 'r16', 'qf', 'sf', 'f'].filter(k => doc.ko[k]), KON = {po: 'Spareggi', r16: 'Ottavi', qf: 'Quarti', sf: 'Semifinali', f: 'Finale'};
+  return `<div class="panel"><div class="f full"><label for="cupc">Competizione</label><select id="cupc" data-wf="cupc">${docs.map(d => `<option value="${d.code}"${d.code === code ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
+    ${doc.winner != null ? `<p style="margin:10px 0 0">🏆 <b>${esc(cupName(doc.winner))}</b> vince la ${esc(doc.name)}!</p>` : ''}</div>
+    ${pend.length ? `<div class="panel"><div class="ph"><h3>Da giocare alla Play</h3><span class="sub">Partite delle squadre della lega</span></div><div class="list">${pend.map(p => line(p.m, S.comm ? `<button class="btn sm primary" data-act="cup-res" data-id="${code}|${p.where}|${p.j}|${p.l || ''}|${p.k ?? ''}">Risultato</button>` : '<span class="pill warn">Da giocare</span>')).join('')}</div></div>` : ''}
+    ${ko.reverse().map(k => `<div class="panel"><div class="ph"><h3>${KON[k]}</h3></div><div class="list">${doc.ko[k].map((t, j) => { const w = tieWin(t, `${code}${s}${k}${j}`); return `<div class="li"><div class="main">${w != null ? '✅ ' : ''}<b>${esc(cupName(t.a))}</b> – <b>${esc(cupName(t.b))}</b><br><span class="sub">${t.l1[2] == null ? 'andata da giocare' : `${t.l1[2]}-${t.l1[3]}`}${t.l2 ? ` · ritorno ${t.l2[2] == null ? 'da giocare' : `${t.l2[3]}-${t.l2[2]}`}` : ''}${w != null ? ` · passa <b>${esc(cupName(w))}</b>` : ''}</span></div></div>`; }).join('')}</div></div>`).join('')}
+    <div class="panel"><div class="ph"><h3>Fase campionato</h3><span class="sub">Giornata ${doc.md.length} di ${c.md}</span></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
+      ${tb.map((r, k) => `<tr class="${c.ko8 ? (k < 8 ? 'z-cl' : '') : k < 8 ? 'z-cl' : k < 24 ? 'z-el' : ''}"><td class="pos">${k + 1}</td><td>${isLM(r.k) ? '<b>' + esc(cupName(r.k)) + '</b>' : esc(cupName(r.k))}</td><td class="r">${r.g}</td><td class="r">${r.gf - r.gs > 0 ? '+' : ''}${r.gf - r.gs}</td><td class="r pts">${r.pt}</td></tr>`).join('')}</tbody></table></div>
+      <p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> ${c.ko8 ? 'Quarti di finale' : 'Ottavi diretti'}${c.ko8 ? '' : ' · <span class="zl z-el"></span> Spareggi'}</p></div>
+    ${doc.md.length ? `<div class="panel"><div class="ph"><h3>Giornata ${doc.md.length}</h3></div><div class="list">${doc.md[doc.md.length - 1].map(m => line(m)).join('')}</div></div>` : ''}`;
+}
+function cupNews(){
+  const out = [], s = season();
+  (S.world || []).filter(d => d.code && d.season === s && ['UCL', 'UEL', 'UECL'].includes(d.code)).forEach(d => {
+    if (d.winner != null) out.push({ts: d.updated || 0, ic: '🏆', html: `<b>${esc(d.name)}</b>: vince <b>${esc(cupName(d.winner))}</b>`});
+    d.teams.filter(isLM).forEach(k => { const t = cupTable(d), pos = t.findIndex(x => x.k === k); if (d.md.length && pos >= 0) out.push({ts: 0, ic: '🌍', html: `<b>${esc(d.name)}</b>: <b>${esc(cupName(k))}</b> ${pos + 1}ª in classifica dopo ${d.md.length} giornate`}); });
+  });
+  return out;
 }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
@@ -3537,7 +3794,7 @@ function viewPre(){
 const preBanner = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
+const COMM_ONLY = new Set(['cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -3648,6 +3905,7 @@ document.addEventListener('click', async e => {
       case 'fx-del': fxDelete(id); break;
       case 'fx-clear': fxClear(); break;
       case 'cpu-clubs': cpuClubsImport(); break;
+      case 'cup-res': { const [cc, wh, j, l, k] = id.split('|'); cupResult(cc, wh, +j, l || null, k === '' ? null : +k); break; }
       case 'fx-round': fxRound(); break;
     }
   } catch (err){ toast(err.message || 'Operazione non riuscita. Riprova.'); }
