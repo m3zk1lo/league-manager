@@ -1,4 +1,13 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><style>
+.admin-group{margin:12px 0;padding:0;overflow:hidden}
+.admin-group>summary{cursor:pointer;list-style:none;padding:16px 18px;font:700 18px var(--display);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.admin-group>summary::-webkit-details-marker{display:none}
+.admin-group>summary::after{content:"＋";font:700 20px var(--body);color:var(--accent)}
+.admin-group[open]>summary::after{content:"−"}
+.admin-group[open]>summary{border-bottom:1px solid var(--line)}
+.admin-group>.admin-body{padding:12px}
+.admin-group .admin-body>.panel{margin:8px 0}
+</style></head><body>
 <title>League Manager</title>
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0d1220">
 <meta name="description" content="League Manager: lega carriera allenatore su FC 27 tra manager. Mercato, aste, distinte e classifica.">
@@ -599,21 +608,29 @@ const moveOpts = sel => { const mineN = new Set(S.clubs.map(c => normKey(c.name)
   const w = (WORLD?.leagues || []).map((ln, li) => { const cs = (WORLD.clubs || []).filter(c => c.li === li && !mineN.has(normKey(c.name))); return cs.length ? `<optgroup label="${esc(ln)}">${cs.map(c => `<option value="w:${c.i}"${sel === 'w:' + c.i ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : ''; }).join('');
   return `<option value="">Sposta a…</option>${vac ? `<optgroup label="Squadre della lega senza manager">${vac}</optgroup>` : ''}${w}`; };
 function viewAdmin(){
-  loadWorld();
-  if (!S.comm) return `<div class="panel"><div class="ph"><h2>Admin</h2></div><p class="sub">Gestisci qui la tua partecipazione, la società e le funzioni disponibili.</p>${viewLeague0()}${benchPanel()}</div>`; const s_ = season(), ls = typeof lgList === 'function' ? lgList() : [], human = lgHumanSet();
-  const cal = ls.map(l => { const d = lgDoc(l.li, s_), pl = d ? d.rounds.filter(r => r.m.length && r.m.every(lgPlayed)).length : 0;
-    return `<div class="li"><div class="main"><b>${esc(l.name)}</b><br><span class="sub">${human.has(l.li) ? 'Manager reale · calendario a mano' : 'Simulato dal sito'} · ${d ? `${pl}/${d.total} giornate giocate` : 'calendario non creato'}</span></div>${d ? `<button class="btn sm bad" data-act="adm-delcal" data-id="${l.li}">Elimina calendario</button>` : ''}</div>`; }).join('');
-  const mg = S.clubs.filter(c => c.managerId).map(c => `<div class="li"><div class="main"><b>${esc(S.profiles[c.managerId]?.name || 'Allenatore')}</b><br><span class="sub">${esc(c.name)}</span></div><select data-wf="mv_${c.managerId}" aria-label="Nuova squadra">${moveOpts(S['mv_' + c.managerId])}</select><button class="btn sm primary" data-act="adm-move" data-id="${c.managerId}">Sposta</button><button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">Libera panchina</button><button class="btn sm bad" data-act="adm-manager-del" data-id="${c.managerId}">Rimuovi manager</button></div>`).join('');
-  const grp = {}; S.clubs.filter(c => c.managerId).forEach(c => { const k = c.lg != null ? (WORLD?.leagues?.[c.lg] || 'Altro campionato') : (DIVS[divOf(c)] || 'Serie A'); (grp[k] ||= []).push(`${S.profiles[c.managerId]?.name || 'Allenatore'} (${c.name})`); });
-  const recap = Object.keys(grp).length ? Object.entries(grp).map(([k, v]) => `<div class="li"><div class="main"><b>${esc(k)}</b> · ${v.length}<br><span class="sub">${v.map(esc).join(' · ')}</span></div></div>`).join('') : '<p class="muted">Nessun manager reale assegnato.</p>';
-  return `${viewLeague0()}${benchPanel()}<div class="panel"><div class="ph"><h2>Area admin</h2><span class="sub">Commissario</span></div><p class="sub">Tutte le funzioni di gestione del sito sono raccolte qui: società, manager, calendari, mercato e dati economici.</p></div>
-  <div class="panel"><div class="ph"><h3>Calendari</h3></div><div class="list">${cal || '<p class="muted">Campionati in caricamento…</p>'}</div>
-    <p class="sub">Serie A e B: <button class="btn sm bad" data-act="fx-clear">Svuota calendario Serie A/B</button>. Nei campionati senza manager reali il sito rigenera il calendario da solo.</p></div>
-  <div class="panel"><div class="ph"><h3>Allenatori reali</h3></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>
-  <div class="panel"><div class="ph"><h3>Allenatori delle squadre CPU</h3></div><p class="sub">Una riga per squadra: <b>Club - Allenatore</b> (anche con «;» o «:»). Vale per tutti i campionati e compare sotto il nome della squadra.</p>
-    <div class="f full"><textarea id="admcoach" style="min-height:150px" placeholder="Manchester City - Pep Guardiola&#10;Real Madrid - Xabi Alonso"></textarea></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="adm-coach">Salva allenatori</button></div></div>
-  ${adminMarketPanel()}
-  ${realismPanel()}`; }
+   loadWorld();
+   if (!S.comm) return panelEmpty('Area Admin riservata', 'Questa sezione è disponibile solo al commissario della lega.');
+   const ls = typeof lgList === 'function' ? lgList() : [], human = lgHumanSet();
+   const cal = ls.map(l => { const d = lgDoc(l.li, season()), pl = d ? d.rounds.filter(r => r.m.length && r.m.every(lgPlayed)).length : 0;
+     return `<div class="li"><div class="main"><b>${esc(l.name)}</b><br><span class="sub">${human.has(l.li) ? 'Manager reale · calendario a mano' : 'Simulato dal sito'} · ${d ? `${pl}/${d.total} giornate giocate` : 'calendario non creato'}</span></div>${d ? `<button class="btn sm bad" data-act="adm-delcal" data-id="${l.li}">Elimina calendario</button>` : ''}</div>`; }).join('');
+   const mg = S.clubs.filter(c => c.managerId).map(c => `<div class="li"><div class="main"><b>${esc(S.profiles[c.managerId]?.name || 'Allenatore')}</b><br><span class="sub">${esc(c.name)}</span></div><select data-wf="mv_${c.managerId}" aria-label="Nuova squadra">${moveOpts(S['mv_' + c.managerId])}</select><button class="btn sm primary" data-act="adm-move" data-id="${c.managerId}">Sposta</button><button class="btn sm ghost" data-act="club-leave" data-id="${c.id}">Libera panchina</button><button class="btn sm bad" data-act="adm-manager-del" data-id="${c.managerId}">Rimuovi manager</button></div>`).join('');
+   return `<div class="panel"><div class="ph"><h2>Admin · Centro di controllo</h2><span class="pill info">Commissario</span></div><p class="sub">Tutte le funzioni amministrative del sito sono raccolte qui. Apri solo la sezione che ti serve.</p></div>
+   <details class="admin-group panel" open><summary>Società, impostazioni e stagione</summary><div class="admin-body">${viewLeague0()}</div></details>
+   <details class="admin-group panel"><summary>Manager, account e panchine</summary><div class="admin-body">
+     ${usersPanel()}
+     <div class="panel"><div class="ph"><h3>Manager assegnati</h3><span class="sub">${S.clubs.filter(c => c.managerId).length}</span></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>
+     ${benchPanel()}
+     <div class="notice">“Rimuovi manager” libera la squadra e lo rimuove dalla lega, ma non elimina l’account di accesso. Eliminazione account e reimpostazione password richiedono una funzione protetta su Supabase; non mostro pulsanti che non possono completare l’operazione.</div>
+   </div></details>
+   <details class="admin-group panel"><summary>Calendari</summary><div class="admin-body">
+     <div class="panel"><div class="ph"><h3>Calendari dei campionati</h3></div><div class="list">${cal || '<p class="muted">Campionati in caricamento…</p>'}</div>
+     <p class="sub">Serie A e B: <button class="btn sm bad" data-act="fx-clear">Svuota calendario Serie A/B</button>. Nei campionati senza manager reali il sito rigenera il calendario da solo.</p></div>
+   </div></details>
+   <details class="admin-group panel"><summary>Mercato e trattative</summary><div class="admin-body">${adminMarketPanel()}</div></details>
+   <details class="admin-group panel"><summary>Economia e budget</summary><div class="admin-body">${realismPanel()}<p class="sub">Le correzioni manuali di budget e monte ingaggi sono disponibili negli strumenti di mercato, nella sezione “Strumenti”.</p></div></details>
+   <details class="admin-group panel"><summary>Allenatori delle squadre CPU</summary><div class="admin-body"><div class="panel"><p class="sub">Una riga per squadra: Club - Allenatore (puoi usare anche “;” o “:”). Vale per tutti i campionati.</p>
+     <div class="f full"><textarea id="admcoach" style="min-height:150px" placeholder="Manchester City - Pep Guardiola&#10;Real Madrid - Xabi Alonso"></textarea></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="adm-coach">Salva allenatori</button></div></div>
+   </div></details>`; }
 function realismPanel(){ return `<div class="panel"><div class="ph"><h3>Realismo economico</h3></div><p class="sub">Ricalcola per <b>tutte</b> le società, anche quelle già assegnate: budget iniziale, monte ingaggi, capienza e prezzo dello stadio, sponsor firmati (con conguaglio) e costi dello staff medico, in base a forza e prestigio della rosa. Le spese già fatte restano registrate.</p><button class="btn primary" data-act="realism">Ricalcola tutto</button></div>`; }
 async function realismAll(){ let n = 0;
   for (const c of S.clubs){ if (!roster(c.id).length) continue; const p = prestige(c), d = stDef(c);
@@ -628,7 +645,7 @@ function benchPanel(){ const b = benches(), by = mvBy(), used = !!S.me && !!by[S
   const mineN = new Set(S.clubs.map(c => normKey(c.name))); loadWorld();
   const opts = []; (WORLD?.leagues || []).forEach((ln, li) => { const cs = (WORLD.clubs || []).filter(c => c.li === li && !mineN.has(normKey(c.name))); if (cs.length) opts.push(`<optgroup label="${esc(ln)}">${cs.map(c => `<option value="w:${c.i}"${S.mvc === 'w:' + c.i ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`); });
   const vac = b.map(c => `<option value="s:${c.id}"${S.mvc === 's:' + c.id ? ' selected' : ''}>${esc(c.name)} (panchina libera)</option>`).join('');
-  return `${S.comm ? realismPanel() : ''}${mine.length ? `<div class="panel"><div class="ph"><h3>Offerte di panchina</h3></div><div class="list">${mine.map(o => `<div class="li"><div class="main"><b>${esc(o.club)}</b><br><span class="sub">${o.prev ? 'Ha esonerato ' + esc(o.prev) + ' · ' : ''}ti ha scelto come miglior manager</span></div><button class="btn sm good" data-act="ofr-ok" data-id="${o.id}">Accetta</button><button class="btn sm ghost" data-act="ofr-no" data-id="${o.id}">Rifiuta</button></div>`).join('')}</div></div>` : ''}
+  return `${mine.length ? `<div class="panel"><div class="ph"><h3>Offerte di panchina</h3></div><div class="list">${mine.map(o => `<div class="li"><div class="main"><b>${esc(o.club)}</b><br><span class="sub">${o.prev ? 'Ha esonerato ' + esc(o.prev) + ' · ' : ''}ti ha scelto come miglior manager</span></div><button class="btn sm good" data-act="ofr-ok" data-id="${o.id}">Accetta</button><button class="btn sm ghost" data-act="ofr-no" data-id="${o.id}">Rifiuta</button></div>`).join('')}</div></div>` : ''}
   <div class="panel"><div class="ph"><h3>Cambia squadra</h3><span class="sub">Una volta a stagione · ${used ? 'già usato' : 'disponibile'}</span></div>
   ${S.me ? `<p class="sub">Puoi allenare una squadra di qualsiasi campionato del Mondo. Si cambia a mercato aperto e una sola volta a stagione.</p><div class="f full"><label for="mvc">Squadra</label><select id="mvc" data-wf="mvc"><option value="">Scegli…</option>${vac ? `<optgroup label="Panchine libere">${vac}</optgroup>` : ''}${opts.join('')}</select></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="mgr-take" ${used || !S.mvc ? 'disabled' : ''}>Passa a questa squadra</button></div>` : '<p class="muted">Accedi per cambiare squadra.</p>'}</div>
   <div class="panel"><div class="ph"><h3>Panchine libere</h3></div>
@@ -1009,7 +1026,6 @@ function viewLeague0(){
   return `<section class="grid2">
     <div class="stack">
       ${drawPanel()}
-      ${usersPanel()}
       <div class="panel"><div class="ph"><h2>Società iscritte</h2><div class="row">${S.comm ? `<button class="btn sm primary" data-act="club-new">Nuova società</button>` : ''}</div></div>
         ${S.clubs.length ? `<div class="list">${S.clubs.slice().sort((a, b) => divOf(a).localeCompare(divOf(b))).map(c => `<div class="li"><div class="main">${clubLink(c, true)} <span class="pill ${divOf(c) === 'A' ? 'info' : 'warn'}">${DIVS[divOf(c)]}</span> ${starHtml(clubStars(c))}</div>
           <span class="sub num">${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span>
@@ -4330,7 +4346,7 @@ function viewHome(){
     ['societa', mc ? 'La mia società' : 'Società', 'Rosa, stadio, sponsor'],
     ['statistiche', 'Statistiche', 'Marcatori e assist'],
     ['precampionato', 'Precampionato', preOn() ? (S.pre.done ? 'Concluso' : preAllIn() ? 'Partite in corso' : 'Scelta dei gironi') : '4 gironi, premi per il mercato'],
-    ['lega', 'Lega', S.comm ? 'Gestione commissario' : 'Regolamento e manager']];
+    ...(S.comm ? [['admin', 'Admin', 'Centro di controllo del sito']] : [])];
   return `${pushBanner()}<section class="hhero">
       ${mc ? `<div class="hwho">${crest(mc, true)}<div><span class="hsub">${S.myName ? 'Ciao, ' + esc(S.myName) : 'La tua squadra'}</span><h2>${esc(mc.name)}</h2><span class="hsub">${DIVS[divOf(mc)] && hasB() ? DIVS[divOf(mc)] + ' · ' : mc.lg != null ? (WORLD?.leagues?.[mc.lg] || '') + ' · ' : ''}Stagione ${season()}</span></div></div>`
         : `<div class="hwho"><div><span class="hsub">${S.me ? 'Non alleni ancora nessuna squadra' : 'Benvenuto'}</span><h2>League Manager</h2><span class="hsub">Stagione ${season()}</span></div></div>
@@ -4344,7 +4360,7 @@ function viewHome(){
 }
 function bnavSync(){
   const nav = $('#bnav'); if (!nav) return;
-  const more = ['societa', 'svincolati', 'statistiche', 'lega', 'precampionato'].includes(S.route);
+  const more = ['societa', 'svincolati', 'statistiche', 'precampionato'].includes(S.route);
   nav.querySelectorAll('a').forEach(a => { if (a.getAttribute('href') === '#' + S.route) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const mb = $('#bmore'); if (mb){ if (more) mb.setAttribute('aria-current', 'page'); else mb.removeAttribute('aria-current'); }
   const sh = $('#bsheet'); if (sh){ sh.hidden = true; if (mb) mb.setAttribute('aria-expanded', 'false');
