@@ -2796,7 +2796,8 @@ const fcOf = p => p?.fcId || (/^fc\d+$/.test(String(p?.id)) ? +String(p.id).slic
 const sofifa = (name, id) => { const pid = SOFIFA_ID && /^\d{4,7}$/.test(String(id ?? '')) ? +id : null;
   const q = String(name || '').replace(/[ıİ]/g, 'i').replace(/[łŁ]/g, 'l').replace(/[øØ]/g, 'o').replace(/[đĐ]/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
   const href = pid ? `https://sofifa.com/player/${pid}` : `https://sofifa.com/players?keyword=${encodeURIComponent(q)}`;
-  return `<a class="sub" href="${href}" target="_blank" rel="noopener" title="Apri su SoFIFA">SoFIFA ↗</a>`; };
+  const srch = `https://sofifa.com/players?keyword=${encodeURIComponent(q)}`;
+  return `<a class="sub" href="${href}" target="_blank" rel="noopener" title="Apri la scheda su SoFIFA">SoFIFA ↗</a>${pid ? ` <a class="sub" href="${srch}" target="_blank" rel="noopener" title="Se la scheda è sbagliata, cerca per nome" aria-label="Cerca ${esc(q)} su SoFIFA">🔎</a>` : ''}`; };
 let OVRV = null;
 function applyOvr(){
   if (!WORLD || WORLD.err) return; const d = (S.world || []).find(x => x.id === 'OVR'); if (!d || OVRV === d.updated) return; OVRV = d.updated;
