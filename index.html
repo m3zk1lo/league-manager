@@ -479,7 +479,7 @@ function playoffPanel(){
     ${sf.length ? `<h4 style="margin:12px 0 4px">Semifinali</h4>${sf.map(fixture).join('')}` : `<p class="muted">${ri.done ? (S.comm ? 'Stagione regolare finita: genera le semifinali.' : 'In attesa che il commissario generi le semifinali.') : 'Si giocano alla fine del campionato di Serie B.'}</p>`}
     ${fin.length ? `<h4 style="margin:12px 0 4px">Finale</h4>${fin.map(m => `<p class="sub" style="margin:6px 0 0">${m.leg === 1 ? 'Andata' : 'Ritorno'}</p>${fixture(m)}`).join('')}` : ''}</div>`;
 }
-const budget = c => (c?.budget0 || 0) + S.ledger.filter(l => l.clubId === c?.id).reduce((a, l) => a + (l.amount || 0), 0);
+const budget = c => (c?.budget0 || 0) + S.ledger.filter(l => l.clubId === c?.id && !l.wage).reduce((a, l) => a + (l.amount || 0), 0);
 const roster = cid => S.players.filter(p => p.clubId === cid).sort((a, b) => POS.indexOf(a.pos) - POS.indexOf(b.pos) || (b.ovr||0) - (a.ovr||0));
 const LOAN = {'transfer':'Acquisto a titolo definitivo', 'loan':'Prestito secco', 'loan-option':'Prestito con diritto di riscatto', 'loan-obligation':'Prestito con obbligo di riscatto'};
 const MODE = {'transfer':'Definitivo', 'loan':'Prestito', 'loan-option':'Prestito con diritto', 'loan-obligation':'Prestito con obbligo', 'redeem':'Riscatto', 'return':'Fine prestito', 'auction':'Asta svincolati'};
@@ -913,7 +913,7 @@ function viewClub(){
       ${S.comm ? `<button class="btn sm" data-act="adjust" data-id="${c.id}">Rettifica budget</button>` : ''}</div></div>
     <div class="kpis" style="margin-top:16px">
       <div class="kpi"><div class="l">Budget trasferimenti</div><div class="v num${b < 0 ? ' neg' : ''}">${fmtM(b)}</div></div>
-      <div class="kpi"><div class="l">Monte ingaggi</div><div class="v num">${fmtW(wu)}</div><div class="sub">limite ${fmtW(wb)}</div><div class="bar"><i class="${wu > wb ? 'over' : ''}" style="width:${Math.min(100, wb ? wu / wb * 100 : 0)}%"></i></div></div>
+      <div class="kpi"><div class="l">Budget stipendi (stagione)</div><div class="v num">${fmtM(wu * 52)}</div><div class="sub">su ${fmtM(wb * 52)} · pagati a fine stagione · ${fmtW(wu)}/sett.</div><div class="bar"><i class="${wu > wb ? 'over' : ''}" style="width:${Math.min(100, wb ? wu / wb * 100 : 0)}%"></i></div></div>
       <div class="kpi"><div class="l">Valore rosa</div><div class="v num">${fmtM(squadValue(c.id))}</div></div>
       <div class="kpi"><div class="l">Posizione</div><div class="v num">${pos ? pos + '°' : '—'}</div><div class="sub">su ${S.clubs.length} società</div></div>
     </div></div>
@@ -1071,12 +1071,12 @@ function confirmBox(title, msg, label, fn){ openModal(title, `<p>${msg}</p>`, fn
 
 /* ---------- writes ---------- */
 const now = () => Date.now();
-const ledger = (clubId, amount, reason) => db.collection('ledger').add({clubId, amount, reason, ts: now(), season: season()});
+const ledger = (clubId, amount, reason, extra) => db.collection('ledger').add({clubId, amount, reason, ts: now(), season: season(), ...(extra || {})});
 const logTransfer = t => db.collection('transfers').add({ts: now(), season: season(), ...t});
 
 function settingsModal(){
   const s = S.settings || {name:'', startBudget:50*M, startWage:800*K, maxSquad:30, yellowLimit:3, prizes:[30,20,15,10,8,6,4,2].map(x => x*M),
-    rules:'1. Ogni partecipante gioca la carriera allenatore su FC 27 con la propria società.\n2. Si gioca andata e ritorno; vittoria 3 punti, pareggio 1.\n3. Il risultato va inserito entro 48 ore dalla partita.\n4. I nuovi giocatori arrivano solo da trattative tra partecipanti (acquisto o prestito) o dalle aste degli svincolati. Le cessioni ai club CPU vanno registrate con la cifra incassata in gioco.\n5. Il monte ingaggi non può superare il limite della società.\n6. Rosso o 3 gialli = una giornata di squalifica.\n\nCOME FUNZIONA IL MONTE INGAGGI\nIl monte ingaggi è il tetto massimo che ogni società può spendere ogni settimana in stipendi, come il budget salari della carriera su FC 27. È separato dal budget trasferimenti.\n- La somma degli ingaggi di tutti i giocatori in rosa non può superare il limite della propria società.\n- Ogni acquisto, prestito o asta vinta viene bloccato se l’ingaggio del nuovo giocatore fa sforare il limite.\n- Nei prestiti conta solo la parte di ingaggio a carico di ciascun club, secondo la percentuale concordata.\n- Nelle aste, mentre sei in testa, l’ingaggio del giocatore è già considerato nel tuo monte ingaggi.\n- Gli stipendi non vengono scalati dal budget trasferimenti: il monte ingaggi è solo un limite.\n\nCOME FUNZIONANO LE ASTE DEGLI SVINCOLATI\n- Ogni allenatore può avviare un’asta su un giocatore svincolato con un’offerta di partenza.\n- La base d’asta è il valore di mercato del giocatore: non si può offrire di meno.\n- Ogni asta dura 15 minuti, uguale per tutti.\n- Gli altri rilanciano di almeno il rilancio minimo indicato nella scheda Svincolati.\n- Come su Ultimate Team, un rilancio negli ultimi 30 secondi riporta il timer a 30 secondi.\n- Alla scadenza chi è in testa paga la sua offerta e il giocatore entra in rosa con l’ingaggio indicato.'};
+    rules:'1. Ogni partecipante gioca la carriera allenatore su FC 27 con la propria società.\n2. Si gioca andata e ritorno; vittoria 3 punti, pareggio 1.\n3. Il risultato va inserito entro 48 ore dalla partita.\n4. I nuovi giocatori arrivano solo da trattative tra partecipanti (acquisto o prestito) o dalle aste degli svincolati. Le cessioni ai club CPU vanno registrate con la cifra incassata in gioco.\n5. Il monte ingaggi non può superare il limite della società.\n6. Rosso o 3 gialli = una giornata di squalifica.\n\nCOME FUNZIONA IL MONTE INGAGGI\nIl monte ingaggi è il tetto massimo che ogni società può spendere ogni settimana in stipendi, come il budget salari della carriera su FC 27. È separato dal budget trasferimenti.\n- La somma degli ingaggi di tutti i giocatori in rosa non può superare il limite della propria società.\n- Ogni acquisto, prestito o asta vinta viene bloccato se l’ingaggio del nuovo giocatore fa sforare il limite.\n- Nei prestiti conta solo la parte di ingaggio a carico di ciascun club, secondo la percentuale concordata.\n- Nelle aste, mentre sei in testa, l’ingaggio del giocatore è già considerato nel tuo monte ingaggi.\n- Gli stipendi non vengono scalati dal budget trasferimenti: sono un budget separato, annuale (ingaggio settimanale × 52), che si paga tutto a fine stagione.\n\nCOME FUNZIONANO LE ASTE DEGLI SVINCOLATI\n- Ogni allenatore può avviare un’asta su un giocatore svincolato con un’offerta di partenza.\n- La base d’asta è il valore di mercato del giocatore: non si può offrire di meno.\n- Ogni asta dura 15 minuti, uguale per tutti.\n- Gli altri rilanciano di almeno il rilancio minimo indicato nella scheda Svincolati.\n- Come su Ultimate Team, un rilancio negli ultimi 30 secondi riporta il timer a 30 secondi.\n- Alla scadenza chi è in testa paga la sua offerta e il giocatore entra in rosa con l’ingaggio indicato.'};
   openModal(S.settings ? 'Impostazioni della lega' : 'Crea la lega', `<div class="fgrid">
     ${fld('name', 'Nome del torneo', `required maxlength="40" value="${esc(s.name)}" placeholder="Es. Lega degli Amici"`, '', true)}
     ${fld('startBudget', 'Budget trasferimenti standard (milioni €)', `type="number" min="0" step="0.5" value="${s.startBudget / M}"`)}
@@ -1213,7 +1213,7 @@ const loanDoc = (L, ownerClubId, ownerLabel, extra = {}) => ({type: L.type, unti
 function cpuBuy(cid){
   const c = club(cid);
   const f = openModal('Operazione con club CPU', loanFields() + playerFields() + `<div class="fgrid">${fld('from', 'Club di provenienza', 'required maxlength="40" placeholder="Es. Benfica"')}${fld('fee', 'Prezzo pagato (milioni €)', 'type="number" min="0" step="0.1" value="0"')}</div>
-    <p class="sub">Budget disponibile: <b class="num">${fmtM(budget(c))}</b> · monte ingaggi libero: <b class="num">${fmtW((c.wage0 || 0) - wageUsed(cid))}</b></p>`,
+    <p class="sub">Budget disponibile: <b class="num">${fmtM(budget(c))}</b> · budget stipendi libero: <b class="num">${fmtM(((c.wage0 || 0) - wageUsed(cid)) * 52)}</b> a fine stagione</p>`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
       const p = readPlayer(fd), L = readLoan(fd), fee = num(fd, 'fee') * M, from = String(fd.get('from')).trim() || fail('Indica il club di provenienza.');
@@ -1738,15 +1738,16 @@ function wOffer(fc){
   if (tb.some(d => d.buyerId === mc.id)) return toast('Sei già in corsa per questo giocatore: segui la trattativa nelle tue trattative.');
   if (!canJoin(tb)) return toast('Troppo tardi: la trattativa è già passata alla fase successiva.');
   const end = tb.length ? tableEnd(tb) : now() + WIN_CLUB;
-  openModal(free ? `${p.name} · svincolato` : `Offerta a ${c.name} per ${p.name}`, `<p class="sub">${esc(p.pos)} · OVR ${p.ovr} · ${p.age} anni · valore ${fmtM(pr.value)}${free ? '' : ` · ${pr.role} · ${esc(c.name)}`} · procuratore: ${esc(pr.agency.name)}</p>
+  const wf = openModal(free ? `${p.name} · svincolato` : `Offerta a ${c.name} per ${p.name}`, `<p class="sub">${esc(p.pos)} · OVR ${p.ovr} · ${p.age} anni · valore ${fmtM(pr.value)}${free ? '' : ` · ${pr.role} · ${esc(c.name)}`} · procuratore: ${esc(pr.agency.name)}</p>
     ${others.length ? `<div class="notice">⚠️ In corsa ci sono già: <b>${others.map(d => esc(dn(d))).join(', ')}</b>. Le loro cifre sono segrete.</div>` : ''}
     <div class="notice">⏳ ${free ? `${esc(p.name)} sceglie con chi parlare` : `${esc(c.name)} decide`} tra <b>${timeLeft(end - now())}</b>. Fino ad allora chiunque può entrare. Se qualcuno entra nell’ultimo minuto, il tempo si allunga di un minuto.</div>
     ${free ? '<p class="sub">Svincolato: nessun costo di cartellino. Dopo, il giocatore sceglie le squadre che gli interessano e si tratta l’ingaggio con il procuratore.</p><input type="hidden" name="fee" value="0">'
       : `<div class="fgrid">${fld('fee', 'La tua offerta alla società (milioni €)', `type="number" min="0.1" step="0.1" value="${(pr.value / M).toFixed(1)}" required`, '', true)}</div>
-    <p class="sub">Budget: <b class="num">${fmtM(budget(mc))}</b>. Poi il giocatore decide se gli interessa la tua squadra, infine il procuratore (ingaggio, anni, commissione).</p>`}`,
+    <p class="sub">Budget: <b class="num">${fmtM(budget(mc))}</b>. Poi il giocatore decide se gli interessa la tua squadra, infine il procuratore (ingaggio, anni, commissione).</p>${loanFields()}`}`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
       const fee = free ? 0 : Math.round(num(fd, 'fee') * M); if (!free && fee <= 0) fail('Scrivi un’offerta.');
+      const L = free ? {type: 'transfer'} : readLoan(fd); if ((L.type === 'loan-option' || L.type === 'loan-obligation') && !(L.buyout > 0)) fail('Indica il prezzo di riscatto.');
       if (fee > budget(mc)) fail('Budget insufficiente.');
       if (fee) mkGuard(mc, p.ovr, fee); squadRoom(mc.id);
       const t = now(), cur = tableOf(key), id = `cpu-${String(key).replace(/[^\w]/g, '')}-${mc.id}-${t}`;
@@ -1755,10 +1756,11 @@ function wOffer(fc){
       if (wEnd - t < WIN_SNIPE){ wEnd = t + WIN_SNIPE; await extendTable(key, wEnd); }
       const pub = cur.length ? `${mc.name} entra nella trattativa` : free ? `${mc.name} contatta ${p.name}` : `${mc.name} presenta un’offerta a ${c.name}`;
       await db.doc('offers/' + id).set({cpu: true, dir: 'buy', fcId: key, playerName: p.name, pos: p.pos, ovr: p.ovr, age: p.age, cpuClub: free ? 'Svincolato' : c.name, buyerId: mc.id, sellerId: null,
-        stage: free ? 'player' : 'club', status: 'open', fee, round: 1, [free ? 'playerEnd' : 'windowEnd']: wEnd, ts: t, season: season(), hist: [{who: 'user', t: free ? 'Contatto il giocatore' : `Offerta di ${fmtM(fee)}`, pub, ts: t}]});
+        stage: free ? 'player' : 'club', status: 'open', fee, round: 1, ltype: L.type, ldur: L.dur || 1, lwage: L.wagePct ?? 100, lbuy: L.buyout || 0, [free ? 'playerEnd' : 'windowEnd']: wEnd, ts: t, season: season(), hist: [{who: 'user', t: free ? 'Contatto il giocatore' : `Offerta di ${fmtM(fee)}${isLoan(L.type) ? ' · ' + LOAN[L.type] : ''}`, pub, ts: t}]});
       cur.filter(x => !x.rival && x.buyerId !== mc.id).forEach(x => pushDeal(x, `${mc.name} entra nella trattativa: decisione tra ${timeLeft(wEnd - t)}.`, 'in-' + mc.id));
       toast(`Sei in trattativa: decisione tra ${timeLeft(wEnd - t)}`, 5000);
     }, free ? 'Contatta il giocatore' : 'Invia offerta');
+  if (!free) wireLoan(wf, 'Costo del prestito alla società (milioni €)', 'La tua offerta alla società (milioni €)');
 }
 function cpuReply(d){
   if (!d) return;
@@ -1795,13 +1797,16 @@ function cpuReply(d){
     async fd => {
       const cur = cpuDeals().find(x => x.id === d.id); if (!cur || cur.status !== 'open' || cur.stage !== 'agent') fail('La trattativa è cambiata: ricarica.');
       const wage = Math.round(num(fd, 'wage') * K), years = +fd.get('years') || 3, t = now(), mc = club(d.buyerId);
-      if (wageUsed(mc.id) + wage > (mc.wage0 || 0)) fail('L’ingaggio non entra nel tuo monte ingaggi.');
+      if (wageUsed(mc.id) + wage * lwp(cur) > (mc.wage0 || 0)) fail('L’ingaggio non entra nel tuo monte ingaggi.');
       if ((cur.agentEnd || 0) - t < WIN_SNIPE) await extendTable(d.fcId, t + WIN_SNIPE);
       await db.doc('offers/' + d.id).update({wage, years, role: String(fd.get('role') || 'imp'), proposed: true, ts: t, hist: pubH(cur, 'user', `Proposta: ${fmtW(wage)} per ${years} anni`, cur.proposed ? `${mc.name} modifica la proposta al procuratore` : `${mc.name} presenta la proposta al procuratore`)});
       toast('Proposta consegnata al procuratore');
     }, 'Invia proposta');
 }
 /* 1) la società decide su tutte le offerte del tavolo insieme */
+const eqFee = d => { const t = d.ltype || 'transfer'; if (!isLoan(t)) return d.fee || 0; const dur = d.ldur || 1;
+  return t === 'loan' ? (d.fee || 0) / (0.15 * dur) : t === 'loan-option' ? (d.fee || 0) / (0.3 * dur) + (d.lbuy || 0) * 0.6 : (d.fee || 0) + (d.lbuy || 0); };
+const lwp = d => (d.ltype && isLoan(d.ltype) ? (d.lwage ?? 100) : 100) / 100;
 async function resolveClub(fc){
   const tb = tableOf(fc).filter(d => d.stage === 'club'); if (!tb.length) return;
   const w = wPlayer(fc), t = now();
@@ -1810,18 +1815,18 @@ async function resolveClub(fc){
   const {p, c} = w, pr = cpuProfile(c, p), round = Math.max(...tb.map(d => d.round || 1));
   const ask = Math.max(...tb.map(d => d.ask || 0)) || Math.round(pr.value * pr.mult / 1e5) * 1e5;
   for (const d of tb) if (d.rival){ const f = Math.round(ask * (round > 1 ? 0.97 + WH(d.id + 'r' + round) * 0.15 : 0.88 + WH(d.id + 'f') * 0.3) / 1e5) * 1e5; if (f > (d.fee || 0)) d.fee = f; await db.doc('offers/' + d.id).update({fee: d.fee}); }
-  const best = Math.max(...tb.map(d => d.fee || 0));
+  const best = Math.max(...tb.map(d => eqFee(d)));
   if (pr.untouchable && best < ask * 1.5) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, `${c.name}: «${p.name} non è in vendita. È un pilastro della squadra.»`, `${c.name}: «${p.name} non è in vendita»`)));
-  const ok = tb.filter(d => d.fee >= ask);
+  const ok = tb.filter(d => eqFee(d) >= ask);
   if (ok.length){
     const names = ok.map(dn).join(', ');
-    await Promise.all(tb.map(d => d.fee < ask ? upd(d, {status: 'rejected'}, `${c.name} ha preferito altre offerte per ${p.name}.`, `${c.name} scarta l’offerta di ${dn(d)}`)
+    await Promise.all(tb.map(d => eqFee(d) < ask ? upd(d, {status: 'rejected'}, `${c.name} ha preferito altre offerte per ${p.name}.`, `${c.name} scarta l’offerta di ${dn(d)}`)
       : upd(d, {stage: 'player', playerEnd: t + WIN_PLAYER}, `${c.name} accetta ${fmtM(d.fee)}. Ora ${p.name} valuta le squadre.`, `${c.name} trova l’accordo con ${names}. Ora decide ${p.name}`)));
     return;
   }
   if (best < ask * 0.6 || round >= 3) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, round >= 3 ? `${c.name} chiude la trattativa: «Non ci siamo, ${p.name} resta qui.»` : `${c.name}: «Offerte irricevibili per ${p.name}.»`, round >= 3 ? `${c.name} chiude: ${p.name} resta qui` : `${c.name} respinge tutte le offerte`)));
   const nask = Math.round(ask * (1 - 0.03 - (pr.needMoney ? 0.03 : 0)) / 1e5) * 1e5, wEnd = t + WIN_RAISE;
-  await Promise.all(tb.map(d => d.fee < ask * 0.6 ? upd(d, {status: 'rejected'}, `${c.name}: «La vostra offerta per ${p.name} è troppo lontana.»`, `${c.name} scarta l’offerta di ${dn(d)}`)
+  await Promise.all(tb.map(d => eqFee(d) < ask * 0.6 ? upd(d, {status: 'rejected'}, `${c.name}: «La vostra offerta per ${p.name} è troppo lontana.»`, `${c.name} scarta l’offerta di ${dn(d)}`)
     : upd(d, {ask: nask, round: round + 1, windowEnd: wEnd}, `${c.name}: «Per ${p.name} servono ${fmtM(nask)}.» Hai 3 minuti per rilanciare.`, `${c.name} chiede di più: nuovo giro di offerte`)));
 }
 /* 2) il giocatore sceglie le squadre che gli interessano: la Serie B non è un muro */
@@ -1875,7 +1880,7 @@ async function resolveAgent(fc){
     if (!d.proposed || !d.wage) why = 'Nessuna proposta arrivata in tempo.';
     else if (d.wage < need) why = `Ingaggio troppo basso: chiedevamo ${fmtW(Math.round(need / 500) * 500)}.`;
     else if ((d.fee || 0) + (a.comm || 0) > budget(B)) why = 'Il club non ha più il budget per chiudere.';
-    else if (wageUsed(B.id) + d.wage > (B.wage0 || 0)) why = 'Il club non ha spazio nel monte ingaggi.';
+    else if (wageUsed(B.id) + d.wage * lwp(d) > (B.wage0 || 0)) why = 'Il club non ha spazio nel monte ingaggi.';
     const rb = {fond: 1.08, imp: 1.04, rot: 1, pan: 0.93, gio: p.age <= 21 ? 1.05 : 0.96}[d.role || 'imp'] || 1;
     const score = (d.wage || 0) / (need || 1) * (d.pref || 1) * rb * (1 + Math.min(d.years || 3, 4) * 0.01);
     return {d, B, a, need, why, score};
@@ -1891,13 +1896,13 @@ async function resolveAgent(fc){
       return;
     }
     try { squadRoom(win.B.id); } catch (e){ win.why = 'La rosa è piena.'; continue; }
-    const d = win.d, B = win.B, until = season() + (d.years || 3) - 1;
-    if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: null, agency: pr.agency.name, role: d.role || 'imp', morale: 75, req: null, listed: false, mHist: [], promiseUntil: 0}); }
-    else await db.doc('players/fc' + fc).set({name: p.name, pos: p.pos, age: p.age, ageSeason: season(), ovr: p.ovr, value: autoValue(p.ovr, p.age), wage: d.wage, injured: false, clubId: B.id, loan: null, fcId: fc, contractUntil: until, agency: pr.agency.name, role: d.role || 'imp', morale: 75});
+    const d = win.d, B = win.B, until = season() + (d.years || 3) - 1, Lt = d.ltype && isLoan(d.ltype) ? loanDoc({type: d.ltype, dur: d.ldur || 1, wagePct: d.lwage ?? 100, buyout: d.lbuy || 0}, c.lm || null, c.name) : null;
+    if (free || c.lm){ await db.doc('players/' + String(fc).slice(2)).update({clubId: B.id, wage: d.wage, contractUntil: until, freeSince: null, loan: Lt, agency: pr.agency.name, role: d.role || 'imp', morale: 75, req: null, listed: false, mHist: [], promiseUntil: 0}); }
+    else await db.doc('players/fc' + fc).set({name: p.name, pos: p.pos, age: p.age, ageSeason: season(), ovr: p.ovr, value: autoValue(p.ovr, p.age), wage: d.wage, injured: false, clubId: B.id, loan: Lt, fcId: fc, contractUntil: until, agency: pr.agency.name, role: d.role || 'imp', morale: 75});
     const pid = free || c.lm ? String(fc).slice(2) : 'fc' + fc, money = d.fee ? `${fmtM(d.fee)} a ${c.name}, ` : '';
-    await Promise.all([d.fee ? ledger(B.id, -d.fee, `Acquisto ${p.name} da ${c.name}`) : null, d.fee && c.lm ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${B.name}`) : null, win.a.comm ? ledger(B.id, -win.a.comm, `Commissione ${pr.agency.name} per ${p.name}`) : null,
-      logTransfer({playerId: pid, playerName: p.name, fromLabel: c.name, toLabel: B.name, fromClubId: c.lm || null, toClubId: B.id, fee: d.fee || 0, kind: 'cpu-in', mode: 'transfer', ovr: p.ovr}),
-      upd(d, {status: 'done'}, `Firmato! ${p.name} sceglie ${B.name}: ${fmtW(d.wage)} per ${d.years} anni.`, `UFFICIALE: ${p.name} firma con ${B.name} · ${money}${fmtW(d.wage)} per ${d.years} anni`, 'sign'),
+    await Promise.all([d.fee ? ledger(B.id, -d.fee, `${Lt ? 'Prestito' : 'Acquisto'} ${p.name} da ${c.name}`) : null, d.fee && c.lm ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${B.name}`) : null, win.a.comm ? ledger(B.id, -win.a.comm, `Commissione ${pr.agency.name} per ${p.name}`) : null,
+      logTransfer({playerId: pid, playerName: p.name, fromLabel: c.name, toLabel: B.name, fromClubId: c.lm || null, toClubId: B.id, fee: d.fee || 0, kind: 'cpu-in', mode: d.ltype || 'transfer', buyout: Lt?.buyout || 0, ovr: p.ovr}),
+      upd(d, {status: 'done'}, `Firmato! ${p.name} sceglie ${B.name}: ${fmtW(d.wage)} per ${d.years} anni.`, `UFFICIALE: ${p.name} ${Lt ? 'arriva in prestito (' + MODE[d.ltype] + ') al ' : 'firma con '}${B.name} · ${money}${fmtW(d.wage)} per ${d.years} anni`, 'sign'),
       ...scored.filter(x => x.d.id !== d.id).map(x => upd(x.d, {status: 'rejected'}, `${p.name} ha scelto ${B.name}.${x.why ? ' ' + x.why : ''}`, null))]);
     if (d.fee) await mkTax(B, d.fee, p.name);
     return;
@@ -2663,7 +2668,8 @@ const RULES_SECTIONS = [
   <li>Ogni squadra CPU ha il suo allenatore reale. Se va male in classifica la società <b>lo esonera</b>, la panchina si libera e la società offre il posto al <b>miglior manager reale</b>, che può accettare o rifiutare.</li>
   <li>Il commissario può liberare una panchina o assegnarne una in qualsiasi momento.</li></ul>`],
  ['💶 Budget, ingaggi, stadio, sponsor e staff medico', `<p>Tutto è proporzionato alla squadra che alleni, come nella realtà, senza differenze tra campionati.</p><ul>
-  <li><b>Budget e monte ingaggi</b>: ogni società parte con un budget in base alla forza e al prestigio della rosa; il monte ingaggi segue gli stipendi della rosa più lo stesso margine per tutti.</li>
+  <li><b>Budget trasferimenti</b>: serve per cartellini, riscatti e commissioni; parte in base alla forza e al prestigio della rosa e cresce con incassi, sponsor e premi.</li>
+  <li><b>Budget stipendi</b>: è un budget separato e annuale (stipendi della rosa più lo stesso margine per tutti, × 52 settimane). Non si scala dal budget trasferimenti: <b>gli stipendi di tutta la rosa si pagano a fine stagione</b>, insieme a manutenzione stadio e staff medico. Ogni nuovo ingaggio deve entrare nel budget stipendi.</li>
   <li><b>Stadio</b>: capienza, prezzo e pubblico dipendono dal prestigio del club; l'incasso entra a ogni partita in casa.</li>
   <li><b>Sponsor</b>: gli importi crescono con il prestigio e gli obiettivi sono quelli del tuo campionato.</li>
   <li><b>Staff medico</b>: costo di potenziamento e costo annuo scalano con il prestigio.</li>
@@ -2678,7 +2684,7 @@ const RULES_SECTIONS = [
   <li><b>Sala trattative</b>: tutte le trattative in corso, in diretta.</li></ul>
   <p>Ogni club ha la sua società, ogni giocatore il suo carattere e il suo procuratore: <b>si tratta come nella realtà, prima con il club, poi con il giocatore, poi con il procuratore.</b></p>`],
  ['🤝 Come si compra un giocatore', `<p>Apri il club, scegli il giocatore, premi <b>Tratta</b>. Le fasi sono quattro.</p>
-  <p><b>🏢 Fase 1 – La società (5 minuti)</b></p><ul><li>Fai l'offerta per il cartellino: la prima offerta fa partire un conto alla rovescia di <b>5 minuti</b>, uguale per tutti.</li>
+  <p><b>🏢 Fase 1 – La società (5 minuti)</b></p><ul><li>Scegli la <b>formula</b>: acquisto definitivo, <b>prestito secco</b>, <b>prestito con diritto</b> o <b>con obbligo di riscatto</b>, con durata, quota di ingaggio pagata e prezzo di riscatto. La società valuta il prestito in proporzione al valore del giocatore.</li><li>Fai l'offerta per il cartellino: la prima offerta fa partire un conto alla rovescia di <b>5 minuti</b>, uguale per tutti.</li>
   <li>In quei 5 minuti <b>chiunque può entrare</b>: gli altri manager e anche <b>un club CPU</b> a cui piace il giocatore.</li>
   <li>Puoi <b>rilanciare</b> finché il tempo non scade. <b>Se qualcuno entra o rilancia nell'ultimo minuto, il tempo si allunga di 1 minuto per tutti.</b></li>
   <li>Allo scadere la società valuta <b>tutte le offerte insieme</b>: chi ha offerto abbastanza passa alla fase 2 (anche più squadre); se nessuno basta ma qualcuno si avvicina, la società chiede di più e ci sono <b>3 minuti</b> per rilanciare (massimo 3 giri); le offerte troppo basse vengono scartate.</li>
@@ -2687,7 +2693,7 @@ const RULES_SECTIONS = [
   <p><b>🧑‍💼 Fase 3 – Il procuratore (4 minuti)</b></p><ul><li>Il procuratore dice cosa chiede: <b>ingaggio settimanale, anni di contratto e commissione</b>.</li><li>Fai la tua proposta; puoi modificarla finché il tempo non scade.</li>
   <li>Ogni procuratore ha il suo carattere: collaborativo, duro, esoso o specializzato in campioni.</li>
   <li>Allo scadere il giocatore sceglie <b>la proposta migliore per lui</b>: conta lo stipendio ma anche il progetto e il posto da titolare. Se nessuno arriva alla cifra ma qualcuno ci va vicino, il procuratore alza la richiesta e dà altri <b>2 minuti</b>.</li></ul>
-  <p><b>✍️ Fase 4 – La firma</b></p><p>Paghi il cartellino alla società, la commissione al procuratore e, per le squadre di Serie A, la tassa sugli acquisti che viene divisa tra i club di Serie B. Il giocatore entra subito in rosa e parte la notizia <b>UFFICIALE</b>.</p>
+  <p><b>✍️ Fase 4 – La firma</b></p><p>Paghi il cartellino alla società, la commissione al procuratore. Il giocatore entra subito in rosa e parte la notizia <b>UFFICIALE</b>.</p>
   <p>⚠️ <b>Controlli automatici</b>: non puoi offrire più del tuo <b>budget</b>, l'ingaggio deve entrare nel tuo <b>monte ingaggi</b> e la rosa non può superare il <b>massimo di giocatori</b>. Altrimenti la trattativa non parte o salta.</p>`],
  ['👀 Tutti vedono tutto', `<p>Nella <b>Sala trattative</b> e nella <b>Bacheca</b> della Centrale vedi in diretta: il giocatore trattato e il suo club, <b>chi è in corsa</b> (manager e club CPU), la fase, il tempo che manca e la cronaca mossa per mossa.</p>
   <p>🔒 <b>Le cifre restano segrete fino alla firma.</b> Si sa che qualcuno ha rilanciato, non di quanto.</p><p><b>Nessuno può dire «non l'ho visto»: ogni trattativa è pubblica e c'è sempre il tempo per entrare.</b> A mercato aperto bisogna stare online: le trattative durano minuti, non giorni.</p>`],
@@ -2706,8 +2712,7 @@ const RULES_SECTIONS = [
   <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita di 20 settimane di ingaggio: il giocatore finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
  ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
   <li>Società (5 min) → Giocatore (circa 1 min e mezzo) → Procuratore (4 min) → Firma.</li><li>Ultimo minuto = +1 minuto per tutti.</li><li>Tutti vedono chi tratta; <b>le cifre si scoprono solo alla firma</b>.</li>
-  <li>La CPU può entrare nelle trattative e chiederti i tuoi giocatori: <b>decidi tu se vendere</b>.</li><li>Serie A e B: le partite le gioca il commissario alla PlayStation, sia con i manager sia con le squadre CPU.</li>
-  <li>Serie A, Serie B e partite europee delle squadre della lega: le gioca il commissario alla PlayStation. Gli altri campionati e le partite tra club del Mondo li simula il sito, con infortuni e squalifiche veri; promozioni, retrocessioni e qualificazioni sono quelle reali.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
+  <li>La CPU può entrare nelle trattative e chiederti i tuoi giocatori: <b>decidi tu se vendere</b>.</li>  <li>Le partite delle squadre con un manager vero, in qualsiasi campionato, le gioca il commissario alla PlayStation. Tutto il resto lo simula il sito, con infortuni e squalifiche veri; promozioni, retrocessioni e qualificazioni sono quelle reali.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
 function viewRules(){
   const extra = (S.settings?.rules || '').trim();
   return `<div class="panel"><div class="ph"><h2>Regolamento ufficiale</h2><span class="sub">Come funziona League Manager · leggilo tutto</span></div>
@@ -2866,7 +2871,7 @@ function makeOffer(p){
     <div class="fgrid">${fld('fee', 'Prezzo offerto (milioni €)', `type="number" min="0" step="0.1" value="${(p.value || 0) / M}" required`)}${fld('wage', 'Ingaggio proposto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(p.wage || 0) / K}"`)}
     ${fld('note', 'Messaggio (facoltativo)', 'maxlength="120" placeholder="Es. pago subito, niente rilanci"', '', true)}</div>
     ${dealFields(mc)}
-    <p class="sub">Il tuo budget: <b class="num">${fmtM(budget(mc))}</b> · monte ingaggi libero: <b class="num">${fmtW((mc.wage0 || 0) - wageUsed(mc.id))}</b></p>`,
+    <p class="sub">Il tuo budget: <b class="num">${fmtM(budget(mc))}</b> · budget stipendi libero: <b class="num">${fmtM(((mc.wage0 || 0) - wageUsed(mc.id)) * 52)}</b> a fine stagione</p>`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
       const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd);
@@ -3380,7 +3385,7 @@ function closeSeason(){
   const upIds = hasB() ? [...rowsB.slice(0, PROMO).map(x => x.c.id), playoffWinner()].filter(Boolean) : [], up = upIds.map(club).filter(Boolean);
   confirmBox(`Chiudi la stagione ${season()}`, `Classifica finale: ${rows.slice(0, 3).map((x, i) => `${i+1}° ${esc(x.c.name)}`).join(', ')}.<br>
     ${hasB() ? `<b>Retrocedono in Serie B:</b> ${down.map(c => esc(c.name)).join(', ')}.<br><b>Salgono in Serie A:</b> ${up.map(c => esc(c.name)).join(', ')}${promoBonus() ? ` (bonus promozione ${fmtM(promoBonus())} ciascuna)` : ''}.<br>` : ''}
-    Si pagano anche bonus sponsor raggiunti, manutenzione stadi e costo annuo dello staff medico.<br>
+    Si pagano anche gli stipendi di tutta la rosa (budget stipendi), i bonus sponsor raggiunti, la manutenzione stadi e il costo annuo dello staff medico.<br>
     Verranno accreditati i premi di piazzamento in Serie A (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
     'Chiudi stagione', async () => {
       const s = season();
@@ -3969,6 +3974,7 @@ async function seasonEndFinance(s, upIds){
   for (const c of S.clubs){
     const sp = c.sponsors && c.sponsors.season === s ? c.sponsors : null;
     if (sp) for (const k of ['main', 'tech']) if (sp[k] && sponsorReached(c, sp[k], {promoted: upIds, div: divOf(c)})) await ledger(c.id, sp[k].bonus, `Bonus sponsor ${sp[k].brand}: obiettivo raggiunto (${sp[k].goal.label})`);
+    const bill = Math.round(wageUsed(c.id) * 52); if (bill) await ledger(c.id, -bill, `Stipendi stagione ${s}: monte ingaggi annuale pagato a fine stagione`, {wage: true});
     const cap = effStadium(c).cap; await ledger(c.id, -cap * 25, `Manutenzione stadio stagione ${s} (${nf(cap)} posti)`);
     const med = medAt(c, medLevel(c)); if (med.yearly) await ledger(c.id, -med.yearly, `Staff medico stagione ${s}`);
   }
@@ -4219,7 +4225,7 @@ function fxClear(){
 function homeKpis(mc, open, nA){
   const k = (href, l, v, s) => `<a class="hkpi" href="#${href}"><div class="l">${l}</div><div class="v num">${v}</div><div class="s">${s}</div></a>`;
   const tb = typeof tables === 'function' ? tables().length : 0;
-  return `<div class="hkpis">${mc ? k('societa', 'Budget mercato', fmtM(budget(mc)), esc(mc.name)) + k('societa', 'Monte ingaggi', fmtM(wageUsed(mc.id)), 'su ' + fmtM(mc.wage0 || 0)) : ''}
+  return `<div class="hkpis">${mc ? k('societa', 'Budget trasferimenti', fmtM(budget(mc)), esc(mc.name)) + k('societa', 'Budget stipendi', fmtM(wageUsed(mc.id) * 52), 'su ' + fmtM((mc.wage0 || 0) * 52) + ' a fine stagione') : ''}
     ${k('mercato', 'Mercato', open ? 'Aperto' : 'Chiuso', tb ? `${tb} ${tb === 1 ? 'trattativa' : 'trattative'} in corso` : 'nessuna trattativa CPU')}
     ${k('mondo" data-act="w-tab" data-id="free', 'Senza squadra', String(freeList().length), 'giocatori svincolati')}</div>`;
 }
