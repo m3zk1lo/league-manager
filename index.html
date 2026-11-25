@@ -1418,6 +1418,7 @@ async function completeDeal(o, B, Se, p){
     prel: x.prel ? {clubId: Se.id, untilSeason: season() + 1} : null, bonusDeal: x.bType ? {from: B.id, to: Se.id, type: x.bType, target: x.bTarget || 0, amt: x.bAmt, season: season()} : null, clause: 0};
   await db.doc('players/' + p.id).update({clubId: B.id, wage: o.wage, injured: !!p.injured, ...(loan ? {loan: {...loanDoc(o, Se.id, Se.name), counter: x.counter || 0}} : {}), ...rights});
   const what = loan ? 'Prestito' : 'Acquisto', whatS = loan ? 'Prestito' : 'Cessione';
+  pushClubs([B.id, Se.id], `✅ Trattativa conclusa: ${p.name}`, `${p.name}: ${Se.name} → ${B.name} (${fmtM(fee)}).`, './#mercato', 'done-' + o.id + '-' + now());
   await Promise.all([db.doc('offers/' + o.id).update({status: 'accepted', ts: now(), actorClub: turnOf(o), ...altSwap(o)}),
     first ? ledger(B.id, -first, `${what} ${p.name} da ${Se.name}${x.rates > 1 ? ` (rata 1 di ${x.rates})` : ''}`) : null, first ? ledger(Se.id, first, `${whatS} ${p.name} a ${B.name}${x.rates > 1 ? ` (rata 1 di ${x.rates})` : ''}`) : null,
     x.back ? ledger(Se.id, -x.back, `Conguaglio scambio ${p.name} al ${B.name}`) : null, x.back ? ledger(B.id, x.back, `Conguaglio scambio ${p.name} dal ${Se.name}`) : null,
@@ -2785,7 +2786,7 @@ async function pushEnable(){
   try {
     const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
     const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Notifiche non consentite: puoi attivarle dalle impostazioni del browser.');
-    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlB64(VAPID)});
+    const sub = await pushSubscribe(reg);
     const {error} = await sb.from('push_subs').upsert({endpoint: sub.endpoint, user_id: S.me, sub: sub.toJSON()}); if (error) throw new Error('salvataggio: ' + (error.message || error.code));
     const {data: chk} = await sb.from('push_subs').select('endpoint').eq('endpoint', sub.endpoint); if (!chk?.length) throw new Error('registrazione non salvata');
     try { localStorage.setItem('lmPush', 'on'); } catch {}
@@ -2801,6 +2802,25 @@ async function pushSend(to, title, body, url, key){
 }
 const mgrOf = cid => club(cid)?.managerId || null;
 const allMgrs = () => S.clubs.map(c => c.managerId).filter(Boolean);
+/* avvisa i manager dei club indicati (mai se stessi) */
+const pushClubs = (cids, title, body, url, key) => pushSend([...new Set(cids.map(mgrOf).filter(u => u && u !== S.me))], title, body, url || './#mercato', key);
+async function pushSubscribe(reg){
+  const key = urlB64(VAPID); let sub = await reg.pushManager.getSubscription();
+  if (sub){ const cur = sub.options?.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+    if (cur && (cur.length !== key.length || cur.some((v, i) => v !== key[i]))){ try { await sub.unsubscribe(); } catch {} sub = null; } }
+  return sub || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key});
+}
+/* ripara da sola l'iscrizione alle notifiche: i telefoni la perdono ogni tanto e il server non sa più dove mandarle */
+async function pushHeal(){
+  try {
+    if (!S.me || !sb || !pushOk()) return;
+    if (Notification.permission !== 'granted'){ if (pushState() === 'on'){ try { localStorage.removeItem('lmPush'); } catch {} schedule(); } return; }
+    const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+    const sub = await pushSubscribe(reg);
+    const {error} = await sb.from('push_subs').upsert({endpoint: sub.endpoint, user_id: S.me, sub: sub.toJSON()});
+    if (!error && pushState() !== 'on'){ try { localStorage.setItem('lmPush', 'on'); } catch {} schedule(); }
+  } catch {}
+}
 function pushBanner(){
   if (S.me && pushState() === 'on') return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Notifiche attive su questo telefono.</span><span class="row"><button class="btn sm" data-act="push-test">Manda una prova</button><button class="btn sm ghost" data-act="push-on">Riattiva</button></span></div>`;
   if (!S.me || pushState() === 'on' || (pushOk() && typeof Notification !== 'undefined' && Notification.permission === 'denied')) return '';
@@ -2931,7 +2951,8 @@ function makeOffer(p){
       if (fee > budget(mc)) fail('Non hai budget sufficiente per questa offerta.');
       mkGuard(mc, p.ovr, fee);
       if (S.offers.some(o => o.status === 'open' && o.playerId === p.id && o.buyerId === mc.id)) fail('Hai già una trattativa aperta per questo giocatore.');
-      await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), ...(A ? {alt: A} : {}), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
+      const nref = await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), ...(A ? {alt: A} : {}), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
+      pushClubs([p.clubId], `💰 Offerta per ${p.name}`, `${mc.name} offre ${fmtM(fee)}${isLoan(L.type) ? ' (prestito)' : ''}. Rispondi dal Mercato.`, './#mercato', 'off-' + (nref?.id || now()));
       toast(A ? 'Offerta inviata con due formule' : 'Offerta inviata');
     }, 'Invia offerta');
   wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo offerto (milioni €)'); wireAlt(f);
@@ -2941,7 +2962,7 @@ function counterOffer(o){
     ${fld('note', 'Messaggio', 'maxlength="120"', '', true)}</div>${dealFields(club(o.buyerId), o.x || {}, o.type)}`,
     async fd => { const L = readLoan(fd);
       await db.doc('offers/' + o.id).update({alt: null, fee: num(fd, 'fee') * M, wage: num(fd, 'wage') * K, type: L.type, dur: L.dur || 1, wagePct: L.wagePct ?? 100, buyout: L.buyout || 0,
-        note: String(fd.get('note')).trim(), x: readDeal(fd, club(o.buyerId), isLoan(L.type)), by: o.by === 'buyer' ? 'seller' : 'buyer', ts: now(), actorClub: turnOf(o)}); toast('Rilancio inviato'); }, 'Invia rilancio');
+        note: String(fd.get('note')).trim(), x: readDeal(fd, club(o.buyerId), isLoan(L.type)), by: o.by === 'buyer' ? 'seller' : 'buyer', ts: now(), actorClub: turnOf(o)}); pushClubs([o.buyerId, o.sellerId], `🔁 Rilancio per ${o.playerName || 'un giocatore'}`, `${club(turnOf(o))?.name || 'Un club'} rilancia a ${fmtM(num(fd, 'fee') * M)}. Guarda la proposta.`, './#mercato', 'ctr-' + o.id + '-' + now()); toast('Rilancio inviato'); }, 'Invia rilancio');
   wireLoan(f, 'Costo del prestito (milioni €)', 'Nuovo prezzo (milioni €)');
 }
 function redeem(p){
@@ -2996,6 +3017,7 @@ function startAuction(p){
       if (join){ canAfford(mc, amt, p.wage); mkGuard(mc, p.ovr, amt); }
       await db.doc(`auctions/${p.id}-${t}`).set({playerId: p.id, playerName: p.name, startedBy: join ? mc.id : null, startTs: t, endsAt: t + mins * 6e4, base: amt,
         highBid: amt, highClubId: join ? mc.id : null, bids: join ? [{c: mc.id, amt, ts: t}] : [], status: 'open', season: season()});
+      pushClubs(S.clubs.filter(c => c.id !== mc?.id).map(c => c.id), `🔨 Nuova asta: ${p.name}`, `Base ${fmtM(amt)}, termina tra ${timeLeft(mins * 6e4)}.`, './#mercato', 'aucs-' + p.id + '-' + t);
       toast(`Asta avviata: ${p.name}, termina tra ${timeLeft(mins * 6e4)}`);
     }, 'Avvia asta');
 }
@@ -3021,9 +3043,15 @@ function bidAuction(a){
       mkGuard(mc, p?.ovr, amt, a.id);
       const t = now(), endsAt = cur.endsAt - t < SNIPE ? t + SNIPE : cur.endsAt;
       await ref.update({highBid: amt, highClubId: mc.id, bids: [...(cur.bids || []), {c: mc.id, amt, ts: t}], endsAt});
+      if (cur.highClubId && cur.highClubId !== mc.id) pushClubs([cur.highClubId], `⚠️ Sei stato superato: ${a.playerName}`, `${mc.name} offre ${fmtM(amt)}. Rilancia dal Mercato.`, './#mercato', 'bid-' + a.id + '-' + t);
       toast(`Sei in testa per ${a.playerName}`);
     }, 'Rilancia');
 }
+function aucEndPush(a, p){ try {
+  const w = a.highClubId, nm = p?.name || a.playerName, bidders = [...new Set((a.bids || []).map(b => b.c))].filter(c => c !== w);
+  if (w) pushClubs([w], `🏆 Asta vinta: ${nm}`, `${nm} è tuo per ${fmtM(a.highBid)}.`, './#societa', 'aucw-' + a.id);
+  if (bidders.length) pushClubs(bidders, `Asta persa: ${nm}`, `Va al ${club(w)?.name || 'un altro club'} per ${fmtM(a.highBid)}.`, './#mercato', 'aucl-' + a.id);
+} catch {} }
 async function closeAuction(a){
   const ref = db.doc('auctions/' + a.id);
   const lease = await ref.acquire({holder: S.me || 'auto', ttlMs: 15000}); if (!lease.acquired) return;
@@ -3033,7 +3061,7 @@ async function closeAuction(a){
   if (cur.sellerClubId){
     const sc = club(cur.sellerClubId);
     if (!p || p.clubId !== cur.sellerClubId || p.loan || !w || !sc){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta: il giocatore resta al club' : 'Giocatore non più disponibile'}); return; }
-    await ref.update({status: 'closed', closedTs: now()});
+    await ref.update({status: 'closed', closedTs: now()}); aucEndPush(cur, p);
     await db.doc('players/' + p.id).update({clubId: w.id});
     await Promise.all([ledger(w.id, -cur.highBid, `Asta vinta: ${p.name} dal ${sc.name}`), ledger(sc.id, cur.highBid, `Asta: ${p.name} venduto al ${w.name}`),
       logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: w.name, fromClubId: sc.id, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction', ovr: p.ovr || 0})]);
@@ -3042,7 +3070,7 @@ async function closeAuction(a){
     return;
   }
   if (!p || p.clubId || p.loan || !w){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta' : 'Giocatore non più disponibile'}); return; }
-  await ref.update({status: 'closed', closedTs: now()});
+  await ref.update({status: 'closed', closedTs: now()}); aucEndPush(cur, p);
   await db.doc('players/' + p.id).update({clubId: w.id, injured: false});
   await Promise.all([cur.highBid ? ledger(w.id, -cur.highBid, `Asta vinta: ${p.name}`) : null,
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: 'Svincolato', toLabel: w.name, fromClubId: null, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction', ovr: p.ovr || 0})]);
@@ -4541,6 +4569,7 @@ document.addEventListener('click', async e => {
       case 'adm-l-keep': { const q = p(); if (!q?.loan) return; confirmBox('Rendi definitivo', `${esc(q.name)} resta a ${esc(club(q.clubId)?.name || 'questa società')} a titolo definitivo, senza movimenti di denaro.`, 'Rendi definitivo', async () => { await db.doc('players/' + q.id).update({loan: null}); toast('Giocatore reso definitivo'); }); break; }
       case 'adm-club-fix': { const c = club(S.admMkC); if (c) admClubFix(c); else toast('Scegli una società.'); break; }
       case 'adm-pl-move': admMovePlayer(); break;
+      case 'adm-clean': admCleanTest(); break;
       case 'adm-delcal': { const L = lgList().find(l => l.li === +id), d = lgDoc(+id); if (!L || !d) return;
         const pl = d.rounds.filter(r => r.m.some(lgPlayed)).length; confirmBox(`Elimina calendario · ${L.name}`, `${pl ? `<b>Attenzione: ci sono ${pl} giornate con risultati, andranno perse.</b><br>` : ''}Il calendario di ${esc(L.name)} viene eliminato.${lgHumanSet().has(+id) ? ' Lo reinserisci tu a mano.' : ' Senza manager reali il sito lo rigenera da solo.'}`, 'Elimina', async () => { await db.doc('world/' + d.id).delete(); toast('Calendario eliminato'); }); break; }
       case 'adm-move': { const k = S['mv_' + id], c = S.clubs.find(x => x.managerId === id); if (!k) return toast('Scegli la squadra di destinazione.'); const nm = k[0] === 'w' ? WORLD.clubs.find(x => String(x.i) === k.slice(2))?.name : club(k.slice(2))?.name;
@@ -4631,8 +4660,8 @@ document.addEventListener('click', async e => {
       case 'offer-counter': counterOffer(o()); break;
       case 'offer-accept-alt': b.disabled = true; await acceptAlt(o()); break;
       case 'offer-counter-alt': if (o()?.alt) counterOffer(altAsMain(o())); break;
-      case 'offer-reject': await db.doc('offers/' + id).update({status: 'rejected', ts: now(), actorClub: turnOf(o())}); toast('Offerta rifiutata'); break;
-      case 'offer-withdraw': await db.doc('offers/' + id).update({status: 'withdrawn', ts: now(), actorClub: starterOf(o())}); toast('Offerta ritirata'); break;
+      case 'offer-reject': await db.doc('offers/' + id).update({status: 'rejected', ts: now(), actorClub: turnOf(o())}); { const oo = o(); if (oo) pushClubs([oo.buyerId, oo.sellerId], `❌ Offerta rifiutata: ${oo.playerName || ''}`, `${club(turnOf(oo))?.name || 'Il club'} ha rifiutato la proposta.`, './#mercato', 'rej-' + oo.id + '-' + now()); } toast('Offerta rifiutata'); break;
+      case 'offer-withdraw': await db.doc('offers/' + id).update({status: 'withdrawn', ts: now(), actorClub: starterOf(o())}); { const oo = o(); if (oo) pushClubs([oo.buyerId, oo.sellerId], `↩️ Offerta ritirata: ${oo.playerName || ''}`, `${club(starterOf(oo))?.name || 'Il club'} ha ritirato la proposta.`, './#mercato', 'wd-' + oo.id + '-' + now()); } toast('Offerta ritirata'); break;
       case 'bell': S.notifOpen = !S.notifOpen; render(); break;
       case 'notif-read': await markRead(); break;
       case 'obj-add': objModal(club(id)); break;
@@ -4791,7 +4820,7 @@ function adminMarketPanel(){
   <div class="panel"><div class="ph"><h3>Prestiti in corso (${loans.length})</h3></div><div class="list">${lRows || '<p class="muted">Nessun prestito in corso.</p>'}</div></div>
   <div class="panel"><div class="ph"><h3>Strumenti</h3></div>
     <div class="f full"><label for="admMkC">Società</label><select id="admMkC" data-wf="admMkC">${clubs.map(c => `<option value="${c.id}"${S.admMkC === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-    <div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="adm-club-fix">Budget e monte ingaggi</button><button class="btn sm" data-act="adm-pl-move">Sposta un giocatore</button></div></div>`;
+    <div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="adm-club-fix">Budget e monte ingaggi</button><button class="btn sm" data-act="adm-pl-move">Sposta un giocatore</button><button class="btn sm bad" data-act="adm-clean">Cancella prove di mercato</button></div></div>`;
 }
 async function admForce(o){
   const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId); let Se = club(o.sellerId);
@@ -4838,6 +4867,50 @@ function admMovePlayer(){
       toast(`${p.name} spostato${cid ? ' al ' + (club(cid)?.name || '') : ' tra gli svincolati'}`); }, 'Sposta');
 }
 
+/* ---------- ADMIN: cancella le prove di mercato ---------- */
+/* solo i movimenti di budget del mercato: incassi stadio, sponsor, premi e stipendi non si toccano */
+const MKT_LEDGER = /^(Prestito|Acquisto|Cessione|Tassa mercato|Fondo Serie B: quota tassa|Conguaglio scambio|Clausola rescissoria|Recompra|Buonuscita rescissione|Rata \d|Bonus raggiunto|Commissione |Riscatto|Obbligo di riscatto|Asta|Trasferimento annullato)|sulla rivendita di/;
+function cleanScope(since){
+  const lastTs = a => Math.max(a.startTs || 0, a.closedTs || 0, ...(a.bids || []).map(b => b.ts || 0));
+  return {
+    tr: S.transfers.filter(t => (t.ts || 0) >= since).sort((a, b) => (b.ts || 0) - (a.ts || 0)),
+    lg: S.ledger.filter(l => (l.ts || 0) >= since && !l.wage && MKT_LEDGER.test(String(l.reason || ''))),
+    of: [...S.offers, ...(S.cpuDeals || [])].filter(o => (o.ts || 0) >= since),
+    au: S.auctions.filter(a => lastTs(a) >= since)};
+}
+const cleanText = sc => `${sc.tr.length} trasferimenti, ${sc.lg.length} movimenti di budget, ${sc.of.length} trattative, ${sc.au.length} aste`;
+function admCleanTest(){
+  const pad = n => String(n).padStart(2, '0'), loc = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const f = openModal('Cancella prove di mercato', `<p class="sub">Rimette i giocatori dove erano, restituisce il budget e cancella trattative, aste, trasferimenti e movimenti di mercato avvenuti <b>da questo momento in poi</b>. Partite, incassi stadio, sponsor e premi non vengono toccati.</p>
+    <div class="row" style="margin-bottom:8px">${[[1, 'Ultima ora'], [3, 'Ultime 3 ore'], [24, 'Ultime 24 ore']].map(([h, l]) => `<button type="button" class="btn sm" data-h="${h}">${l}</button>`).join('')}</div>
+    <div class="fgrid">${fld('since', 'Cancella tutto da', 'type="datetime-local" required', '', true)}</div>
+    <p class="sub" id="cleanbox" style="margin-top:8px">Scegli da quando.</p>`,
+    async fd => {
+      const since = new Date(String(fd.get('since') || '')).getTime(); if (!since) fail('Scegli da quando cancellare.');
+      const sc = cleanScope(since); if (!sc.tr.length && !sc.lg.length && !sc.of.length && !sc.au.length) fail('Dopo quella data non c’è nessuna prova di mercato.');
+      let skip = 0;
+      for (const t of sc.tr){ /* dal più recente al più vecchio */
+        const p = S.players.find(x => x.id === t.playerId), from = t.fromClubId ? club(t.fromClubId) : null;
+        if (!p){ skip++; continue; }
+        const clr = {loan: null, sellOn: null, buyBack: null, prel: null, bonusDeal: null};
+        try {
+          if (from) await db.doc('players/' + p.id).update({clubId: from.id, ...clr});
+          else if (t.fromLabel === 'Svincolato') await db.doc('players/' + p.id).update({clubId: null, freeSince: now(), ...clr});
+          else await db.doc('players/' + p.id).delete();
+        } catch {}
+      }
+      const jobs = [...sc.lg.map(l => () => db.doc('ledger/' + l.id).delete()), ...sc.tr.map(t => () => db.doc('transfers/' + t.id).delete()),
+        ...sc.of.map(o => () => String(o.id).startsWith('cpus-') ? db.doc('offers/' + o.id).update({status: 'void', waiting: null, hist: [], msg: '', ts: 0}) : db.doc('offers/' + o.id).delete()),
+        ...sc.au.map(a => () => db.doc('auctions/' + a.id).delete())];
+      const out = await Promise.allSettled(jobs.map(j => j())), bad = out.filter(r => r.status === 'rejected').length;
+      toast(`Prove cancellate: ${cleanText(sc)}.${skip ? ` ${skip} giocatori ceduti all’estero non si possono riportare.` : ''}${bad ? ` ${bad} operazioni non riuscite.` : ''}`, 9000);
+    }, 'Cancella le prove', true);
+  const inp = f.querySelector('#since'), box = f.querySelector('#cleanbox');
+  const upd = () => { const s = new Date(inp.value).getTime(); box.textContent = s ? 'Verranno cancellati: ' + cleanText(cleanScope(s)) + '.' : 'Scegli da quando.'; };
+  inp.addEventListener('input', upd);
+  f.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { inp.value = loc(now() - +b.dataset.h * 36e5); upd(); });
+}
+
 /* ---------- boot ---------- */
 async function boot(){
   render();
@@ -4847,6 +4920,7 @@ async function boot(){
   try { await loadSession(); } catch {}
   if (!S.me){ showGate(); return; }
   try { startPresence(); } catch {}
+  try { pushHeal(); } catch {}
   S.who = !S.me ? 'none' : S.comm ? 'comm' : 'member';
   const slow = setTimeout(() => { S.slow = true; schedule(); }, 10000);
   const subscribe = (name, fn) => db.collection(name).onSnapshot(snap => {
