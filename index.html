@@ -1947,7 +1947,8 @@ async function cpuGenerate(){
     if (cpuDeals().some(d => d.id === id) || WH(id) > (hot.length ? 0.75 : 0.35)) continue; if (rs.length < 12) continue;
     const p = hot.length && WH(id + 'h') < 0.7 ? hot[Math.floor(WH(id + 'q') * hot.length)] : rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
     const buyers = WORLD.clubs.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
-    if (p.req === 'loan'){ const lb = WORLD.clubs.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
+    const asLoan = p.req === 'loan' || (!p.listed && p.req !== 'sale' && WH(id + 'ln') < 0.3); /* la CPU può chiedere i tuoi giocatori anche in prestito */
+    if (asLoan){ const lb = WORLD.clubs.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
       pushSend([c.managerId], `🔁 Richiesta di prestito per ${p.name}`, `${bc.name} lo chiede in prestito: hai 6 minuti per rispondere.`, './#mercato', id);
       await db.doc('offers/' + id).set({cpu: true, dir: 'sell', loan: true, playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee: 0, round: 1, waiting: 'user', respondAt: t + 6 * 6e4, ts: t, season: season(), msg: `${bc.name} chiede ${p.name} in prestito per una stagione: gioca titolare e paga il 100% dell’ingaggio. Hai 6 minuti per rispondere.`, hist: [{who: 'cpu', t: 'Richiesta di prestito', ts: t}]});
       continue; }
@@ -1977,7 +1978,7 @@ async function rivalJoin(tb){
     stage: st, status: 'open', fee: 0, round: d0.round || 1, [st === 'club' ? 'windowEnd' : 'playerEnd']: Math.max(tb.end, t + WIN_SNIPE), ts: t, season: season(), hist: [{who: 'cpu', t: 'Si inserisce nella trattativa', pub: `${rc.name} si inserisce nella trattativa`, ts: t}]});
 }
 const RESOLVE = {club: resolveClub, player: resolvePlayer, agent: resolveAgent};
-/* le squadre CPU possono avviare proposte SOLO verso le società che hanno un manager vero (cpuGenerate guarda solo quelle); possono anche inserirsi nelle trattative aperte dai manager. Metti false per spegnere le proposte spontanee */
+/* le squadre CPU possono avviare proposte (acquisto o prestito) SOLO per i giocatori delle società che hanno un manager vero (cpuGenerate guarda solo quelle); possono anche inserirsi nelle trattative aperte dai manager. Metti false per spegnere le proposte spontanee */
 const CPU_CAN_START = true;
 function cpuLeader(overdue){
   if (overdue > 40e3 || !S.online || !S.online.length) return true;
