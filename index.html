@@ -3748,7 +3748,7 @@ const prestige = c => Math.max(0, Math.min(1, (clubStrength(c) - 64) / 20));
 const stDef = c => { const p = prestige(c), cap = Math.round((7000 + 48000 * Math.pow(p, 1.1)) / 500) * 500, price = Math.round(14 + 42 * p); return {cap, price, ref: price, fans: Math.round(cap * (0.7 + 0.3 * p))}; };
 const medK = c => 0.6 + 1.0 * prestige(c);
 const medAt = (c, l) => { const m = MED[l]; if (!m) return m; const k = medK(c); return {...m, cost: roundM(m.cost * k), yearly: roundM(m.yearly * k)}; };
-const playedOf = c => c?.lg != null ? Math.max(0, ...(lgDoc(c.lg)?.rounds || []).map((r, i) => r.m.some(lgPlayed) ? i + 1 : 0)) : playedOf(c);
+const playedOf = c => c?.lg != null ? Math.max(0, ...(lgDoc(c.lg)?.rounds || []).map((r, i) => r.m.some(lgPlayed) ? i + 1 : 0)) : roundInfo(divOf(c)).played;
 /* forza della rosa: media OVR dei migliori 16 */
 function clubStrength(c){
   const o = roster(c.id).map(p => p.ovr || 0).sort((a, b) => b - a).slice(0, 16);
