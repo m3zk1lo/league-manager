@@ -612,6 +612,7 @@ function viewAdmin(){
   <div class="panel"><div class="ph"><h3>Allenatori reali</h3></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>
   <div class="panel"><div class="ph"><h3>Allenatori delle squadre CPU</h3></div><p class="sub">Una riga per squadra: <b>Club - Allenatore</b> (anche con «;» o «:»). Vale per tutti i campionati e compare sotto il nome della squadra.</p>
     <div class="f full"><textarea id="admcoach" style="min-height:150px" placeholder="Manchester City - Pep Guardiola&#10;Real Madrid - Xabi Alonso"></textarea></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="adm-coach">Salva allenatori</button></div></div>
+  ${adminMarketPanel()}
   ${realismPanel()}`; }
 function realismPanel(){ return `<div class="panel"><div class="ph"><h3>Realismo economico</h3></div><p class="sub">Ricalcola per <b>tutte</b> le società, anche quelle già assegnate: budget iniziale, monte ingaggi, capienza e prezzo dello stadio, sponsor firmati (con conguaglio) e costi dello staff medico, in base a forza e prestigio della rosa. Le spese già fatte restano registrate.</p><button class="btn primary" data-act="realism">Ricalcola tutto</button></div>`; }
 async function realismAll(){ let n = 0;
@@ -953,13 +954,14 @@ function offerRow(o, mineId){
   const cls = {open:'info', accepted:'good', rejected:'bad', withdrawn:'neutral', expired:'neutral', prel:'warn'}[o.status];
   const pc = o.status === 'prel' ? club(p?.prel?.clubId) : null, prelOver = o.status === 'prel' && now() > (o.prelUntil || 0);
   return `<div class="li"><div class="main"><b>${esc(p?.name || o.playerName)}</b> <span class="muted">${esc(Se?.name || '—')} → ${esc(B?.name || '—')}</span><br>
-    <span class="pill info">${esc(MODE[o.type || 'transfer'])}</span> <span class="num">${fmtM(o.fee)}</span> · <span class="num">${fmtW(o.wage)}</span>${isLoan(o.type) ? ` · <span class="sub">fino a fine stagione ${season() + (o.dur || 1) - 1}${o.buyout ? `, riscatto ${fmtM(o.buyout)}` : ''}${(o.wagePct ?? 100) < 100 ? `, ingaggio al ${o.wagePct}%` : ''}</span>` : ''}${o.note ? ` · <span class="muted">${esc(o.note)}</span>` : ''}</div>
+    <span class="pill info">${esc(MODE[o.type || 'transfer'])}</span> <span class="num">${fmtM(o.fee)}</span> · <span class="num">${fmtW(o.wage)}</span>${isLoan(o.type) ? ` · <span class="sub">fino a fine stagione ${season() + (o.dur || 1) - 1}${o.buyout ? `, riscatto ${fmtM(o.buyout)}` : ''}${(o.wagePct ?? 100) < 100 ? `, ingaggio al ${o.wagePct}%` : ''}</span>` : ''}${altLine(o)}${o.note ? ` · <span class="muted">${esc(o.note)}</span>` : ''}</div>
     ${dealSummary(o.x)}
     ${o.status === 'prel' ? `<br><span class="sub">${esc(pc?.name || 'Il club con la prelazione')} può pareggiare ${prelOver ? '— tempo scaduto' : 'entro ' + timeLeft((o.prelUntil || 0) - now())}</span>` : ''}
     <div class="row"><span class="pill ${cls}">${st}</span>
     ${o.status === 'prel' && pc && canManage(pc.id) && !prelOver ? `<button class="btn sm good" data-act="prel-match" data-id="${o.id}">Pareggia l’offerta</button><button class="btn sm" data-act="prel-pass" data-id="${o.id}">Rinuncia</button>` : ''}
     ${o.status === 'prel' && (prelOver || S.comm) && (S.comm || canManage(o.buyerId) || canManage(o.sellerId)) ? `<button class="btn sm good" data-act="prel-done" data-id="${o.id}">Concludi l’affare</button>` : ''}
-    ${myTurn ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
+    ${myTurn && o.alt ? `<div class="sub" style="width:100%">Scegli quale formula accettare o portare avanti:</div><button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm good" data-act="offer-accept-alt" data-id="${o.id}">Accetta: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter-alt" data-id="${o.id}">Rilancia: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta tutto</button>` : ''}
+    ${myTurn && !o.alt ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
     ${iWait ? `<span class="sub">in attesa di risposta</span><button class="btn sm ghost" data-act="offer-withdraw" data-id="${o.id}">Ritira</button>` : ''}</div></div>`;
 }
 function viewMarket(){
@@ -1416,7 +1418,7 @@ async function completeDeal(o, B, Se, p){
     prel: x.prel ? {clubId: Se.id, untilSeason: season() + 1} : null, bonusDeal: x.bType ? {from: B.id, to: Se.id, type: x.bType, target: x.bTarget || 0, amt: x.bAmt, season: season()} : null, clause: 0};
   await db.doc('players/' + p.id).update({clubId: B.id, wage: o.wage, injured: !!p.injured, ...(loan ? {loan: {...loanDoc(o, Se.id, Se.name), counter: x.counter || 0}} : {}), ...rights});
   const what = loan ? 'Prestito' : 'Acquisto', whatS = loan ? 'Prestito' : 'Cessione';
-  await Promise.all([db.doc('offers/' + o.id).update({status: 'accepted', ts: now(), actorClub: turnOf(o)}),
+  await Promise.all([db.doc('offers/' + o.id).update({status: 'accepted', ts: now(), actorClub: turnOf(o), ...altSwap(o)}),
     first ? ledger(B.id, -first, `${what} ${p.name} da ${Se.name}${x.rates > 1 ? ` (rata 1 di ${x.rates})` : ''}`) : null, first ? ledger(Se.id, first, `${whatS} ${p.name} a ${B.name}${x.rates > 1 ? ` (rata 1 di ${x.rates})` : ''}`) : null,
     x.back ? ledger(Se.id, -x.back, `Conguaglio scambio ${p.name} al ${B.name}`) : null, x.back ? ledger(B.id, x.back, `Conguaglio scambio ${p.name} dal ${Se.name}`) : null,
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: B.name, fromClubId: Se.id, toClubId: B.id, fee, kind: 'user', mode: o.type || 'transfer', buyout: o.buyout || 0, ovr: p.ovr || 0,
@@ -1448,7 +1450,7 @@ async function acceptOffer(o, force){
     if (sw.length > 1) squadRoom(Se.id, sw.length - 1);
     const pr = p.prel, pc = pr && club(pr.clubId);
     if (!force && pc && (pr.untilSeason || 0) >= season() && pc.id !== B.id && pc.id !== Se.id && !loan){
-      await db.doc('offers/' + o.id).update({status: 'prel', prelUntil: now() + 864e5, ts: now(), actorClub: turnOf(o)});
+      await db.doc('offers/' + o.id).update({status: 'prel', prelUntil: now() + 864e5, ts: now(), actorClub: turnOf(o), ...altSwap(o)});
       return toast(`Accordo trovato, ma ${pc.name} ha la prelazione: ha 24 ore per pareggiare.`, 6000);
     }
     await completeDeal(o, B, Se, p);
@@ -1743,11 +1745,12 @@ function wOffer(fc){
     <div class="notice">⏳ ${free ? `${esc(p.name)} sceglie con chi parlare` : `${esc(c.name)} decide`} tra <b>${timeLeft(end - now())}</b>. Fino ad allora chiunque può entrare. Se qualcuno entra nell’ultimo minuto, il tempo si allunga di un minuto.</div>
     ${free ? '<p class="sub">Svincolato: nessun costo di cartellino. Dopo, il giocatore sceglie le squadre che gli interessano e si tratta l’ingaggio con il procuratore.</p><input type="hidden" name="fee" value="0">'
       : `<div class="fgrid">${fld('fee', 'La tua offerta alla società (milioni €)', `type="number" min="0.1" step="0.1" value="${(pr.value / M).toFixed(1)}" required`, '', true)}</div>
-    <p class="sub">Budget: <b class="num">${fmtM(budget(mc))}</b>. Poi il giocatore decide se gli interessa la tua squadra, infine il procuratore (ingaggio, anni, commissione).</p>${loanFields()}`}`,
+    <p class="sub">Budget: <b class="num">${fmtM(budget(mc))}</b>. Poi il giocatore decide se gli interessa la tua squadra, infine il procuratore (ingaggio, anni, commissione).</p>${loanFields()}${altFields(false)}`}`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
       const fee = free ? 0 : Math.round(num(fd, 'fee') * M); if (!free && fee <= 0) fail('Scrivi un’offerta.');
       const L = free ? {type: 'transfer'} : readLoan(fd); if ((L.type === 'loan-option' || L.type === 'loan-obligation') && !(L.buyout > 0)) fail('Indica il prezzo di riscatto.');
+      const A = free ? null : readAlt(fd, false); if (A && A.type === L.type) fail('La formula alternativa deve essere diversa da quella principale.'); if (A && !(A.fee > 0)) fail('Indica il prezzo o il costo della formula alternativa.'); if (A && !isLoan(A.type) && A.fee > budget(mc)) fail('Budget insufficiente per la formula alternativa.');
       if (fee > budget(mc)) fail('Budget insufficiente.');
       if (fee) mkGuard(mc, p.ovr, fee); squadRoom(mc.id);
       const t = now(), cur = tableOf(key), id = `cpu-${String(key).replace(/[^\w]/g, '')}-${mc.id}-${t}`;
@@ -1756,11 +1759,11 @@ function wOffer(fc){
       if (wEnd - t < WIN_SNIPE){ wEnd = t + WIN_SNIPE; await extendTable(key, wEnd); }
       const pub = cur.length ? `${mc.name} entra nella trattativa` : free ? `${mc.name} contatta ${p.name}` : `${mc.name} presenta un’offerta a ${c.name}`;
       await db.doc('offers/' + id).set({cpu: true, dir: 'buy', fcId: key, playerName: p.name, pos: p.pos, ovr: p.ovr, age: p.age, cpuClub: free ? 'Svincolato' : c.name, buyerId: mc.id, sellerId: null,
-        stage: free ? 'player' : 'club', status: 'open', fee, round: 1, ltype: L.type, ldur: L.dur || 1, lwage: L.wagePct ?? 100, lbuy: L.buyout || 0, [free ? 'playerEnd' : 'windowEnd']: wEnd, ts: t, season: season(), hist: [{who: 'user', t: free ? 'Contatto il giocatore' : `Offerta di ${fmtM(fee)}${isLoan(L.type) ? ' · ' + LOAN[L.type] : ''}`, pub, ts: t}]});
+        stage: free ? 'player' : 'club', status: 'open', fee, round: 1, ltype: L.type, ldur: L.dur || 1, lwage: L.wagePct ?? 100, lbuy: L.buyout || 0, ...(A ? {alt: A} : {}), [free ? 'playerEnd' : 'windowEnd']: wEnd, ts: t, season: season(), hist: [{who: 'user', t: free ? 'Contatto il giocatore' : `Offerta di ${fmtM(fee)}${isLoan(L.type) ? ' · ' + LOAN[L.type] : ''}${A ? ` · alternativa: ${MODE[A.type]} ${fmtM(A.fee)}` : ''}`, pub, ts: t}]});
       cur.filter(x => !x.rival && x.buyerId !== mc.id).forEach(x => pushDeal(x, `${mc.name} entra nella trattativa: decisione tra ${timeLeft(wEnd - t)}.`, 'in-' + mc.id));
       toast(`Sei in trattativa: decisione tra ${timeLeft(wEnd - t)}`, 5000);
     }, free ? 'Contatta il giocatore' : 'Invia offerta');
-  if (!free) wireLoan(wf, 'Costo del prestito alla società (milioni €)', 'La tua offerta alla società (milioni €)');
+  if (!free){ wireLoan(wf, 'Costo del prestito alla società (milioni €)', 'La tua offerta alla società (milioni €)'); wireAlt(wf); }
 }
 function cpuReply(d){
   if (!d) return;
@@ -1813,6 +1816,9 @@ async function resolveClub(fc){
   const upd = (d, o, txt, pub) => { if (txt) pushDeal(d, txt, (o.status || o.stage || 'r') + (o.round || '')); return db.doc('offers/' + d.id).update({...o, ts: t, ...(txt ? {msg: txt, hist: pubH(d, 'cpu', txt, pub)} : {})}); };
   if (!w || takenFc().has(fc)) return Promise.all(tb.map(d => upd(d, {status: 'rejected'}, 'Il giocatore non è più disponibile.', 'Il giocatore non è più disponibile')));
   const {p, c} = w, pr = cpuProfile(c, p), round = Math.max(...tb.map(d => d.round || 1));
+  for (const d of tb) if (d.alt){ const a = d.alt, alt = {...d, fee: a.fee, ltype: a.type, ldur: a.dur || 1, lwage: a.wagePct ?? 100, lbuy: a.buyout || 0}, useAlt = eqFee(alt) > eqFee(d),
+    nd = useAlt ? {fee: alt.fee, ltype: alt.ltype, ldur: alt.ldur, lwage: alt.lwage, lbuy: alt.lbuy, alt: null} : {alt: null}, label = MODE[(useAlt ? alt.ltype : d.ltype) || 'transfer'];
+    Object.assign(d, nd); await db.doc('offers/' + d.id).update({...nd, hist: pubH(d, 'cpu', `${c.name} valuta le due formule e porta avanti: ${label}`, `${c.name} sceglie «${label}» per ${dn(d)}`)}); }
   const ask = Math.max(...tb.map(d => d.ask || 0)) || Math.round(pr.value * pr.mult / 1e5) * 1e5;
   for (const d of tb) if (d.rival){ const f = Math.round(ask * (round > 1 ? 0.97 + WH(d.id + 'r' + round) * 0.15 : 0.88 + WH(d.id + 'f') * 0.3) / 1e5) * 1e5; if (f > (d.fee || 0)) d.fee = f; await db.doc('offers/' + d.id).update({fee: d.fee}); }
   const best = Math.max(...tb.map(d => eqFee(d)));
@@ -2863,6 +2869,36 @@ const wClubStars = c => c.lm ? clubStars(club(c.lm)) : starsOf(xiAvg(c.players))
 const starTxt = n => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') ;
 const starHtml = n => `<span class="stars" title="${String(n).replace('.', ',')} stelle">${starTxt(n)}<span class="sub"> ${String(n).replace('.', ',')}</span></span>`;
 const maxStars = () => S.settings?.maxStars ?? 4.5;
+/* ---------- formula alternativa: chi fa un'offerta può proporre due formule insieme (es. definitivo + prestito); la società che la riceve sceglie quale accettare o portare avanti ---------- */
+function altFields(withWage){
+  return `<div class="f full" data-altwrap><label class="chk"><input type="checkbox" id="altOn" name="altOn"> Proponi anche una formula alternativa</label>
+    <div data-altbox hidden><div class="fgrid">${sel('atype', 'Formula alternativa', Object.entries(LOAN), 'loan', true)}
+      ${fld('afee', 'Prezzo / costo alternativa (milioni €)', 'type="number" min="0" step="0.1" value="0"')}${withWage ? fld('awage', 'Ingaggio alternativa (migliaia €/sett)', 'type="number" min="0" step="0.5" value="0"') : ''}
+      <div class="f" data-ashow="loan"><label for="adur">Durata</label><select id="adur" name="adur"><option value="1">Fino a fine stagione ${season()}</option><option value="2">Fino a fine stagione ${season() + 1}</option></select></div>
+      <div class="f" data-ashow="loan"><label for="apct">Ingaggio pagato da chi riceve (%)</label><input id="apct" name="apct" type="number" min="0" max="100" step="5" value="100"></div>
+      <div class="f full" data-ashow="buyout"><label for="abuy">Prezzo di riscatto (milioni €)</label><input id="abuy" name="abuy" type="number" min="0" step="0.1" value="0"></div></div>
+      <span class="hint">La società che riceve l’offerta valuta le due formule e sceglie quale accettare o portare avanti.</span></div></div>`;
+}
+function wireAlt(f){
+  const on = f.querySelector('#altOn'), box = f.querySelector('[data-altbox]'), t = f.querySelector('#atype'), main = f.querySelector('#ltype'); if (!on || !box || !t) return;
+  const upd = () => { box.hidden = !on.checked; const v = t.value;
+    f.querySelectorAll('[data-ashow="loan"]').forEach(e => e.hidden = !isLoan(v));
+    f.querySelectorAll('[data-ashow="buyout"]').forEach(e => e.hidden = !(v === 'loan-option' || v === 'loan-obligation')); };
+  on.onchange = () => { if (on.checked && main && t.value === main.value) t.value = isLoan(main.value) ? 'transfer' : 'loan'; upd(); };
+  t.onchange = upd; upd();
+}
+function readAlt(fd, withWage){
+  if (!fd.get('altOn')) return null;
+  const type = String(fd.get('atype') || 'loan'), a = {type, fee: Math.max(0, num(fd, 'afee')) * M};
+  if (withWage) a.wage = Math.max(0, num(fd, 'awage')) * K;
+  if (isLoan(type)){ a.dur = Math.round(num(fd, 'adur')) === 2 ? 2 : 1; a.wagePct = Math.max(0, Math.min(100, Math.round(num(fd, 'apct')))); a.buyout = type === 'loan' ? 0 : num(fd, 'abuy') * M;
+    if (type !== 'loan' && !(a.buyout > 0)) fail('Indica il prezzo di riscatto della formula alternativa.'); }
+  return a;
+}
+const altAsMain = o => { const a = o.alt || {}; return {...o, type: a.type, fee: a.fee, wage: a.wage ?? o.wage, dur: a.dur || 1, wagePct: a.wagePct ?? 100, buyout: a.buyout || 0, x: a.x || {}, alt: null}; };
+const altSwap = o => o.altChosen ? {type: o.type, fee: o.fee, wage: o.wage, dur: o.dur || 1, wagePct: o.wagePct ?? 100, buyout: o.buyout || 0, x: o.x || {}, alt: null, chosen: 'alt'} : {};
+const altLine = o => { const a = o.alt; if (!a) return ''; return `<br><span class="sub">In alternativa:</span> <span class="pill info">${esc(MODE[a.type || 'transfer'])}</span> <span class="num">${fmtM(a.fee)}</span>${a.wage != null ? ` · <span class="num">${fmtW(a.wage)}</span>` : ''}${isLoan(a.type) ? ` · <span class="sub">fino a fine stagione ${season() + (a.dur || 1) - 1}${a.buyout ? `, riscatto ${fmtM(a.buyout)}` : ''}${(a.wagePct ?? 100) < 100 ? `, ingaggio al ${a.wagePct}%` : ''}</span>` : ''}`; };
+async function acceptAlt(o){ if (!o?.alt) return acceptOffer(o); return acceptOffer({...altAsMain(o), altChosen: true}); }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
   const seller = club(p.clubId);
@@ -2871,23 +2907,27 @@ function makeOffer(p){
     <div class="fgrid">${fld('fee', 'Prezzo offerto (milioni €)', `type="number" min="0" step="0.1" value="${(p.value || 0) / M}" required`)}${fld('wage', 'Ingaggio proposto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(p.wage || 0) / K}"`)}
     ${fld('note', 'Messaggio (facoltativo)', 'maxlength="120" placeholder="Es. pago subito, niente rilanci"', '', true)}</div>
     ${dealFields(mc)}
+    ${altFields(true)}
     <p class="sub">Il tuo budget: <b class="num">${fmtM(budget(mc))}</b> · budget stipendi libero: <b class="num">${fmtM(((mc.wage0 || 0) - wageUsed(mc.id)) * 52)}</b> a fine stagione</p>`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
-      const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd);
+      const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd), A = readAlt(fd, true);
+      if (A && A.type === L.type) fail('La formula alternativa deve essere diversa da quella principale.');
+      if (A && !A.wage) A.wage = wage;
+      if (A && !isLoan(A.type) && A.fee > budget(mc)) fail('Non hai budget sufficiente per la formula alternativa.');
       if (fee > budget(mc)) fail('Non hai budget sufficiente per questa offerta.');
       mkGuard(mc, p.ovr, fee);
       if (S.offers.some(o => o.status === 'open' && o.playerId === p.id && o.buyerId === mc.id)) fail('Hai già una trattativa aperta per questo giocatore.');
-      await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
-      toast('Offerta inviata');
+      await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), ...(A ? {alt: A} : {}), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
+      toast(A ? 'Offerta inviata con due formule' : 'Offerta inviata');
     }, 'Invia offerta');
-  wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo offerto (milioni €)');
+  wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo offerto (milioni €)'); wireAlt(f);
 }
 function counterOffer(o){
   const f = openModal('Rilancio', loanFields(o) + `<div class="fgrid">${fld('fee', 'Nuovo prezzo (milioni €)', `type="number" min="0" step="0.1" value="${o.fee / M}" required`)}${fld('wage', 'Ingaggio (migliaia €/sett)', `type="number" min="0" step="0.5" value="${o.wage / K}"`)}
     ${fld('note', 'Messaggio', 'maxlength="120"', '', true)}</div>${dealFields(club(o.buyerId), o.x || {}, o.type)}`,
     async fd => { const L = readLoan(fd);
-      await db.doc('offers/' + o.id).update({fee: num(fd, 'fee') * M, wage: num(fd, 'wage') * K, type: L.type, dur: L.dur || 1, wagePct: L.wagePct ?? 100, buyout: L.buyout || 0,
+      await db.doc('offers/' + o.id).update({alt: null, fee: num(fd, 'fee') * M, wage: num(fd, 'wage') * K, type: L.type, dur: L.dur || 1, wagePct: L.wagePct ?? 100, buyout: L.buyout || 0,
         note: String(fd.get('note')).trim(), x: readDeal(fd, club(o.buyerId), isLoan(L.type)), by: o.by === 'buyer' ? 'seller' : 'buyer', ts: now(), actorClub: turnOf(o)}); toast('Rilancio inviato'); }, 'Invia rilancio');
   wireLoan(f, 'Costo del prestito (milioni €)', 'Nuovo prezzo (milioni €)');
 }
@@ -4455,8 +4495,8 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','gen','close-season']);
-const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter']);
+const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','gen','close-season']);
+const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT') return;
@@ -4474,6 +4514,20 @@ document.addEventListener('click', async e => {
       case 'club-edit': clubModal(club(id)); break;
       case 'club-claim': if (!S.me) return authModal(); if (!S.comm && clubStars(club(id)) > maxStars()) return toast(`Si possono scegliere solo squadre fino a ${String(maxStars()).replace('.', ',')} stelle.`, 5000); if (!S.comm){ if (!S.draw?.active) return toast('Le panchine si scelgono solo con il sorteggio: aspetta che il commissario lo avvii.'); const pk = drawPicker(); if (!canPick(S.me)) return toast(pk ? `Non è il tuo turno: tocca a ${S.draw.names?.[pk] || 'un altro manager'}.` : 'Aspetta il sorteggio: il tuo nome non è ancora uscito.'); } await db.doc('clubs/' + id).update({managerId: S.me}); toast('Sei il nuovo allenatore'); break;
       case 'realism': confirmBox('Ricalcola tutto in modo realistico', 'Budget, monte ingaggi, stadio, sponsor e staff medico di tutte le società vengono ricalcolati in base alla rosa. Non chiudere la pagina finché non compare il messaggio finale.', 'Ricalcola', async () => { try { await realismAll(); } catch (e) { toast(e.message || 'Errore'); } }); break;
+      case 'adm-o-force': if (o()) admForce(o()); break;
+      case 'adm-o-edit': if (o()) admEditOffer(o()); break;
+      case 'adm-o-alt': { const x = o(); if (!x?.alt) return; const m = altAsMain(x); await db.doc('offers/' + x.id).update({type: m.type, fee: m.fee, wage: m.wage, dur: m.dur, wagePct: m.wagePct, buyout: m.buyout, x: m.x, alt: null, ts: now()}); toast('Ora la trattativa usa la formula alternativa'); break; }
+      case 'adm-o-del': { const x = o(); if (!x) return; confirmBox('Annulla trattativa', `${esc(x.playerName || 'La trattativa')} viene chiusa senza accordo.`, 'Annulla trattativa', async () => { await db.doc('offers/' + x.id).update({status: 'withdrawn', ts: now(), actorClub: null}); toast('Trattativa annullata'); }); break; }
+      case 'adm-c-del': { const d = (S.cpuDeals || []).find(x => x.id === id); if (!d) return; confirmBox('Annulla trattativa con club CPU', `${esc(d.playerName || '')}: la trattativa viene chiusa.`, 'Annulla trattativa', async () => { await db.doc('offers/' + d.id).update({status: 'rejected', waiting: null, ts: now(), msg: 'Trattativa annullata dal commissario.'}); toast('Trattativa annullata'); }); break; }
+      case 'adm-t-undo': { const t = S.transfers.find(x => x.id === id); if (t) admUndoTransfer(t); break; }
+      case 'adm-t-del': { const t = S.transfers.find(x => x.id === id); if (!t) return; confirmBox('Togli dal registro', `La voce «${esc(t.playerName || '')}» sparisce dal registro. Giocatore e soldi non cambiano.`, 'Togli', async () => { await db.doc('transfers/' + t.id).delete(); toast('Voce tolta'); }); break; }
+      case 'adm-l-back': { const q = p(); if (!q?.loan) return; const ow = club(q.loan.ownerClubId);
+        confirmBox('Fai rientrare dal prestito', `${esc(q.name)} torna ${ow ? 'al ' + esc(ow.name) : 'a ' + esc(q.loan.ownerLabel || 'club CPU') + ' e lascia la rosa'}.`, 'Fai rientrare', async () => {
+          if (ow) await db.doc('players/' + q.id).update({clubId: ow.id, loan: null}); else await db.doc('players/' + q.id).delete();
+          await logTransfer({playerId: q.id, playerName: q.name, fromLabel: club(q.clubId)?.name || q.loan.borrowerLabel || 'Club CPU', toLabel: ow?.name || q.loan.ownerLabel || 'Club CPU', fromClubId: q.clubId || null, toClubId: ow?.id || null, fee: 0, kind: 'return', mode: 'return'}); toast('Prestito terminato'); }); break; }
+      case 'adm-l-keep': { const q = p(); if (!q?.loan) return; confirmBox('Rendi definitivo', `${esc(q.name)} resta a ${esc(club(q.clubId)?.name || 'questa società')} a titolo definitivo, senza movimenti di denaro.`, 'Rendi definitivo', async () => { await db.doc('players/' + q.id).update({loan: null}); toast('Giocatore reso definitivo'); }); break; }
+      case 'adm-club-fix': { const c = club(S.admMkC); if (c) admClubFix(c); else toast('Scegli una società.'); break; }
+      case 'adm-pl-move': admMovePlayer(); break;
       case 'adm-delcal': { const L = lgList().find(l => l.li === +id), d = lgDoc(+id); if (!L || !d) return;
         const pl = d.rounds.filter(r => r.m.some(lgPlayed)).length; confirmBox(`Elimina calendario · ${L.name}`, `${pl ? `<b>Attenzione: ci sono ${pl} giornate con risultati, andranno perse.</b><br>` : ''}Il calendario di ${esc(L.name)} viene eliminato.${lgHumanSet().has(+id) ? ' Lo reinserisci tu a mano.' : ' Senza manager reali il sito lo rigenera da solo.'}`, 'Elimina', async () => { await db.doc('world/' + d.id).delete(); toast('Calendario eliminato'); }); break; }
       case 'adm-move': { const k = S['mv_' + id], c = S.clubs.find(x => x.managerId === id); if (!k) return toast('Scegli la squadra di destinazione.'); const nm = k[0] === 'w' ? WORLD.clubs.find(x => String(x.i) === k.slice(2))?.name : club(k.slice(2))?.name;
@@ -4562,6 +4616,8 @@ document.addEventListener('click', async e => {
       case 'fa-del': confirmBox(`Rimuovi ${p().name}`, 'Il giocatore esce dalla lista svincolati.', 'Rimuovi', async () => { await db.doc('players/' + id).delete(); toast('Svincolato rimosso'); }); break;
       case 'offer-accept': b.disabled = true; await acceptOffer(o()); break;
       case 'offer-counter': counterOffer(o()); break;
+      case 'offer-accept-alt': b.disabled = true; await acceptAlt(o()); break;
+      case 'offer-counter-alt': if (o()?.alt) counterOffer(altAsMain(o())); break;
       case 'offer-reject': await db.doc('offers/' + id).update({status: 'rejected', ts: now(), actorClub: turnOf(o())}); toast('Offerta rifiutata'); break;
       case 'offer-withdraw': await db.doc('offers/' + id).update({status: 'withdrawn', ts: now(), actorClub: starterOf(o())}); toast('Offerta ritirata'); break;
       case 'bell': S.notifOpen = !S.notifOpen; render(); break;
@@ -4696,6 +4752,77 @@ async function cpuMatchTick(){
       try { await creditGate(m); } catch {}
     }
   } finally { cpuSimBusy = false; }
+}
+
+/* ---------- ADMIN: controllo totale del mercato (per risolvere da solo qualsiasi errore) ---------- */
+function adminMarketPanel(){
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+  const offers = S.offers.filter(o => ['open', 'prel'].includes(o.status)).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const cpu = (S.cpuDeals || []).filter(d => d.status === 'open').sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const trs = [...S.transfers].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 15);
+  const loans = S.players.filter(p => p.loan).sort(byName);
+  const clubs = [...S.clubs].sort(byName); if (!S.admMkC && clubs[0]) S.admMkC = clubs[0].id;
+  const cn = id => club(id)?.name || '—';
+  const oRows = offers.map(o => `<div class="li"><div class="main"><b>${esc(o.playerName || S.players.find(x => x.id === o.playerId)?.name || '—')}</b> <span class="muted">${esc(cn(o.sellerId))} → ${esc(cn(o.buyerId))}</span><br><span class="sub">${esc(MODE[o.type || 'transfer'])} · ${fmtM(o.fee)} · ${fmtW(o.wage)} · ${o.status === 'prel' ? 'in attesa di prelazione' : 'in corso'}</span>${altLine(o)}</div>
+    <button class="btn sm good" data-act="adm-o-force" data-id="${o.id}">Concludi</button><button class="btn sm" data-act="adm-o-edit" data-id="${o.id}">Modifica</button>${o.alt ? `<button class="btn sm" data-act="adm-o-alt" data-id="${o.id}">Usa l’alternativa</button>` : ''}<button class="btn sm bad" data-act="adm-o-del" data-id="${o.id}">Annulla</button></div>`).join('');
+  const cRows = cpu.map(d => `<div class="li"><div class="main"><b>${esc(d.playerName || '—')}</b> <span class="muted">${d.dir === 'sell' ? esc((d.cpuClub || 'Club CPU') + ' → ' + cn(d.sellerId)) : esc(cn(d.buyerId) + ' ← ' + (d.cpuClub || 'Club CPU'))}</span><br><span class="sub">${d.dir === 'sell' ? 'Offerta CPU' : 'Trattativa con CPU'} · ${fmtM(d.fee || 0)}${d.stage ? ' · fase ' + esc(d.stage) : ''}</span></div><button class="btn sm bad" data-act="adm-c-del" data-id="${d.id}">Annulla</button></div>`).join('');
+  const tRows = trs.map(t => { const undo = t.toClubId && club(t.toClubId) && (t.fromClubId ? club(t.fromClubId) : true);
+    return `<div class="li"><div class="main"><b>${esc(t.playerName || '—')}</b> <span class="muted">${esc(t.fromLabel || '—')} → ${esc(t.toLabel || '—')}</span><br><span class="sub">${esc(MODE[t.mode || 'transfer'] || t.mode || '')} · ${fmtM(t.fee || 0)}</span></div>${undo ? `<button class="btn sm bad" data-act="adm-t-undo" data-id="${t.id}">Annulla</button>` : ''}<button class="btn sm ghost" data-act="adm-t-del" data-id="${t.id}">Togli dal registro</button></div>`; }).join('');
+  const lRows = loans.map(p => `<div class="li"><div class="main"><b>${esc(p.name)}</b> <span class="muted">${esc(club(p.clubId)?.name || p.loan.borrowerLabel || 'Club CPU')} ← ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'Club CPU')}</span><br><span class="sub">${esc(MODE[p.loan.type || 'loan'])} · fino al ${p.loan.untilSeason}${p.loan.buyout ? ' · riscatto ' + fmtM(p.loan.buyout) : ''}</span></div><button class="btn sm" data-act="adm-l-back" data-id="${p.id}">Fai rientrare</button><button class="btn sm" data-act="adm-l-keep" data-id="${p.id}">Rendi definitivo</button></div>`).join('');
+  return `<div class="panel"><div class="ph"><h3>Mercato · controllo totale</h3><span class="pill ${window_() ? 'good' : 'bad'}">${window_() ? 'Aperto' : 'Chiuso'}</span></div>
+    <p class="sub">Qui puoi risolvere da solo qualsiasi errore: concludere, modificare o annullare trattative, annullare trasferimenti, sistemare prestiti, budget e giocatori.</p>
+    <div class="row"><button class="btn sm ${window_() ? 'bad' : 'good'}" data-act="window">${window_() ? 'Chiudi il mercato' : 'Apri il mercato'}</button></div></div>
+  <div class="panel"><div class="ph"><h3>Trattative tra club (${offers.length})</h3></div><div class="list">${oRows || '<p class="muted">Nessuna trattativa in corso.</p>'}</div></div>
+  <div class="panel"><div class="ph"><h3>Trattative con club CPU (${cpu.length})</h3></div><div class="list">${cRows || '<p class="muted">Nessuna trattativa con club CPU.</p>'}</div></div>
+  <div class="panel"><div class="ph"><h3>Ultimi trasferimenti</h3></div><p class="sub">«Annulla» riporta il giocatore dov’era e rimette a posto i soldi già pagati. «Togli dal registro» cancella solo la voce.</p><div class="list">${tRows || '<p class="muted">Nessun trasferimento registrato.</p>'}</div></div>
+  <div class="panel"><div class="ph"><h3>Prestiti in corso (${loans.length})</h3></div><div class="list">${lRows || '<p class="muted">Nessun prestito in corso.</p>'}</div></div>
+  <div class="panel"><div class="ph"><h3>Strumenti</h3></div>
+    <div class="f full"><label for="admMkC">Società</label><select id="admMkC" data-wf="admMkC">${clubs.map(c => `<option value="${c.id}"${S.admMkC === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="adm-club-fix">Budget e monte ingaggi</button><button class="btn sm" data-act="adm-pl-move">Sposta un giocatore</button></div></div>`;
+}
+async function admForce(o){
+  const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId); let Se = club(o.sellerId);
+  if (!p || !B) return toast('Giocatore o società non trovati: annulla la trattativa.');
+  if (!Se || p.clubId !== Se.id) Se = club(p.clubId) || Se; if (!Se) return toast('La società che cede non esiste più: annulla la trattativa.');
+  confirmBox('Concludi la trattativa', `${esc(p.name)}: ${esc(Se.name)} → ${esc(B.name)} (${esc(MODE[o.type || 'transfer'])}, ${fmtM(o.fee)}). <b>Salta</b> i controlli su budget, ingaggi, rosa, prelazione e mercato chiuso.`, 'Concludi', async () => {
+    await completeDeal({...o, sellerId: Se.id}, B, Se, p); toast('Trattativa conclusa');
+  });
+}
+function admEditOffer(o){
+  const f = openModal(`Modifica trattativa · ${o.playerName || ''}`, `${loanFields(o)}<div class="fgrid">${fld('fee', 'Prezzo (milioni €)', `type="number" min="0" step="0.1" value="${(o.fee || 0) / M}" required`)}${fld('wage', 'Ingaggio (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(o.wage || 0) / K}"`)}
+    ${o.alt ? `<div class="f full"><label class="chk"><input type="checkbox" name="noalt"> Elimina la formula alternativa</label></div>` : ''}</div>`,
+    async fd => { const L = readLoan(fd);
+      await db.doc('offers/' + o.id).update({fee: num(fd, 'fee') * M, wage: num(fd, 'wage') * K, type: L.type, dur: L.dur || 1, wagePct: L.wagePct ?? 100, buyout: L.buyout || 0, ...(fd.get('noalt') ? {alt: null} : {}), ts: now()});
+      toast('Trattativa aggiornata'); }, 'Salva');
+  wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo (milioni €)');
+}
+async function admUndoTransfer(t){
+  const p = S.players.find(x => x.id === t.playerId), from = club(t.fromClubId), to = club(t.toClubId);
+  if (!to) return toast('La società che ha ricevuto il giocatore non esiste più.');
+  const paid = t.rates ? Math.min(t.fee || 0, (t.rates.n - t.rates.left) * t.rates.amt) : (t.fee || 0);
+  confirmBox('Annulla trasferimento', `${esc(t.playerName)} ${from ? `torna al ${esc(from.name)}` : `esce dalla rosa del ${esc(to.name)}`}${paid ? ` e ${fmtM(paid)} tornano a ${esc(to.name)}` : ''}. Tasse, bonus e commissioni già pagati non vengono toccati: rettificali da «Budget e monte ingaggi».`, 'Annulla trasferimento', async () => {
+    if (p){ if (from) await db.doc('players/' + p.id).update({clubId: from.id, loan: null, sellOn: null, buyBack: null, prel: null, bonusDeal: null}); else await db.doc('players/' + p.id).delete(); }
+    if (paid){ await ledger(to.id, paid, `Trasferimento annullato: ${t.playerName}`); if (from) await ledger(from.id, -paid, `Trasferimento annullato: ${t.playerName}`); }
+    await db.doc('transfers/' + t.id).delete(); toast('Trasferimento annullato');
+  });
+}
+function admClubFix(c){
+  openModal(`Budget e monte ingaggi · ${c.name}`, `<p class="sub">Budget attuale: <b>${fmtM(budget(c))}</b> · monte ingaggi: <b>${fmtW(c.wage0 || 0)}</b> (usato ${fmtW(wageUsed(c.id))})</p>
+    <div class="fgrid">${fld('amt', 'Aggiungi o togli budget (milioni €, negativo per togliere)', 'type="number" step="0.1" value="0"', '', true)}${fld('why', 'Motivo', 'maxlength="80" placeholder="Es. Correzione trasferimento"', '', true)}
+    ${fld('w0', 'Monte ingaggi (migliaia €/sett)', `type="number" min="0" step="1" value="${(c.wage0 || 0) / K}"`, '', true)}</div>`,
+    async fd => { const amt = num(fd, 'amt') * M, w0 = num(fd, 'w0') * K, upd = {};
+      if (amt){ const why = String(fd.get('why') || '').trim() || 'Rettifica del commissario'; await ledger(c.id, amt, `Rettifica: ${why}`); }
+      if (w0 !== (c.wage0 || 0)) upd.wage0 = w0; if (Object.keys(upd).length) await db.doc('clubs/' + c.id).update(upd);
+      toast('Società aggiornata'); }, 'Salva');
+}
+function admMovePlayer(){
+  const pl = [...S.players].sort((a, b) => String(a.name).localeCompare(String(b.name))).map(p => [p.id, `${p.name} · ${club(p.clubId)?.name || (p.loan?.borrowerLabel ? p.loan.borrowerLabel + ' (CPU)' : 'svincolato')}`]);
+  const cl = [['', 'Svincolato (nessuna società)'], ...[...S.clubs].sort((a, b) => a.name.localeCompare(b.name)).map(c => [c.id, c.name])];
+  openModal('Sposta un giocatore', `<div class="fgrid">${sel('mpl', 'Giocatore', pl, pl[0]?.[0] || '', true)}${sel('mcl', 'Nuova società', cl, '', true)}
+    <div class="f full"><label class="chk"><input type="checkbox" name="mrm" checked> Togli anche l’eventuale prestito</label></div></div>`,
+    async fd => { const p = S.players.find(x => x.id === fd.get('mpl')), cid = String(fd.get('mcl') || ''); if (!p) fail('Scegli un giocatore.');
+      await db.doc('players/' + p.id).update({clubId: cid || null, ...(fd.get('mrm') ? {loan: null} : {})});
+      toast(`${p.name} spostato${cid ? ' al ' + (club(cid)?.name || '') : ' tra gli svincolati'}`); }, 'Sposta');
 }
 
 /* ---------- boot ---------- */
