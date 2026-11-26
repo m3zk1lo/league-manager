@@ -1105,7 +1105,7 @@ function offerRow(o, mineId){
     ${myTurn && o.alt ? `<div class="sub" style="width:100%">Scegli quale formula accettare o portare avanti:</div><button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm good" data-act="offer-accept-alt" data-id="${o.id}">Accetta: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter-alt" data-id="${o.id}">Rilancia: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta tutto</button>` : ''}
     ${myTurn && !o.alt && o.by === 'buyer' && (swapEval(o)?.gap || 0) > 0 ? `<button class="btn sm" data-act="offer-topup" data-id="${o.id}">Chiedi ${fmtM(swapEval(o).gap)} di conguaglio</button>` : ''}
     ${myTurn && !o.alt ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">${o.x?.swap?.length && !o.fee ? 'Accetta solo lo scambio' : 'Accetta'}</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
-    ${iWait ? `<span class="sub">in attesa di risposta</span><button class="btn sm ghost" data-act="offer-withdraw" data-id="${o.id}">Ritira</button>` : ''}</div></div>`;
+    ${iWait ? `<span class="sub">in attesa di risposta${Se?.managerId ? ' di ' + esc(mgrName(Se)) : ''}</span><button class="btn sm ghost" data-act="offer-withdraw" data-id="${o.id}">Ritira</button>` : ''}</div></div>`;
 }
 function viewMarket(){
   const mc = myClub(), mid = mc?.id;
@@ -2258,6 +2258,16 @@ function cpuTick(){
   cpuDeals().filter(d => d.status === 'open' && d.dir === 'sell' && d.waiting === 'user' && (d.respondAt || 0) <= now() && !cpuBusy.has('x' + d.id)).forEach(d => { cpuBusy.add('x' + d.id); db.doc('offers/' + d.id).update({status: 'expired', waiting: null, msg: 'Offerta scaduta senza risposta.'}); });
   if (CPU_CAN_START && !cpuBusy.has('gen' + Math.floor(now() / 864e5))){ cpuBusy.add('gen' + Math.floor(now() / 864e5)); cpuGenerate().catch(() => {}); }
 }
+/* club senza manager: rispondono da soli alle offerte con scambio (conguaglio se non basta, accettano se basta) */
+const autoSw = new Set();
+setInterval(async () => { try {
+  if (!S.me || !db || !S.loaded?.players || !window_()) return;
+  for (const o of S.offers.filter(x => x.status === 'open' && x.by === 'buyer' && !x.alt && x.x?.swap?.length && !autoSw.has(x.id + ':' + x.ts))){
+    const Se = club(o.sellerId); if (!Se || Se.managerId || !canManage(o.buyerId)) continue;
+    const ev = swapEval(o); if (!ev) continue; autoSw.add(o.id + ':' + o.ts);
+    if (ev.gap > 0) await db.doc('offers/' + o.id).update({fee: (o.fee || 0) + ev.gap, by: 'seller', ts: now(), actorClub: Se.id, note: `${Se.name}: lo scambio non basta, servono ${fmtM(ev.gap)} di conguaglio`});
+    else await acceptOffer(o);
+  } } catch {} }, 4000);
 setInterval(() => { try { if (S.cpuDeals && S.cpuDeals.some(d => d.status === 'open' && (d.dir === 'sell' ? d.respondAt : endOf(d)) <= now())) schedule(); } catch {} }, 5000);
 async function cpuResolve(d){
   const t = now(), H = (who, txt) => [...(d.hist || []), {who, t: txt, ts: t}], ref = db.doc('offers/' + d.id);
