@@ -5202,13 +5202,22 @@ function admClubFix(c){
       toast('Società aggiornata'); }, 'Salva');
 }
 function admMovePlayer(pid){
-  const pl = [...S.players].sort((a, b) => String(a.name).localeCompare(String(b.name))).map(p => [p.id, `${p.name} · ${club(p.clubId)?.name || (p.loan?.borrowerLabel ? p.loan.borrowerLabel + ' (CPU)' : 'svincolato')}`]);
+  const where = p => club(p.clubId)?.name || (p.loan?.borrowerLabel ? p.loan.borrowerLabel + ' (CPU)' : 'svincolato');
+  const all = [...S.players].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const one = pid ? S.players.find(x => x.id === pid) : null;
   const cl = [['', 'Svincolato (nessuna società)'], ...[...S.clubs].sort((a, b) => a.name.localeCompare(b.name)).map(c => [c.id, c.name])];
-  openModal('Sposta un giocatore', `<div class="fgrid">${sel('mpl', 'Giocatore', pl, pid || pl[0]?.[0] || '', true)}${sel('mcl', 'Nuova società', cl, '', true)}
+  /* con un giocatore già scelto niente lista enorme (su iPhone non si apriva): nome fisso. Senza: ricerca + max 60 risultati */
+  const plField = one
+    ? `<div class="f full"><label>Giocatore</label><div><b>${esc(one.name)}</b> <span class="sub">· ${esc(where(one))}</span></div><input type="hidden" name="mpl" value="${esc(one.id)}"></div>`
+    : `<div class="f full"><label for="mq">Cerca giocatore</label><input id="mq" type="search" placeholder="Es. Leão" autocomplete="off"></div><div class="f full"><label for="mpl">Giocatore</label><select id="mpl" name="mpl"><option value="">Scrivi il nome qui sopra…</option></select></div>`;
+  const f = openModal('Sposta un giocatore', `<div class="fgrid">${plField}${sel('mcl', 'Nuova società', cl, '', true)}
     <div class="f full"><label class="chk"><input type="checkbox" name="mrm" checked> Togli anche l’eventuale prestito</label></div></div>`,
     async fd => { const p = S.players.find(x => x.id === fd.get('mpl')), cid = String(fd.get('mcl') || ''); if (!p) fail('Scegli un giocatore.');
       await db.doc('players/' + p.id).update({clubId: cid || null, ...(fd.get('mrm') ? {loan: null} : {})});
       toast(`${p.name} spostato${cid ? ' al ' + (club(cid)?.name || '') : ' tra gli svincolati'}`); }, 'Sposta');
+  if (!one){ const q = f.querySelector('#mq'), sl = f.querySelector('#mpl');
+    q.addEventListener('input', () => { const k = normKey(q.value), r = k ? all.filter(x => normKey(x.name).includes(k)).slice(0, 60) : [];
+      sl.innerHTML = r.length ? r.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(where(x))}</option>`).join('') : '<option value="">Nessun risultato</option>'; }); }
 }
 
 /* ======================= AREA ADMIN UNICA: tutto il sito si gestisce da qui ======================= */
