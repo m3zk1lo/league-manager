@@ -566,8 +566,53 @@ const ofrSave = d => wsave(`OFR-S${season()}`, {season: season(), list: d.list |
 /* ---------- POSTA: a fine stagione le società CPU che vanno male esonerano l’allenatore e scrivono ai manager che hanno fatto meglio ---------- */
 const mailDoc = uid => (S.world || []).find(d => d.id === 'MAIL-' + uid) || {list: []};
 const mailSave = (uid, d) => wsave('MAIL-' + uid, {list: d.list || []});
-const mailDead = m => season() !== m.forSeason || seasonMatches().some(x => x.played && !x.pre);
+const mailDead = m => m.kind ? false : season() !== m.forSeason || seasonMatches().some(x => x.played && !x.pre);
 const mailUnread = () => S.me ? (mailDoc(S.me).list || []).filter(m => !m.read).length : 0;
+
+/* mail dei giocatori: arrivano in qualsiasi momento (scontento, vuole giocare, chiede un aumento) */
+const plState = m => { const p = S.players.find(x => x.id === m.pid); if (!p || p.clubId !== m.cid) return ['Non più in rosa', 'neutral', false];
+  if (m.season !== season()) return ['Chiusa', 'neutral', false];
+  const ok = m.req === 'raise' ? (p.wage || 0) > (m.wage0 || 0) : (m.req === 'sale' || m.req === 'loan') ? (p.listed || !p.req) : (p.promiseUntil || 0) > playedOf(club(m.cid)) || moraleOf(p) >= 55;
+  return ok ? ['Risolta', 'good', false] : ['Da rispondere', 'warn', true]; };
+function playerMailText(kind, p, c, x){ const nm = p.name, wage = fmtW(p.wage || 0);
+  return {
+    sale: [`${nm} chiede di essere ceduto`, `Mister,\n\nle scrivo con rispetto ma con sincerità: con lo spazio che ho avuto non vedo più un futuro al ${c.name}. Le chiedo di valutare la mia cessione.\n\nGrazie per la comprensione.\n${nm}`],
+    loan: [`${nm} chiede un prestito`, `Mister,\n\nho bisogno di giocare con continuità per crescere. Le chiedo di mandarmi in prestito in una squadra dove possa avere minutaggio: poi tornerò più forte.\n\n${nm}`],
+    raise: [`${nm} chiede un adeguamento`, `Mister,\n\nsento di valere più di quanto il mio contratto riconosca (oggi ${wage} a settimana). Le chiedo di adeguare il mio ingaggio.\n\n${nm}`],
+    raise_m: [`${nm} chiede un aumento`, `Mister,\n\nin queste settimane sto dando il massimo: ${x.starts} partite da titolare nelle ultime ${x.n}, ${x.g} gol e ${x.a} assist. Intanto in squadra c’è chi guadagna più di me rendendo meno. Con il mio ingaggio attuale (${wage} a settimana) non mi sento valorizzato: le chiedo un adeguamento del contratto.\n\n${nm}`],
+    play: [`${nm} vuole giocare`, `Mister,\n\nda ${x.n} partite non vengo nemmeno schierato. Non è quello che mi aspettavo: ho bisogno di spazio. Mi dia una possibilità, altrimenti dovrò valutare altre strade.\n\n${nm}`],
+    unhappy: [`${nm} non è sereno`, `Mister,\n\nvoglio essere onesto: in questo periodo non sono sereno. Sento di contare poco nel progetto e questo pesa sul mio rendimento. Mi piacerebbe parlarne con lei.\n\n${nm}`]
+  }[kind]; }
+const recentPlMail = (uid, pid, req, lastR) => (mailDoc(uid).list || []).some(m => m.kind === 'player' && m.pid === pid && m.req === req && m.season === season() && lastR - (m.round || 0) < 6);
+function playerMail(o){ const {p, c, kind, lastR, x} = o, [subject, body] = playerMailText(kind, p, c, x);
+  return {id: 'm' + now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'player', req: kind === 'raise_m' ? 'raise' : kind, pid: p.id, cid: c.id, club: c.name, from: p.name, ts: now(), read: false, st: 'open', season: season(), round: lastR, wage0: p.wage || 0, subject, body}; }
+
+/* il procuratore di un giocatore scontento (o fuori dai piani) lo propone SOLO ai club allenati da manager reali */
+const agState = m => { const mid = myClub()?.id;
+  if (m.season !== season()) return ['Chiusa', 'neutral', false];
+  if (m.st === 'no') return ['Rifiutata', 'neutral', false];
+  const started = m.cpu ? cpuDeals().some(d => d.fcId === m.key && d.buyerId === mid) : S.offers.some(o => o.playerId === m.pid && o.buyerId === mid);
+  if (started) return ['Trattativa avviata', 'good', false];
+  const there = m.cpu ? (() => { const w = wPlayer(m.key); return !!w && w.c.name === m.club && wAvailable(w.c).some(x => x.fc === m.key); })() : S.players.find(x => x.id === m.pid)?.clubId === m.cid;
+  return there ? ['Da valutare', 'warn', true] : ['Non più disponibile', 'neutral', false]; };
+async function agentMailRun(lastR){
+  const humans = S.clubs.filter(c => c.managerId); if (!humans.length) return;
+  loadWorld(); const rk = season() + '-' + lastR, pool = [];
+  if (WORLD && !WORLD.err) allClubs().filter(c => !c.free && WH('agc' + c.i + rk) < 0.2).forEach(c => wAvailable(c).forEach(p => { if (p.inj) return; const pr = cpuProfile(c, p);
+    if (pr.unhappy) pool.push({cpu: true, key: p.fc, pname: p.name, pos: p.pos, age: p.age, ovr: p.ovr, club: c.name, cid: null, value: pr.value, agency: pr.agency.name}); }));
+  S.players.filter(p => p.clubId && (p.req === 'sale' || p.req === 'loan') && club(p.clubId)?.managerId).forEach(p => pool.push({cpu: false, key: 'p:' + p.id, pid: p.id, pname: p.name, pos: p.pos, age: ageOf(p), ovr: p.ovr || 0, club: club(p.clubId).name, cid: p.clubId, value: autoValue(p.ovr || 0, ageOf(p)), agency: AGENCIES[Math.floor(WH('ag' + p.id) * AGENCIES.length)][0]}));
+  if (!pool.length) return;
+  for (const mc of humans){ const uid = mc.managerId, d = JSON.parse(JSON.stringify(mailDoc(uid))); d.list ||= [];
+    if (d.list.filter(m => m.kind === 'agent' && m.st === 'open' && m.season === season()).length >= 2) continue;
+    const top = roster(mc.id).filter(p => !p.loan).map(p => p.ovr || 0).sort((a, b) => b - a).slice(0, 16), avg = top.length ? top.reduce((a, b) => a + b, 0) / top.length : 0, bud = budget(mc);
+    const c = pool.filter(x => x.cid !== mc.id && x.club !== mc.name && x.ovr >= avg - 1 && x.age <= 34 && x.value <= bud * 0.7 && !d.list.some(m => m.kind === 'agent' && m.key === x.key && m.season === season())).sort((a, b) => b.ovr - a.ovr)[0];
+    if (!c) continue;
+    const nm = S.profiles[uid]?.name || 'mister', subject = `${c.pname} cerca una nuova squadra`;
+    const body = `Gentile ${nm},\n\nsono il procuratore di ${c.pname} (${c.pos}, ${c.age} anni, OVR ${c.ovr}), oggi al ${c.club}. Il ragazzo non trova spazio e non è sereno: stiamo cercando una nuova sistemazione e abbiamo pensato al ${mc.name}, dove potrebbe essere protagonista.\n\nIl suo valore di mercato è intorno a ${fmtM(c.value)}. Se la cosa le interessa, posso farle sentire subito il club e avviare la trattativa.\n\nCordiali saluti,\n${c.agency}`;
+    d.list.push({id: 'm' + now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'agent', key: c.key, cpu: c.cpu, pid: c.pid || null, cid: c.cid, club: c.club, pname: c.pname, agency: c.agency, from: c.agency, ts: now(), read: false, st: 'open', season: season(), round: lastR, subject, body});
+    await mailSave(uid, d);
+    try { pushSend([uid], '✉️ ' + subject, `Proposta del procuratore: ${c.pname} (OVR ${c.ovr}) per il ${mc.name}.`, './#posta', 'ag-' + uid + '-' + c.key + '-' + season()); } catch {} }
+}
 const COACH_FN = ['Marco', 'Luca', 'Andrea', 'Stefano', 'Davide', 'Fabio', 'Roberto', 'Simone', 'Matteo', 'Claudio', 'Paolo', 'Giorgio', 'Nicola', 'Massimo', 'Enrico', 'Gianluca'];
 const COACH_LN = ['Rinaldi', 'Ferrante', 'Bellandi', 'Moretti', 'Carbone', 'Sartori', 'Villani', 'Gentile', 'Marchetti', 'Orsini', 'Fontana', 'Rossetti', 'Leone', 'Pellegrini', 'Cattaneo', 'Donati', 'Salvi', 'Brambilla'];
 const inventCoach = seed => `${COACH_FN[Math.floor(WH(seed + 'f') * COACH_FN.length)]} ${COACH_LN[Math.floor(WH(seed + 'l') * COACH_LN.length)]}`;
@@ -611,7 +656,7 @@ async function applySeasonEndMail(plan, s, fs){
 /* quando le proposte sono chiuse (rifiutate, scadute o prese da altri) la società sceglie un allenatore CPU */
 let vacBusy = false;
 async function vacTick(){ if (!S.comm || vacBusy || !S.loaded.clubs || !S.loaded.world) return;
-  const open = new Set((S.world || []).filter(d => String(d.id).startsWith('MAIL-')).flatMap(d => d.list || []).filter(m => m.st === 'open' && !mailDead(m)).map(m => m.key));
+  const open = new Set((S.world || []).filter(d => String(d.id).startsWith('MAIL-')).flatMap(d => d.list || []).filter(m => !m.kind && m.st === 'open' && !mailDead(m)).map(m => m.key));
   const todo = S.clubs.filter(c => !c.managerId && !c.coach && c.vacant && !open.has('s:' + c.id) && now() - (c.sackedTs || 0) > 60000);
   const od = ofrDoc(), wv = WORLD && !WORLD.err && now() - (od.updated || 0) > 60000 ? (od.sacked || []).filter(n => { const wc = WORLD.clubs.find(c => c.name === n); return wc && !open.has('w:' + wc.i); }) : [];
   if (!todo.length && !wv.length) return; vacBusy = true;
@@ -621,13 +666,13 @@ async function vacTick(){ if (!S.comm || vacBusy || !S.loaded.clubs || !S.loaded
 function viewPosta(){
   if (!S.me) return panelEmpty('Posta', 'Accedi per leggere le tue mail.');
   const list = (mailDoc(S.me).list || []).slice().sort((a, b) => b.ts - a.ts), un = list.filter(m => !m.read).length;
-  const stl = m => m.st === 'yes' ? ['Accettata', 'good'] : m.st === 'no' ? ['Rifiutata', 'neutral'] : m.st === 'void' ? ['Decaduta', 'neutral'] : mailDead(m) ? ['Scaduta', 'neutral'] : ['Da rispondere', 'warn'];
+  const stl = m => m.kind === 'player' ? plState(m) : m.kind === 'agent' ? agState(m) : m.st === 'yes' ? ['Accettata', 'good', false] : m.st === 'no' ? ['Rifiutata', 'neutral', false] : m.st === 'void' ? ['Decaduta', 'neutral', false] : mailDead(m) ? ['Scaduta', 'neutral', false] : ['Da rispondere', 'warn', true];
   return `<div class="panel"><div class="ph"><h2>Posta</h2><span class="sub">${un ? un + ' da leggere' : list.length ? 'Tutto letto' : ''}</span></div>
-    <p class="sub">A fine stagione le società CPU che vanno male esonerano l’allenatore e scrivono ai manager che hanno fatto meglio. Le proposte valgono fino all’inizio del campionato.</p>
-    ${list.length ? `<div class="list">${list.map(m => { const [t, c] = stl(m), op = S.mailOpen === m.id, live = m.st === 'open' && !mailDead(m);
+    <p class="sub">Qui ti scrivono i tuoi giocatori (scontenti, che vogliono giocare o chiedono un aumento) e i procuratori di chi cerca squadra, quando capita durante la stagione. A fine stagione arrivano anche le proposte delle società CPU che esonerano l’allenatore: valgono fino all’inizio del campionato.</p>
+    ${list.length ? `<div class="list">${list.map(m => { const [t, c, live] = stl(m), op = S.mailOpen === m.id;
       return `<div><button type="button" class="li" data-act="mail-open" data-id="${m.id}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${m.read ? '' : '● '}${esc(m.subject)}</b><br><span class="sub">${esc(m.from)} · ${day(m.ts)}</span></div><span class="pill ${c}">${t}</span></button>
-        ${op ? `<div style="padding:4px 4px 12px;white-space:pre-line">${esc(m.body)}</div>${live ? `<div class="row" style="padding-bottom:12px"><button class="btn sm good" data-act="mail-ok" data-id="${m.id}">Accetta l’incarico</button><button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Rifiuta</button></div>` : ''}` : ''}</div>`; }).join('')}</div>`
-      : '<div class="empty"><strong>Nessuna mail</strong><span>Per ora nessuna società ti ha scritto.</span></div>'}</div>`;
+        ${op ? `<div style="padding:4px 4px 12px;white-space:pre-line">${esc(m.body)}</div>${live ? (m.kind === 'player' ? `<div class="row" style="padding-bottom:12px"><button class="btn sm good" data-act="mail-pl" data-id="${m.pid}">Rispondi al giocatore</button></div>` : m.kind === 'agent' ? `<div class="row" style="padding-bottom:12px">${window_() ? `<button class="btn sm good" data-act="mail-ag" data-id="${m.id}">Avvia la trattativa</button>` : '<span class="sub">Mercato chiuso: potrai trattare quando riapre.</span>'}<button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Non mi interessa</button></div>` : `<div class="row" style="padding-bottom:12px"><button class="btn sm good" data-act="mail-ok" data-id="${m.id}">Accetta l’incarico</button><button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Rifiuta</button></div>`) : ''}` : ''}</div>`; }).join('')}</div>`
+      : '<div class="empty"><strong>Nessuna mail</strong><span>Per ora nessuno ti ha scritto.</span></div>'}</div>`;
 }
 const admMailPanel = () => admPanel('Posta di fine stagione', `<p class="sub">Quando chiudi la stagione le ultime classificate CPU esonerano l’allenatore e scrivono ai manager che hanno fatto meglio. Qui vedi l’anteprima sulla classifica di adesso, senza inviare nulla.</p><div class="row">${admBtn('mail-prev', null, 'Anteprima proposte')}</div>`);
 function bestManager(skipId){ const sc = new Map(), put = (c, v) => { if (c.managerId && c.id !== skipId) sc.set(c.managerId, {id: c.managerId, cid: c.id, v}); };
@@ -725,7 +770,7 @@ function notifs(){
   const mc = myClub(); if (!mc) return [];
   const items = [], cn = id => club(id)?.name || 'un club';
   S.offers.filter(o => isMyNotif(o, mc.id)).forEach(o => items.push({key: `o:${o.id}:${o.ts}:${o.status}`, ts: o.ts || 0, text: notifText(o, mc.id)}));
-  (mailDoc(S.me).list || []).forEach(m => items.push({key: `m:${m.id}`, ts: m.ts || 0, text: `✉️ ${m.from}: ${m.subject}`}));
+  (mailDoc(S.me).list || []).forEach(m => items.push({key: `m:${m.id}`, ts: m.ts || 0, text: m.kind ? `✉️ ${m.subject}` : `✉️ ${m.from}: ${m.subject}`}));
   /* offerte dei club CPU per i giocatori della mia rosa */
   (S.cpuDeals || []).filter(d => d.dir === 'sell' && d.sellerId === mc.id).forEach(d => {
     const pn = d.playerName || 'un giocatore', cp = d.cpuClub || 'Un club', loan = d.loan || isLoan(d.type);
@@ -2716,7 +2761,7 @@ async function moraleTick(){
   const done = S.settings.moraleDone || {}, todo = seasonMatches().filter(m => m.played && !m.pre && !done[m.id]); if (!todo.length) return;
   moraleBusy = true;
   try {
-    const news = [], cur = new Map();
+    const news = [], cur = new Map(), outbox = [], PS = pstats('season');
     for (const m of todo.sort((a, b) => a.round - b.round)) for (const cid of [m.homeId, m.awayId]){
       const c = club(cid); if (!c?.managerId) continue;
       const L = lineupOf(m.id, cid), xi = new Set(L?.xi || []), ins = new Set((L?.subs || []).map(x => x.in)), lastR = playedOf(c);
@@ -2732,11 +2777,22 @@ async function moraleTick(){
         if (v < 25 && !p.req){ upd.req = young ? 'loan' : ['fond', 'imp'].includes(r) && !p.raiseAsked ? 'raise' : 'sale'; if (upd.req === 'raise') upd.raiseAsked = true; news.push(upd.req === 'loan' ? `🔁 ${p.name} (${c.name}) chiede di andare in prestito` : upd.req === 'sale' ? `✈️ ${p.name} (${c.name}) chiede di essere ceduto` : `💰 ${p.name} (${c.name}) chiede la rivalutazione`); }
         else if (v < 15 && p.req === 'raise'){ upd.req = 'sale'; news.push(`✈️ ${p.name} (${c.name}) ora chiede di essere ceduto`); }
         else if (v >= 50 && p.req){ upd.req = null; }
-        if (upd.req && upd.req !== p.req) pushSend([c.managerId], `😠 ${p.name}`, {loan: 'Chiede di andare a giocare in prestito.', sale: 'Chiede di essere ceduto.', raise: 'Chiede la rivalutazione: vuole un aumento.'}[upd.req], './#societa', `mor-${p.id}-${upd.req}-${season()}`);
+        let mk = null; const h = upd.mHist, starts = h.filter(z => z === 2).length;
+        if (upd.req && upd.req !== p.req) mk = upd.req;
+        else if (!p.req){
+          if (exp >= 0.4 && h.length >= 4 && h.slice(-4).every(z => z === 0) && v < 55) mk = 'play';
+          else if (v0 >= 40 && v < 40) mk = 'unhappy';
+          else if (h.length >= 8 && starts >= 7 && v >= 60 && p.raiseMailSeason !== season() && roster(cid).some(z => z.id !== p.id && !z.loan && (z.ovr || 0) <= (p.ovr || 0) && (z.wage || 0) > (p.wage || 0) * 1.15)){ mk = 'raise_m'; upd.raiseMailSeason = season(); } }
+        if (mk && !outbox.some(o => o.p.id === p.id) && !(['play', 'unhappy', 'raise_m'].includes(mk) && recentPlMail(c.managerId, p.id, mk === 'raise_m' ? 'raise' : mk, lastR)))
+          outbox.push({uid: c.managerId, c, p: {...p, ...upd}, kind: mk, lastR, x: {n: mk === 'play' ? 4 : h.length, starts, g: PS[p.id]?.g || 0, a: PS[p.id]?.a || 0}});
         cur.set(p.id, {...(cur.get(p.id) || {}), ...upd});
       }
     }
     for (const [id, upd] of cur) await db.doc('players/' + id).update(upd);
+    const by = {}; outbox.forEach(o => (by[o.uid] ||= []).push(o));
+    for (const [uid, arr] of Object.entries(by)){ const d = JSON.parse(JSON.stringify(mailDoc(uid))); d.list ||= []; const ms = arr.map(playerMail); d.list.push(...ms); await mailSave(uid, d);
+      ms.forEach(m => { try { pushSend([uid], '✉️ ' + m.subject, m.body.split('\n').filter(Boolean)[1] || m.subject, './#posta', 'pm-' + m.id); } catch {} }); }
+    try { await agentMailRun(Math.max(0, ...todo.map(m => m.round || 0))); } catch {}
     const nd = {...done}; todo.forEach(m => nd[m.id] = now());
     await db.doc('league/settings').update({moraleDone: nd});
     if (news.length) toast(news.slice(0, 3).join(' · '), 7000);
@@ -4654,6 +4710,9 @@ document.addEventListener('click', async e => {
         if (act === 'ofr-no'){ o.st = 'no'; await ofrSave(d); return toast('Offerta rifiutata'); }
         if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
+      case 'mail-pl': moraleModal(id); break;
+      case 'mail-ag': { const m = (mailDoc(S.me).list || []).find(x => x.id === id); if (!m) return; if (!window_()) return toast('Il mercato è chiuso.');
+        if (m.cpu) wOffer(m.key); else { const pl = S.players.find(x => x.id === m.pid); if (!pl || pl.clubId !== m.cid) return toast('Il giocatore non è più disponibile.'); makeOffer(pl); } break; }
       case 'mail-open': { S.mailOpen = S.mailOpen === id ? null : id; const d = JSON.parse(JSON.stringify(mailDoc(S.me))), m = (d.list || []).find(x => x.id === id); if (m && !m.read){ m.read = true; try { await mailSave(S.me, d); } catch {} } schedule(); break; }
       case 'mail-no': case 'mail-ok': { const d = JSON.parse(JSON.stringify(mailDoc(S.me))), m = (d.list || []).find(x => x.id === id); if (!m || m.st !== 'open') return;
         if (act === 'mail-no'){ m.st = 'no'; await mailSave(S.me, d); return toast('Proposta rifiutata'); }
