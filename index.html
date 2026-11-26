@@ -1468,15 +1468,37 @@ function newsItems(){
 }
 const newsWhen = ts => { const d = now() - ts; if (d < 6e4) return 'ora'; if (d < 36e5) return Math.floor(d / 6e4) + ' min fa'; if (d < 864e5) return Math.floor(d / 36e5) + ' h fa';
   return new Date(ts).toLocaleDateString('it-IT', {day: 'numeric', month: 'short'}); };
+/* notizie: filtro per squadra */
+const newsNorm = x => String(x || '').replace(/[łŁ]/g, 'l').replace(/[øØ]/g, 'o').replace(/[đĐ]/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const newsPlain = h => String(h || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+function newsClubNames(){
+  const mine = [...new Set(S.clubs.map(c => c.name))].sort((a, b) => a.localeCompare(b));
+  let world = []; try { world = allClubs().map(c => c.name); } catch {}
+  return {mine, other: [...new Set(world.filter(n => !mine.includes(n)))].sort((a, b) => a.localeCompare(b))};
+}
+function newsAbout(x, club, known){
+  const c = ' ' + newsNorm(club) + ' '; let t = ' ' + newsNorm(newsPlain(x.html)) + ' ';
+  known.filter(n => n !== club && newsNorm(n).includes(newsNorm(club))).sort((a, b) => b.length - a.length).forEach(n => { const nn = ' ' + newsNorm(n) + ' '; while (t.includes(nn)) t = t.replace(nn, ' # '); });
+  return t.includes(c);
+}
+function newsFiltered(){
+  const club = S.newsClub || '', all = newsItems(); if (!club) return all;
+  const nm = newsClubNames(), known = [...nm.mine, ...nm.other]; return all.filter(x => newsAbout(x, club, known));
+}
 function newsPanel(max, title){
-  const it = newsItems().slice(0, max || 12);
-  return `<div class="panel"><div class="ph"><h3>${title || 'Notizie di mercato'}</h3>${S.comm && it.length ? '<button class="btn sm" data-act="news-copy">Copia per WhatsApp</button>' : ''}</div>
-    ${it.length ? `<div class="list">${it.map(x => `<div class="li"><div class="main" style="display:flex;gap:10px;align-items:flex-start"><span aria-hidden="true" style="font-size:1.2rem;line-height:1.3">${x.ic}</span><span>${x.html}${x.live ? ' <span class="pill">IN CORSO</span>' : ''}</span></div><span class="sub" style="white-space:nowrap">${newsWhen(x.ts)}</span></div>`).join('')}</div>`
-      : '<p class="muted">Ancora nessuna notizia: appena parte una trattativa o un’asta compare qui.</p>'}</div>`;
+  const full = !title, club = full ? (S.newsClub || '') : '', all = full ? newsFiltered() : newsItems();
+  const lim = club ? 300 : (full ? (S.newsN || max || 12) : (max || 12)), it = all.slice(0, lim);
+  let filter = '';
+  if (full){ const nm = newsClubNames(), opt = n => `<option value="${esc(n)}"${n === club ? ' selected' : ''}>${esc(n)}</option>`;
+    filter = `<div class="f full" style="margin:8px 0"><label for="newsClub">Notizie per squadra</label><select id="newsClub" data-wf="newsClub"><option value="">Tutte le squadre</option>${nm.mine.length ? `<optgroup label="Le nostre squadre">${nm.mine.map(opt).join('')}</optgroup>` : ''}${nm.other.length ? `<optgroup label="Altri club del Mondo">${nm.other.map(opt).join('')}</optgroup>` : ''}</select></div>`; }
+  const more = full && !club && all.length > lim ? `<div class="row" style="margin-top:10px"><button type="button" class="btn sm" data-act="news-more">Mostra altre notizie</button><button type="button" class="btn sm ghost" data-act="news-all">Mostra tutte (${all.length})</button></div>` : '';
+  return `<div class="panel"><div class="ph"><h3>${title || 'Notizie di mercato'}${club ? ` · ${esc(club)}` : ''}</h3>${S.comm && it.length ? '<button class="btn sm" data-act="news-copy">Copia per WhatsApp</button>' : ''}</div>${filter}
+    ${it.length ? `<div class="list">${it.map(x => `<div class="li"><div class="main" style="display:flex;gap:10px;align-items:flex-start"><span aria-hidden="true" style="font-size:1.2rem;line-height:1.3">${x.ic}</span><span>${x.html}${x.live ? ' <span class="pill">IN CORSO</span>' : ''}</span></div><span class="sub" style="white-space:nowrap">${newsWhen(x.ts)}</span></div>`).join('')}</div>${more}`
+      : club ? '<p class="muted">Nessuna notizia per questa squadra.</p>' : '<p class="muted">Ancora nessuna notizia: appena parte una trattativa o un’asta compare qui.</p>'}</div>`;
 }
 async function newsCopy(){
   const strip = h => h.replace(/<b>(.*?)<\/b>/g, '*$1*').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-  const txt = '📰 *NOTIZIE DI MERCATO · LEAGUE MANAGER*\n\n' + newsItems().slice(0, 15).map(x => `${x.ic} ${strip(x.html)}${x.live ? ' _(in corso)_' : ''}`).join('\n') + '\n\n👉 manager.ivpl.it';
+  const txt = `📰 *NOTIZIE DI MERCATO${S.newsClub ? ' · ' + S.newsClub.toUpperCase() : ''} · LEAGUE MANAGER*\n\n` + newsFiltered().slice(0, 15).map(x => `${x.ic} ${strip(x.html)}${x.live ? ' _(in corso)_' : ''}`).join('\n') + '\n\n👉 manager.ivpl.it';
   try { await navigator.clipboard.writeText(txt); toast('Notizie copiate: incollale su WhatsApp'); } catch { openModal('Notizie da copiare', `<textarea style="width:100%;min-height:50vh" readonly>${esc(txt)}</textarea>`, async () => {}, 'Chiudi'); }
 }
 /* ---------- modalità di mercato reali ---------- */
@@ -4849,6 +4871,8 @@ document.addEventListener('click', async e => {
         async fd => { const a = num(fd, 'amt') * M || fail('Inserisci un importo.'); await ledger(id, a, String(fd.get('why')).trim() || 'Rettifica del commissario'); toast('Budget aggiornato'); }); break; }
       case 'mkt-edit': mkModal(); break;
       case 'news-copy': newsCopy(); break;
+      case 'news-more': S.newsN = (S.newsN || 10) + 30; schedule(); break;
+      case 'news-all': S.newsN = 99999; schedule(); break;
       case 'mkt-start': mkStart(); break;
       case 'window': { const op = !window_(); await db.doc('league/settings').update({windowOpen: op}); toast(op ? 'Mercato aperto' : 'Mercato chiuso'); pushSend('all', op ? '🟢 Mercato aperto' : '🔴 Mercato chiuso', op ? 'La sessione di mercato è aperta: entra nel Mondo e tratta!' : 'La sessione di mercato è chiusa.', './#mondo', 'mkt-' + now()); break; }
       case 'export': exportSQL(); break;
