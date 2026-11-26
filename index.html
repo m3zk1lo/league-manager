@@ -4645,7 +4645,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['mkt-fc27','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4710,6 +4710,7 @@ document.addEventListener('click', async e => {
         if (act === 'ofr-no'){ o.st = 'no'; await ofrSave(d); return toast('Offerta rifiutata'); }
         if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
+      case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'mkt-undo-all': undoMarketModal(); break;
       case 'mail-pl': moraleModal(id); break;
       case 'mail-ag': { const m = (mailDoc(S.me).list || []).find(x => x.id === id); if (!m) return; if (!window_()) return toast('Il mercato è chiuso.');
@@ -5022,6 +5023,46 @@ function undoMarketModal(){
       Object.keys(listeners).forEach(reload); toast('Mercato annullato', 5000);
     }, 'Annulla tutto il mercato', true);
 }
+
+/* ---------- ripristina le rose iniziali dal database FC 27 (fc27.json) ---------- */
+async function fc27RestorePlan(){
+  const res = await fetch('fc27.json').then(r => { if (!r.ok) throw 0; return r.json(); }), byName = new Map(), map = new Map(), unmatched = [];
+  res.clubs.forEach((c, i) => { const k = normKey(c[0]); if (!byName.has(k)) byName.set(k, i); });
+  for (const c of S.clubs){ let idx = null; const m = /^(?:cpu|w)(\d+)$/.exec(String(c.id)), k = normKey(c.name);
+    if (m && res.clubs[+m[1]]) idx = +m[1];
+    if (idx == null && byName.has(k)) idx = byName.get(k);
+    if (idx == null && k.length >= 4){ const cand = [...byName].filter(([n]) => n.length >= 4 && (n.includes(k) || k.includes(n))); if (cand.length === 1) idx = cand[0][1]; }
+    if (idx == null) unmatched.push(c.name); else map.set(c.id, idx); }
+  const rows = new Map(), ids = new Set(), fcs = new Set(), names = new Set();
+  for (const [cid, idx] of map){ const ps = res.p.filter(x => x[5] === idx); rows.set(cid, ps); ps.forEach(x => { ids.add('fc' + x[0]); fcs.add(x[0]); names.add(normKey(x[1])); }); }
+  const tIds = new Set(map.keys()), del = S.players.filter(p => !ids.has(p.id) && (tIds.has(p.clubId) || tIds.has(p.loan?.ownerClubId) || fcs.has(p.fcId ?? p.fc) || names.has(normKey(p.name))));
+  return {map, rows, unmatched, del, total: [...rows.values()].reduce((a, b) => a + b.length, 0)};
+}
+async function fc27RestoreModal(){
+  let pl; try { pl = await fc27RestorePlan(); } catch { return toast('Non riesco a leggere fc27.json: deve stare su GitHub accanto a index.html.'); }
+  if (!pl.map.size) return toast('Nessuna società corrisponde al database FC 27.');
+  const mk = undoMarketPlan(), names = [...pl.map.keys()].map(id => club(id)?.name).filter(Boolean);
+  openModal('Ripristina le rose iniziali (FC 27)', `<p>Rimette le rose come nel database FC 27 e cancella tutto il mercato fatto finora.</p>
+    <ul style="padding-left:18px"><li><b>${pl.map.size}</b> società ripristinate: ${esc(names.slice(0, 12).join(', '))}${names.length > 12 ? '…' : ''}</li><li><b>${pl.total}</b> giocatori rimessi nelle rose di partenza</li><li><b>${pl.del.length}</b> giocatori attuali tolti o sostituiti (trasferiti, doppioni, acquisti da club CPU)</li><li><b>${S.offers.length + (S.cpuDeals || []).length}</b> trattative, <b>${S.auctions.length}</b> aste e <b>${mk.n}</b> trasferimenti cancellati</li></ul>
+    ${pl.unmatched.length ? `<p class="sub"><b>Non toccate</b> (non esistono in FC 27, restano com’erano): ${esc(pl.unmatched.join(', '))}</p>` : ''}
+    <p class="sub">I giocatori ripristinati ripartono con ingaggio, valore e contratto standard di FC 27 e morale nuovo. Se avevi già giocato partite, i marcatori legati ai vecchi giocatori possono perdere il collegamento. Se lasci spuntato il budget, ogni club riparte dal suo budget iniziale; altrimenti tornano solo i soldi dei trasferimenti (tasse e commissioni no).</p>
+    <div class="f full"><label><input type="checkbox" name="bud" checked> Riporta anche i budget di tutti i club al valore iniziale (cancella tutti i movimenti: incassi, stipendi, trasferimenti, sponsor)</label></div>
+    <div class="f full"><label><input type="checkbox" name="bk" checked> Scarica prima una copia dei dati (consigliato)</label></div>
+    <div class="f full"><label for="fconf">Per confermare scrivi <b>RIPRISTINA</b></label><input id="fconf" name="fconf" autocomplete="off"></div>`,
+    async fd => {
+      if (String(fd.get('fconf') || '').trim().toUpperCase() !== 'RIPRISTINA') fail('Scrivi RIPRISTINA per confermare.');
+      if (fd.get('bk')) downloadMarketBackup();
+      const delta = mk.delta;
+      for (let j = 0; j < pl.del.length; j += 10){ await Promise.all(pl.del.slice(j, j + 10).map(p => db.doc('players/' + p.id).delete())); toast(`Tolti ${Math.min(j + 10, pl.del.length)} di ${pl.del.length} giocatori…`, 2000); }
+      let k = 0;
+      for (const [cid, ps] of pl.rows){
+        for (let j = 0; j < ps.length; j += 10) await Promise.all(ps.slice(j, j + 10).map(x => db.doc('players/fc' + x[0]).set({name: x[1], pos: x[2], age: x[3], ageSeason: season(), ovr: x[4], value: autoValue(x[4], x[3]), wage: autoWage(x[4], x[3]), injured: false, clubId: cid, loan: null, fcId: x[0], contractUntil: season() + 1 + Math.floor(WH('c' + x[0]) * 3)})));
+        k++; toast(`Rosa ripristinata ${k} di ${pl.rows.size}: ${club(cid)?.name || ''}`, 2000); }
+      if (fd.get('bud')) await wipe(['ledger']); else for (const [cid, amt] of delta) if (amt) await ledger(cid, amt, 'Mercato annullato');
+      await wipe(['offers', 'auctions', 'transfers']);
+      Object.keys(listeners).forEach(reload); toast('Rose ripristinate come in FC 27', 6000);
+    }, 'Ripristina rose', true);
+}
 async function admUndoTransfer(t){
   const p = S.players.find(x => x.id === t.playerId), from = club(t.fromClubId), to = club(t.toClubId);
   if (!to) return toast('La società che ha ricevuto il giocatore non esiste più.');
@@ -5096,7 +5137,7 @@ function admPlayersTab(){
 }
 function admMarketTab(){
   const au = openAuctions().map(a => `<div class="li"><div class="main"><b>${esc(a.playerName || '—')}</b><br><span class="sub">Offerta ${fmtM(a.highBid || 0)} · ${a.highClubId ? esc(cname(a.highClubId)) : 'nessuna offerta'}${a.endsAt ? ' · ' + timeLeft(a.endsAt - now()) : ''}</span></div>${admBtn('auc-time', a.id, 'Cambia durata')}${admBtn('auc-cancel', a.id, 'Annulla asta', 'bad')}</div>`).join('');
-  return admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
+  return admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-fc27', null, 'Ripristina rose iniziali (FC 27)', 'bad')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
     + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`);
 }
 function admCalTab(){
