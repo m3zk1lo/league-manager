@@ -1641,6 +1641,7 @@ function clauseSet(p){
       await db.doc('players/' + p.id).update({clause: v}); toast(v ? `Clausola di ${p.name}: ${fmtM(v)}` : 'Clausola tolta'); }, 'Salva');
 }
 function clausePay(p){
+  { const lk = moveLock(p.id, typeof p.fcId === 'number' ? p.fcId : null); if (lk) return toast(moveLockMsg(p.name, lk), 5000); }
   const mc = myClub(), Se = club(p.clubId); if (!mc || !Se) return;
   confirmBox(`Paga la clausola di ${p.name}`, `${esc(mc.name)} paga <b>${fmtM(p.clause)}</b> al ${esc(Se.name)} e ${esc(p.name)} diventa suo subito, senza trattativa.${MK().on && divOf(mc) === 'A' ? ` In più paghi la tassa Serie A del ${MK().tax}%.` : ''}`, 'Paga la clausola', async () => {
     if (!window_()) fail('Il mercato è chiuso.');
@@ -1897,8 +1898,20 @@ async function extendTable(fc, minEnd){
   const t = tableOf(fc), st = tableStage(t), f = {club: 'windowEnd', player: 'playerEnd', agent: 'agentEnd'}[st];
   await Promise.all(t.filter(d => d.stage === st).map(d => db.doc('offers/' + d.id).update({[f]: Math.max(d[f] || 0, minEnd)})));
 }
+/* un giocatore appena trasferito non può essere contattato per un altro club per 24 ore */
+const MOVE_LOCK = 24 * 36e5, FREE_KINDS = new Set(['release', 'rescind', 'return']);
+function moveLock(pid, fc){
+  const t0 = now(); let last = 0;
+  if (pid) S.transfers.forEach(t => { if (t.playerId === pid && !FREE_KINDS.has(t.kind) && (t.ts || 0) > last) last = t.ts; });
+  if (typeof fc === 'number'){
+    S.transfers.forEach(t => { if (t.playerId === 'fc' + fc && !FREE_KINDS.has(t.kind) && (t.ts || 0) > last) last = t.ts; });
+    cpuDeals().forEach(d => { if (d.fcId === fc && d.status === 'done' && (d.ts || 0) > last) last = d.ts; });
+  }
+  return last && t0 - last < MOVE_LOCK ? last + MOVE_LOCK : 0;
+}
+const moveLockMsg = (name, until) => `${name} ha appena cambiato squadra: potrà essere trattato di nuovo tra ${timeLeft(until - now())}.`;
 function swapPicker(mc){
-  const mine = roster(mc.id).filter(p => !p.loan);
+  const mine = roster(mc.id).filter(p => !p.loan && !moveLock(p.id, typeof p.fcId === 'number' ? p.fcId : null));
   if (!mine.length) return '';
   return `<div class="f full" style="margin-top:10px"><span class="lbl">🔄 Scambio: giocatori che dai in cambio (anche solo scambio, senza soldi)</span><div class="swaplist" style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow:auto">${mine.map(q => `<label style="display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line,#ccc);border-radius:10px"><input type="checkbox" name="wswap" value="${q.id}"> ${esc(q.pos)} · ${esc(q.name)} <span class="sub">${q.ovr || ''} · ${fmtM(q.value || 0)}</span></label>`).join('')}</div>
     <span class="hint">Se la società accetta si passa subito al procuratore. I tuoi giocatori partono solo se il giocatore firma. Vale solo per l’acquisto definitivo.</span></div>`;
@@ -1906,6 +1919,7 @@ function swapPicker(mc){
 function wOffer(fc){
   const key = /^[pl]_/.test(fc) ? fc : +fc, w = wPlayer(key), mc = myClub(); if (!w || !mc) return;
   const {p, c} = w, free = !!c.free, pr = cpuProfile(c, p), tb = tableOf(key), others = tb.filter(d => d.buyerId !== mc.id);
+  { const lk = moveLock(typeof key === 'number' ? 'fc' + key : String(key).slice(2), typeof key === 'number' ? key : null); if (lk) return toast(moveLockMsg(p.name, lk), 5000); }
   if (tb.some(d => d.buyerId === mc.id)) return toast('Sei già in corsa per questo giocatore: segui la trattativa nelle tue trattative.');
   if (!canJoin(tb)) return toast('Troppo tardi: la trattativa è già passata alla fase successiva.');
   const end = tb.length ? tableEnd(tb) : now() + WIN_CLUB;
@@ -2153,7 +2167,7 @@ async function cpuSellDone(d, fee, byCpu){
 }
 /* i club CPU fanno offerte per i giocatori dei manager (una volta al giorno per squadra, con probabilità) */
 function swapPick(bc, p, base, id){
-  const cand = wAvailable(bc).filter(x => bc.players.indexOf(x) >= 3 && x.ovr >= p.ovr - 6 && x.ovr <= p.ovr + 2 && autoValue(x.ovr, x.age) <= base && !dealsFor(x.fc).length);
+  const cand = wAvailable(bc).filter(x => bc.players.indexOf(x) >= 3 && x.ovr >= p.ovr - 6 && x.ovr <= p.ovr + 2 && autoValue(x.ovr, x.age) <= base && !dealsFor(x.fc).length && !moveLock(null, x.fc));
   if (!cand.length) return null;
   const x = cand[Math.floor(WH(id + 'sp') * cand.length)], v = autoValue(x.ovr, x.age);
   return {x, v, cash: Math.max(0, Math.round((base * (0.9 + WH(id + 'sc') * 0.2) - v) / 1e5) * 1e5)};
@@ -2162,7 +2176,7 @@ async function cpuGenerate(){
   if (!WORLD || WORLD.err || !window_() || !S.loaded.offers) return;
   const day = Math.floor(now() / 864e5);
   for (const c of S.clubs.filter(c => c.managerId)){
-    const id = `cpus-${day}-${c.id}`, rs = roster(c.id).filter(p => !p.loan && p.ovr).sort((a, b) => b.ovr - a.ovr), hot = rs.filter(p => p.listed || p.req === 'sale' || p.req === 'loan');
+    const id = `cpus-${day}-${c.id}`, rs = roster(c.id).filter(p => !p.loan && p.ovr && !moveLock(p.id, typeof p.fcId === 'number' ? p.fcId : null)).sort((a, b) => b.ovr - a.ovr), hot = rs.filter(p => p.listed || p.req === 'sale' || p.req === 'loan');
     if (cpuDeals().some(d => d.id === id) || WH(id) > (hot.length ? 0.75 : 0.35)) continue; if (rs.length < 12) continue;
     const p = hot.length && WH(id + 'h') < 0.7 ? hot[Math.floor(WH(id + 'q') * hot.length)] : rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
     const buyers = WORLD.clubs.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
@@ -3157,6 +3171,7 @@ const altLine = o => { const a = o.alt; if (!a) return ''; return `<br><span cla
 async function acceptAlt(o){ if (!o?.alt) return acceptOffer(o); return acceptOffer({...altAsMain(o), altChosen: true}); }
 function makeOffer(p){
   const mc = myClub(); if (!mc) return toast('Prima crea o prendi una società.');
+  const lkM = moveLock(p.id, typeof p.fcId === 'number' ? p.fcId : null); if (lkM) return toast(moveLockMsg(p.name, lkM), 5000);
   const seller = club(p.clubId);
   const f = openModal(`Offerta per ${p.name}`, `<p class="sub">${esc(seller.name)} · ${esc(p.pos)} · OVR ${p.ovr || '—'} · valore ${fmtM(p.value || 0)} · ingaggio attuale ${fmtW(p.wage)}</p>
     ${loanFields()}
