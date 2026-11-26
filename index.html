@@ -1027,6 +1027,12 @@ function viewFixtures(){
     <p class="sub">Ogni allenatore consegna la distinta prima della partita; il commissario inserisce il risultato giocato su FC 27, con marcatori, assist e cartellini. Il rosso e il ${S.settings.yellowLimit || 3}° giallo fanno scattare una giornata di squalifica.</p></div>`;
 }
 
+/* selettore Squadra: oltre alle società della lega, tutti i club del Mondo (si aprono nella pagina Mondo) */
+function worldClubOpts(){
+  try { loadWorld(); if (!WORLD || WORLD.err || !WORLD.clubs) return '';
+    const g = {}; allClubs().forEach(c => { if (c.lm) return; (g[c.league || 'Altri'] ||= []).push(c); });
+    return Object.keys(g).sort((a, b) => a.localeCompare(b)).map(l => `<optgroup label="${esc(l)}">${g[l].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="w:${c.i}">${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
+  } catch (e) { return ''; } }
 function viewClub(){
   if (!S.clubs.length) return panelEmpty('Nessuna società', 'Il commissario deve ancora creare le società (area Admin).');
   const c = club(S.viewClub) || myClub() || S.clubs[0];
@@ -1038,7 +1044,7 @@ function viewClub(){
   const led = S.ledger.filter(l => l.clubId === c.id).sort((a, b2) => b2.ts - a.ts);
   return `<div class="panel">
     <div class="clubhead"><div class="who">${crest(c, true)}<div><h2>${esc(c.name)}</h2><span class="sub">${hasB() ? DIVS[divOf(c)] + ' · ' : ''}${esc(mgrName(c))} · ${rs.length}/${S.settings.maxSquad || 30} giocatori</span></div></div>
-      <div class="row"><select class="inl" id="clubsel" data-act="clubsel" aria-label="Scegli società">${S.clubs.map(x => `<option value="${x.id}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+      <div class="row"><select class="inl" id="clubsel" data-act="clubsel" aria-label="Scegli società">${S.clubs.map(x => `<option value="${x.id}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}${worldClubOpts()}</select>
       ${S.comm ? `<button class="btn sm" data-act="adjust" data-id="${c.id}">Rettifica budget</button>` : ''}</div></div>
     <div class="kpis" style="margin-top:16px">
       <div class="kpi"><div class="l">Budget trasferimenti</div><div class="v num${b < 0 ? ' neg' : ''}">${fmtM(b)}</div></div>
@@ -4971,7 +4977,7 @@ document.addEventListener('click', async e => {
       case 'redeem': redeem(p()); break;
       case 'w-offer': wOffer(id); break;
       case 'w-tab': S.wt = id; if (S.route !== 'mondo') location.hash = '#mondo'; else schedule(); break;
-      case 'w-club': S.wc = id === '' ? null : id; if (id !== '') S.wt = 'club'; schedule(); window.scrollTo(0, 0); break;
+      case 'w-club': S.wc = id === '' ? null : id; if (id !== '') S.wt = 'club'; if (id !== '' && S.route !== 'mondo'){ location.hash = '#mondo'; window.scrollTo(0, 0); break; } schedule(); window.scrollTo(0, 0); break;
       case 'cpu-reply': cpuReply(cpuDeals().find(x => x.id === id)); break;
       case 'cpu-quit': { const d = cpuDeals().find(x => x.id === id); if (d) await db.doc('offers/' + id).update({status: d.dir === 'sell' ? 'rejected' : 'withdrawn', waiting: null, ts: now(), msg: d.dir === 'sell' ? 'Offerta rifiutata.' : 'Trattativa abbandonata.'}); break; }
       case 'clause-set': clauseSet(p()); break;
@@ -5043,7 +5049,7 @@ document.addEventListener('click', async e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t.id === 'clubsel'){ S.viewClub = t.value; render(); }
+  if (t.id === 'clubsel'){ if (t.value.startsWith('w:')){ S.wc = t.value.slice(2); S.wt = 'club'; location.hash = '#mondo'; window.scrollTo(0, 0); } else { S.viewClub = t.value; render(); } }
   if (t.id === 'statscope'){ S.statScope = t.value; render(); }
   if (t.id === 'mktpos'){ S.mktPos = t.value; render(); }
   if (t.id === 'fapos'){ S.faPos = t.value; refreshFreeTable(); }
