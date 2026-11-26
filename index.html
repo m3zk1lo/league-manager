@@ -1577,7 +1577,14 @@ async function acceptOffer(o, force){
       await db.doc('offers/' + o.id).update({status: 'prel', prelUntil: now() + 864e5, ts: now(), actorClub: turnOf(o), ...altSwap(o)});
       return toast(`Accordo trovato, ma ${pc.name} ha la prelazione: ha 24 ore per pareggiare.`, 6000);
     }
-    await completeDeal(o, B, Se, p);
+    const lkO = await lockClubs([B.id, Se.id]);
+    try {
+      const need = first + mkTaxAmount(B, o.fee || 0);
+      if (need > budget(B)) fail(`${B.name} non ha più budget sufficiente: servono ${fmtM(need)}${need > first ? ' con la tassa Serie A' : ''}.`);
+      if (x.back && x.back > budget(Se)) fail(`${Se.name} non ha budget per il conguaglio.`);
+      const p2 = S.players.find(q => q.id === o.playerId); if (!p2 || p2.clubId !== Se.id || p2.loan) fail('Il giocatore non è più disponibile: trattativa non valida.');
+      await completeDeal(o, B, Se, p2);
+    } finally { await unlockClubs(lkO); }
     toast(`Affare fatto: ${p.name} al ${B.name}${loan ? ' in prestito' : ''}`);
   } catch (e){ toast(e.message || 'Operazione non riuscita.'); }
 }
@@ -1589,8 +1596,12 @@ async function prelMatch(o){
     if ((o.fee || 0) > budget(pc)) fail('Budget insufficiente per pareggiare.');
     mkGuard(pc, p.ovr, o.fee);
     squadRoom(pc.id);
-    await completeDeal({...o, buyerId: pc.id, x: {...(o.x || {}), swap: [], back: 0}}, pc, Se, p);
-    await db.doc('players/' + p.id).update({prel: null});
+    const lkP = await lockClubs([pc.id, Se.id]);
+    try {
+      if ((o.fee || 0) + mkTaxAmount(pc, o.fee || 0) > budget(pc)) fail('Budget insufficiente per pareggiare.');
+      await completeDeal({...o, buyerId: pc.id, x: {...(o.x || {}), swap: [], back: 0}}, pc, Se, p);
+      await db.doc('players/' + p.id).update({prel: null});
+    } finally { await unlockClubs(lkP); }
     toast(`${pc.name} esercita la prelazione: ${p.name} è suo`);
   } catch (e){ toast(e.message || 'Operazione non riuscita.'); }
 }
@@ -2015,7 +2026,11 @@ async function resolveAgent(fc){
     const score = (d.wage || 0) / (need || 1) * (d.pref || 1) * rb * (1 + Math.min(d.years || 3, 4) * 0.01);
     return {d, B, a, need, why, score};
   });
-  const ok = scored.filter(x => !x.why).sort((a, b) => b.score - a.score);
+  let ok = scored.filter(x => !x.why).sort((a, b) => b.score - a.score);
+  let lkG; try { lkG = await lockClubs(ok.map(x => x.B?.id)); } catch { return; }
+  try {
+  ok.forEach(x => { if (!x.d.rival && (x.d.fee || 0) + (x.a.comm || 0) + mkTaxAmount(x.B, x.d.fee || 0) > budget(x.B)) x.why = 'Il club non ha più il budget per chiudere.'; });
+  ok = ok.filter(x => !x.why);
   for (const win of ok){
     if (win.d.rival){
       const d = win.d, lmp = String(fc).startsWith('l_') || free;
@@ -2037,6 +2052,7 @@ async function resolveAgent(fc){
     if (d.fee) await mkTax(B, d.fee, p.name);
     return;
   }
+  } finally { await unlockClubs(lkG); }
   const round = Math.max(...tb.map(d => d.round || 1)), close = scored.filter(x => x.d.proposed && x.d.wage >= x.need * 0.8 && !/budget|monte|rosa/.test(x.why));
   if (close.length && round < 3){
     const end = t + WIN_AGENT2;
@@ -2114,9 +2130,9 @@ function cpuTick(){
   tables().forEach(tb => {
     const e = tb.end, k = tb.stage + tb.fc + '|' + e;
     if (e > now() && cpuLeader(0) && !cpuBusy.has('rv' + tb.fc + tb.stage)){ const kr = 'rv' + tb.fc + tb.stage; rivalJoin(tb).then(() => {}, () => {}); if (tb.deals.some(d => d.rival)) cpuBusy.add(kr); }
-    if (e <= now() && cpuLeader(now() - e) && !cpuBusy.has(k)){ cpuBusy.add(k); RESOLVE[tb.stage](tb.fc).catch(() => cpuBusy.delete(k)); }
+    if (e <= now() && cpuLeader(now() - e) && !cpuBusy.has(k)){ cpuBusy.add(k); resolveGuarded(tb).catch(() => cpuBusy.delete(k)); }
   });
-  cpuDeals().filter(d => d.dir === 'sell' && d.status === 'open' && d.waiting === 'cpu' && (d.respondAt || 0) <= now() && cpuLeader(now() - d.respondAt) && !cpuBusy.has(d.id + '|' + d.respondAt)).forEach(d => { const k = d.id + '|' + d.respondAt; cpuBusy.add(k); cpuResolve(d).catch(() => cpuBusy.delete(k)); });
+  cpuDeals().filter(d => d.dir === 'sell' && d.status === 'open' && d.waiting === 'cpu' && (d.respondAt || 0) <= now() && cpuLeader(now() - d.respondAt) && !cpuBusy.has(d.id + '|' + d.respondAt)).forEach(d => { const k = d.id + '|' + d.respondAt; cpuBusy.add(k); resolveSellGuarded(d).catch(() => cpuBusy.delete(k)); });
   cpuDeals().filter(d => d.status === 'open' && d.dir === 'sell' && d.waiting === 'user' && (d.respondAt || 0) <= now() && !cpuBusy.has('x' + d.id)).forEach(d => { cpuBusy.add('x' + d.id); db.doc('offers/' + d.id).update({status: 'expired', waiting: null, msg: 'Offerta scaduta senza risposta.'}); });
   if (CPU_CAN_START && !cpuBusy.has('gen' + Math.floor(now() / 864e5))){ cpuBusy.add('gen' + Math.floor(now() / 864e5)); cpuGenerate().catch(() => {}); }
 }
@@ -3165,6 +3181,9 @@ async function closeAuction(a){
   const snap = await ref.get(), cur = snap.data();
   if (!snap.exists || cur.status !== 'open' || now() < cur.endsAt) return;
   const p = S.players.find(x => x.id === cur.playerId), w = club(cur.highClubId);
+  let lkA; try { lkA = await lockClubs([cur.highClubId, cur.sellerClubId]); } catch { return; }
+  try {
+  if (w && cur.highBid && cur.highBid + mkTaxAmount(w, cur.highBid) > budget(w)){ await ref.update({status: 'void', closedTs: now(), reason: `${w.name} non ha più il budget per pagare: asta annullata`}); return; }
   if (cur.sellerClubId){
     const sc = club(cur.sellerClubId);
     if (!p || p.clubId !== cur.sellerClubId || p.loan || !w || !sc){ await ref.update({status: 'void', closedTs: now(), reason: !cur.highClubId ? 'Nessuna offerta: il giocatore resta al club' : 'Giocatore non più disponibile'}); return; }
@@ -3182,6 +3201,7 @@ async function closeAuction(a){
   await Promise.all([cur.highBid ? ledger(w.id, -cur.highBid, `Asta vinta: ${p.name}`) : null,
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: 'Svincolato', toLabel: w.name, fromClubId: null, toClubId: w.id, fee: cur.highBid, kind: 'auction', mode: 'auction', ovr: p.ovr || 0})]);
   await mkTax(w, cur.highBid, p.name);
+  } finally { await unlockClubs(lkA); }
 }
 const closing = new Set();
 function autoClose(){
@@ -3651,7 +3671,19 @@ function makeDb(){
         if (error) throw dbErr(error); if (data.length) bump(col); return data.length > 0; };
       return {
         async get(){ seen = await read(); return {exists: !!seen, id, data: () => seen ? seen.data : undefined}; },
-        async acquire(){ return {acquired: true}; },
+        async acquire(o = {}){
+          const lid = col + '~' + id, ttl = o.ttlMs || 5000, holder = String(o.holder || 'x'), until = Date.now() + ttl, none = {acquired: true, release: async () => {}};
+          const rel = async () => { try { await tbl().delete().eq('col', 'locks').eq('id', lid); } catch {} };
+          try {
+            const {error} = await tbl().insert({col: 'locks', id: lid, data: {holder, until}});
+            if (!error) return {acquired: true, release: rel};
+            if (error.code !== '23505') return none; /* se il database non permette i lucchetti si va avanti come prima */
+            const {data: row} = await tbl().select('data,updated_at').eq('col', 'locks').eq('id', lid).maybeSingle();
+            if (row && ((row.data?.until || 0) < Date.now() || row.data?.holder === holder)){
+              const {data: up} = await tbl().update({data: {holder, until}}).eq('col', 'locks').eq('id', lid).eq('updated_at', row.updated_at).select('id');
+              if (up && up.length) return {acquired: true, release: rel}; }
+            return {acquired: false};
+          } catch { return none; } },
         async set(data){ const {error} = await tbl().upsert({col, id, data}); if (error) throw dbErr(error); bump(col); },
         async delete(){ const {error} = await tbl().delete().eq('col', col).eq('id', id); if (error) throw dbErr(error); bump(col); },
         async update(patch){
@@ -4645,7 +4677,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-led','adm-led-del','adm-dups','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4679,6 +4711,9 @@ document.addEventListener('click', async e => {
       case 'adm-club-fix': { const c = club(id) || club(S.admMkC); if (c) admClubFix(c); else toast('Scegli una società.'); break; }
       case 'adm-pl-move': admMovePlayer(); break;
       case 'adm-tab': S.admTab = id; schedule(); break;
+      case 'adm-dups': { const d = admFindDups(); if (!d.led.length && !d.tr.length) return toast('Nessun doppione trovato.'); confirmBox('Elimina i doppioni', `${d.led.length} movimenti di cassa e ${d.tr.length} voci del registro vengono eliminati (resta la prima di ogni gruppo). I budget tornano corretti.`, 'Elimina', async () => { for (const l of d.led) await db.doc('ledger/' + l.id).delete(); for (const t of d.tr) await db.doc('transfers/' + t.id).delete(); toast(`Eliminati ${d.led.length + d.tr.length} doppioni`); }); break; }
+      case 'adm-led': { const c = club(id); if (c) admLedger(c); break; }
+      case 'adm-led-del': { const l = S.ledger.find(x => x.id === id); if (!l) return; confirmBox('Elimina movimento', `${fmtM(l.amount || 0)} · ${esc(l.reason || '')}. Sparisce dalla contabilità del club.`, 'Elimina', async () => { await db.doc('ledger/' + l.id).delete(); toast('Movimento eliminato'); }); break; }
       case 'adm-inline': try { localStorage.setItem('ivpl_adm_inline', admInline() ? '0' : '1'); } catch {} schedule(); break;
       case 'adm-u-free': { const c = S.clubs.find(x => x.managerId === id); if (!c) return; confirmBox('Togli dalla squadra', `${esc(S.profiles[id]?.name || 'Il manager')} lascia ${esc(c.name)}, che resta senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + c.id).update({managerId: null}); toast('Manager tolto dalla squadra'); }); break; }
       case 'adm-u-assign': admAssign(id); break;
@@ -4968,7 +5003,7 @@ async function admForce(o){
   const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId); let Se = club(o.sellerId);
   if (!p || !B) return toast('Giocatore o società non trovati: annulla la trattativa.');
   if (!Se || p.clubId !== Se.id) Se = club(p.clubId) || Se; if (!Se) return toast('La società che cede non esiste più: annulla la trattativa.');
-  confirmBox('Concludi la trattativa', `${esc(p.name)}: ${esc(Se.name)} → ${esc(B.name)} (${esc(MODE[o.type || 'transfer'])}, ${fmtM(o.fee)}). <b>Salta</b> i controlli su budget, ingaggi, rosa, prelazione e mercato chiuso.`, 'Concludi', async () => {
+  confirmBox('Concludi la trattativa', `${esc(p.name)}: ${esc(Se.name)} → ${esc(B.name)} (${esc(MODE[o.type || 'transfer'])}, ${fmtM(o.fee)}). <b>Salta</b> i controlli su budget, ingaggi, rosa, prelazione e mercato chiuso.${budget(B) - (o.fee || 0) < 0 ? ` <b>Attenzione: il budget di ${esc(B.name)} diventerà negativo.</b>` : ''}`, 'Concludi', async () => {
     await completeDeal({...o, sellerId: Se.id}, B, Se, p); toast('Trattativa conclusa');
   });
 }
@@ -5038,7 +5073,7 @@ function admClubsTab(){
   const P = admOld();
   const rows = [...S.clubs].sort(admByName).map(c => { const lg = c.lg != null ? (WORLD?.leagues?.[c.lg] || 'Altro campionato') : (DIVS[divOf(c)] || 'Serie A');
     return `<div class="li"><div class="main"><b>${esc(c.name)}</b> <span class="sub">${esc(lg)}</span><br><span class="sub">${c.managerId ? 'Manager: ' + esc(S.profiles[c.managerId]?.name || 'Allenatore') : c.coach ? 'Allenatore CPU: ' + esc(c.coach) : 'Panchina libera'} · budget ${fmtM(budget(c))} · ${roster(c.id).length} giocatori</span></div>
-      ${admBtn('club-edit', c.id, 'Modifica')}${admBtn('adm-club-fix', c.id, 'Budget')}${admBtn('obj-add', c.id, 'Obiettivi')}${c.managerId ? admBtn('club-leave', c.id, 'Togli manager') : admBtn('coach-edit', c.name, 'Allenatore')}${admBtn('club-del', c.id, 'Elimina', 'bad')}</div>`; }).join('');
+      ${budget(c) < 0 ? '<span class="pill bad">Budget negativo</span> ' : ''}${admBtn('club-edit', c.id, 'Modifica')}${admBtn('adm-club-fix', c.id, 'Budget')}${admBtn('adm-led', c.id, 'Movimenti')}${admBtn('obj-add', c.id, 'Obiettivi')}${c.managerId ? admBtn('club-leave', c.id, 'Togli manager') : admBtn('coach-edit', c.name, 'Allenatore')}${admBtn('club-del', c.id, 'Elimina', 'bad')}</div>`; }).join('');
   return admPanel(`Società · ${S.clubs.length}`, `<div class="row" style="margin-bottom:8px">${admBtn('club-new', null, '+ Nuova società', 'primary')}${admBtn('cpu-clubs', null, 'Importa squadre CPU Serie A/B')}${admBtn('start-budgets', null, 'Budget iniziali')}${admBtn('logos-bulk', null, 'Loghi')}</div><div class="list">${rows || '<p class="muted">Nessuna società.</p>'}</div>`) + P.coach;
 }
 function admPlayersTab(){
@@ -5055,7 +5090,7 @@ function admPlayersTab(){
 function admMarketTab(){
   const au = openAuctions().map(a => `<div class="li"><div class="main"><b>${esc(a.playerName || '—')}</b><br><span class="sub">Offerta ${fmtM(a.highBid || 0)} · ${a.highClubId ? esc(cname(a.highClubId)) : 'nessuna offerta'}${a.endsAt ? ' · ' + timeLeft(a.endsAt - now()) : ''}</span></div>${admBtn('auc-time', a.id, 'Cambia durata')}${admBtn('auc-cancel', a.id, 'Annulla asta', 'bad')}</div>`).join('');
   return admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
-    + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`);
+    + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`) + admDupsPanel();
 }
 function admCalTab(){
   const P = admOld(), ms = seasonMatches().filter(m => !m.stage && !m.pre), rounds = [...new Set(ms.map(m => m.round))].sort((a, b) => a - b);
@@ -5094,6 +5129,60 @@ function admUserDel(uid){
   confirmBox('Elimina account', `${esc(u?.name || 'Il manager')}${u?.email ? ' (' + esc(u.email) + ')' : ''}: l’account viene cancellato per sempre${c ? ` e ${esc(c.name)} resta senza allenatore` : ''}.`, 'Elimina account', async () => {
     const {error} = await sb.rpc('admin_delete_user', {uid}); if (error) return toast(admRpcErr(error), 6000);
     await Promise.all(S.clubs.filter(x => x.managerId === uid).map(x => db.doc('clubs/' + x.id).update({managerId: null}))); await loadUsers(true); toast('Account eliminato'); });
+}
+
+/* ---------- SOLDI: nessuna società può andare in negativo comprando ---------- */
+const mkTaxAmount = (c, fee) => { const k = MK(); if (!c || !k.on || divOf(c) !== 'A' || !fee || !mkHasB()) return 0; return Math.round(fee * k.tax / 100); };
+async function lockClubs(ids){
+  const got = [];
+  for (const id of [...new Set((ids || []).filter(Boolean))].sort()){
+    const lk = await db.doc('clubs/' + id).acquire({holder: S.me || 'auto', ttlMs: 8000});
+    if (!lk.acquired){ await unlockClubs(got); throw new Error('Un’altra operazione su questa società è in corso proprio adesso: riprova tra qualche secondo.'); }
+    got.push(lk); }
+  try { await Promise.all([reload('ledger'), reload('players')]); } catch {}
+  return got;
+}
+async function unlockClubs(got){ for (const lk of got || []) try { await lk.release?.(); } catch {} }
+function admLedger(c){
+  const rows = S.ledger.filter(l => l.clubId === c.id && !l.wage).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 25);
+  openModal(`Movimenti · ${c.name}`, `<p class="sub">Budget ora: <b>${fmtM(budget(c))}</b>. Ultimi movimenti (dal più recente). «Elimina» cancella solo la riga contabile, non sposta giocatori.</p>
+    <div class="list">${rows.map(l => `<div class="li"><div class="main"><b class="num" style="color:${(l.amount || 0) < 0 ? '#ff6a3d' : 'inherit'}">${fmtM(l.amount || 0)}</b> <span class="sub">${esc(l.reason || '')}</span><br><span class="sub">${l.ts ? new Date(l.ts).toLocaleString('it-IT') : ''}</span></div>${admBtn('adm-led-del', l.id, 'Elimina', 'bad')}</div>`).join('') || '<p class="muted">Nessun movimento.</p>'}</div>`, async () => {}, 'Chiudi');
+}
+
+/* ---------- una chiusura alla volta: se più telefoni partono insieme, ne lavora uno solo ---------- */
+async function resolveGuarded(tb){
+  const lk = await db.doc('tables/' + tb.fc).acquire({holder: S.me || 'auto', ttlMs: 25000});
+  if (!lk.acquired) throw new Error('occupato');
+  try {
+    await reload('offers');
+    const cur = tables().find(t => t.fc === tb.fc && t.stage === tb.stage);
+    if (!cur || cur.end > now()) return; /* già chiusa da un altro dispositivo */
+    await RESOLVE[tb.stage](tb.fc);
+  } finally { await lk.release?.(); }
+}
+async function resolveSellGuarded(d){
+  const lk = await db.doc('tables/s' + d.id).acquire({holder: S.me || 'auto', ttlMs: 25000});
+  if (!lk.acquired) throw new Error('occupato');
+  try {
+    await reload('offers');
+    const cur = cpuDeals().find(x => x.id === d.id);
+    if (!cur || cur.status !== 'open' || cur.waiting !== 'cpu' || (cur.respondAt || 0) > now()) return;
+    await cpuResolve(cur);
+  } finally { await lk.release?.(); }
+}
+/* ---------- ricerca e pulizia dei doppioni (movimenti e registro trasferimenti) ---------- */
+function admFindDups(){
+  const out = {led: [], tr: []}, WIN = 120000, rx = /^(Acquisto|Prestito|Commissione|Cessione|Asta|Clausola|Riscatto|Tassa|Fondo|Recompra|Conguaglio)/;
+  const scan = (list, key, bucket) => { const last = new Map();
+    [...list].sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(x => { const k = key(x), t = x.ts || 0;
+      if (last.has(k) && t - last.get(k) <= WIN) bucket.push(x); else last.set(k, t); }); };
+  scan(S.ledger.filter(l => !l.wage && rx.test(String(l.reason || ''))), l => [l.clubId, l.amount, l.reason].join('|'), out.led);
+  scan(S.transfers, t => [t.playerId, t.fromClubId || t.fromLabel, t.toClubId || t.toLabel, t.fee || 0, t.kind || ''].join('|'), out.tr);
+  return out;
+}
+function admDupsPanel(){
+  const d = admFindDups();
+  return admPanel('Doppioni nei movimenti', `<p class="sub">${d.led.length || d.tr.length ? `Trovati <b>${d.led.length}</b> movimenti di cassa e <b>${d.tr.length}</b> voci del registro trasferimenti scritti due o più volte (stessa società, stesso importo, entro 2 minuti).` : 'Nessun doppione trovato.'}</p>${d.led.length || d.tr.length ? `<div class="row">${admBtn('adm-dups', null, 'Elimina i doppioni', 'bad')}</div>` : ''}`);
 }
 
 /* ---------- boot ---------- */
