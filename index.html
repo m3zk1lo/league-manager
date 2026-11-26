@@ -649,7 +649,7 @@ function notifText(o, me){
     case 'rejected': return `${other} ha rifiutato la trattativa per ${pn}`;
     case 'withdrawn': return `${other} ha ritirato l’offerta per ${pn}`;
     case 'expired': return `La trattativa per ${pn} è scaduta`;
-    default: return o.sellerId === me && o.by === 'buyer' ? `${other} offre ${fee} per ${pn}${kind}` : `${other} rilancia: ${fee} per ${pn}${kind}`;
+    default: return o.sellerId === me && o.by === 'buyer' ? `${other} ti ha fatto un’offerta per ${pn}${kind}: ${fee} · tocca a te` : `${other} rilancia per ${pn}${kind}: ${fee} · tocca a te`;
   }
 }
 const isMyNotif = (o, mid) => (o.buyerId === mid || o.sellerId === mid) && actorOf(o) !== mid;
@@ -657,6 +657,21 @@ function notifs(){
   const mc = myClub(); if (!mc) return [];
   const items = [], cn = id => club(id)?.name || 'un club';
   S.offers.filter(o => isMyNotif(o, mc.id)).forEach(o => items.push({key: `o:${o.id}:${o.ts}:${o.status}`, ts: o.ts || 0, text: notifText(o, mc.id)}));
+  /* offerte dei club CPU per i giocatori della mia rosa */
+  (S.cpuDeals || []).filter(d => d.dir === 'sell' && d.sellerId === mc.id).forEach(d => {
+    const pn = d.playerName || 'un giocatore', cp = d.cpuClub || 'Un club', loan = d.loan || isLoan(d.type);
+    if (d.status === 'open' && d.waiting === 'user') items.push({key: `c:${d.id}:${d.ts}:${d.round || 1}:open`, ts: d.ts || 0, text: (d.round || 1) > 1 ? `${cp} rilancia per ${pn}${d.fee ? ': ' + fmtM(d.fee) : ''} · tocca a te` : loan ? `${cp} chiede ${pn} in prestito · tocca a te` : `${cp} offre ${fmtM(d.fee || 0)} per ${pn} · tocca a te`});
+    else if (d.status === 'expired') items.push({key: `c:${d.id}:${d.ts}:expired`, ts: d.ts || 0, text: `L’offerta di ${cp} per ${pn} è scaduta`});
+    else if (d.status === 'withdrawn') items.push({key: `c:${d.id}:${d.ts}:withdrawn`, ts: d.ts || 0, text: `${cp} ha ritirato l’offerta per ${pn}`});
+  });
+  (S.cpuDeals || []).filter(d => d.dir !== 'sell' && d.buyerId === mc.id).forEach(d => {
+    const pn = d.playerName || 'il giocatore', cp = d.cpuClub || 'Il club', last = (d.hist || []).slice(-1)[0], why = last ? (last.pub || last.t || '') : '';
+    if (d.status === 'open' && d.stage === 'player') items.push({key: `c:${d.id}:${d.ts}:player`, ts: d.ts || 0, text: `${cp} ha accettato la tua offerta per ${pn}: ora il giocatore sta valutando`});
+    else if (d.status === 'open' && d.stage === 'agent' && !d.proposed) items.push({key: `c:${d.id}:${d.ts}:agent`, ts: d.ts || 0, text: `${pn} è interessato: tocca a te, fai la proposta al procuratore`});
+    else if (d.status === 'done') items.push({key: `c:${d.id}:${d.ts}:done`, ts: d.ts || 0, text: `Affare concluso: ${pn} è tuo`});
+    else if (d.status === 'rejected') items.push({key: `c:${d.id}:${d.ts}:rejected`, ts: d.ts || 0, text: `Trattativa per ${pn} saltata${why ? ': ' + why : ''}`});
+    else if (d.status === 'expired') items.push({key: `c:${d.id}:${d.ts}:expired`, ts: d.ts || 0, text: `La trattativa per ${pn} con ${cp} è scaduta`});
+  });
   S.auctions.forEach(a => {
     const bids = a.bids || [], mine = bids.some(b => b.c === mc.id);
     if (a.startedBy !== mc.id) items.push({key: `a:${a.id}:start`, ts: a.startTs || 0, text: `Nuova asta: ${a.playerName}, base ${fmtM(a.base ?? bids[0]?.amt ?? 0)} (${a.startedBy ? cn(a.startedBy) : 'dal commissario'}), termina tra ${timeLeft((a.endsAt || 0) - (a.startTs || 0))}`});
