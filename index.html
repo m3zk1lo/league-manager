@@ -1463,7 +1463,9 @@ function newsItems(){
     swap: ['🔄', t => `Nello scambio · <b>${esc(t.playerName)}</b>: <b>${esc(t.fromLabel)}</b> → <b>${esc(t.toLabel)}</b>${t.mode === 'loan' ? ' in prestito' : ''}`]};
   S.transfers.filter(t => KX[t.kind]).forEach(t => out.push({ts: t.ts || 0, ic: KX[t.kind][0], html: KX[t.kind][1](t)}));
   S.transfers.filter(t => t.kind === 'cpu-in' || t.kind === 'cpu-out').forEach(t => out.push({ts: t.ts || 0, ic: t.kind === 'cpu-in' ? '✈️' : '👋',
-    html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}${t.swap?.length ? ` (scambio con ${esc(t.swap.join(', '))})` : ''}` : `Cessione · <b>${esc(t.playerName)}</b>: <b>${esc(t.fromLabel)}</b> → ${esc(t.toLabel || 'svincolato')}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
+    html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}${t.swap?.length ? ` (scambio con ${esc(t.swap.join(', '))})` : ''}` : `${t.mode === 'loan' ? 'Prestito al club CPU' : 'Va al club CPU'} · <b>${esc(t.playerName)}</b>${t.ovr ? ` (${t.ovr})` : ''}: <b>${esc(t.fromLabel)}</b> → <b>${esc(t.toLabel || 'svincolato')}</b>${t.mode === 'loan' ? ' in prestito' : ''}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
+  /* giocatori che cambiano club tra squadre CPU (vince una CPU la trattativa): da riportare sulla PlayStation */
+  cpuDeals().filter(d => d.rival && d.status === 'done').forEach(d => out.push({ts: d.ts || 0, ic: '🔀', html: `Tra club CPU · <b>${esc(d.playerName)}</b> (${esc(d.pos || '')} · ${d.ovr}): <b>${esc(d.cpuClub)}</b> → <b>${esc(d.rival)}</b>${d.fee ? ` per ${fmtM(d.fee)}` : ''}`}));
   out.push(...cpuNews());
   try { out.push(...moraleNews()); } catch {}
   try { out.push(...lgNews()); } catch {}
