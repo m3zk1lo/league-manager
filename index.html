@@ -1390,7 +1390,7 @@ function sellPlayer(p){
           ...S.offers.filter(o => o.playerId === p.id && o.status === 'open').map(o => db.doc('offers/' + o.id).update({status: 'expired', ts: now(), actorClub: null}))]);
         return toast(`${p.name} va in prestito a ${to}`);
       }
-      if (to) await db.doc('players/' + p.id).delete();
+      if (to){ await cpuMoveIn(p, to, c.name); await db.doc('players/' + p.id).delete(); }
       else await db.doc('players/' + p.id).update({clubId: null, injured: false, freeSince: now()});
       await Promise.all([fee ? ledger(c.id, fee, `Cessione ${p.name}${to ? ' a ' + to : ''}`) : null,
         logTransfer({playerId: p.id, playerName: p.name, fromLabel: c.name, toLabel: to || 'Svincolato', fromClubId: c.id, toClubId: null, fee, kind: 'cpu-out'}),
@@ -1480,7 +1480,7 @@ function newsItems(){
   S.transfers.filter(t => t.kind === 'cpu-in' || t.kind === 'cpu-out').forEach(t => out.push({ts: t.ts || 0, ic: t.kind === 'cpu-in' ? '✈️' : '👋',
     html: t.kind === 'cpu-in' ? `Colpo dall’estero · <b>${esc(t.playerName)}</b>: ${esc(t.fromLabel)} → <b>${esc(t.toLabel)}</b>${t.fee ? ` per ${fmtM(t.fee)}` : ''}${t.swap?.length ? ` (scambio con ${esc(t.swap.join(', '))})` : ''}` : `${t.mode === 'loan' ? 'Prestito al club CPU' : 'Va al club CPU'} · <b>${esc(t.playerName)}</b>${t.ovr ? ` (${t.ovr})` : ''}: <b>${esc(t.fromLabel)}</b> → <b>${esc(t.toLabel || 'svincolato')}</b>${t.mode === 'loan' ? ' in prestito' : ''}${t.fee ? ` per ${fmtM(t.fee)}` : ''}`}));
   /* giocatori che cambiano club tra squadre CPU (vince una CPU la trattativa): da riportare sulla PlayStation */
-  cpuDeals().filter(d => d.rival && d.status === 'done').forEach(d => out.push({ts: d.ts || 0, ic: '🔀', html: `Tra club CPU · <b>${esc(d.playerName)}</b> (${esc(d.pos || '')} · ${d.ovr}): <b>${esc(d.cpuClub)}</b> → <b>${esc(d.rival)}</b>${d.fee ? ` per ${fmtM(d.fee)}` : ''}`}));
+  cpuDeals().filter(d => d.rival && d.status === 'done' && !d.quiet).forEach(d => out.push({ts: d.ts || 0, ic: '🔀', html: `Tra club CPU · <b>${esc(d.playerName)}</b> (${esc(d.pos || '')} · ${d.ovr}): <b>${esc(d.cpuClub)}</b> → <b>${esc(d.rival)}</b>${d.fee ? ` per ${fmtM(d.fee)}` : ''}`}));
   out.push(...cpuNews());
   try { out.push(...moraleNews()); } catch {}
   try { out.push(...lgNews()); } catch {}
@@ -2083,6 +2083,13 @@ function rivalView(p, d, key){
   return {why: avg < p.ovr - 14 && amb > 0.65 ? 'la squadra non è al suo livello' : '', titolare: true, pref: 1.04 + (avg - 75) / 250, amb, divB: false};
 }
 /* 3) il procuratore porta il giocatore dalla proposta migliore */
+/* un giocatore venduto a un club CPU del Mondo esce dalla rosa d'origine ed entra in quella del club CPU: spostamento registrato e applicato da applyMoves. Da chiamare PRIMA di cancellare il giocatore. */
+async function cpuMoveIn(q, clubName, fromName){
+  if (!WORLD || WORLD.err || !clubName) return;
+  const rc = WORLD.clubs.find(c => c.name === clubName) || WORLD.clubs.find(c => normKey(c.name) === normKey(clubName)); if (!rc) return;
+  const t = now(), fcn = typeof q.fcId === 'number' ? q.fcId : 9e6 + Math.floor(WH('px' + (q.id || q.name)) * 1e6), px = {name: q.name, pos: q.pos, age: ageOf(q), ovr: q.ovr || 0};
+  await db.doc('offers/mv-' + fcn + '-' + t).set({cpu: true, dir: 'move', quiet: true, fcId: fcn, playerName: q.name, pos: q.pos, ovr: px.ovr, age: px.age, cpuClub: fromName || '', rival: rc.name, px, buyerId: null, sellerId: null, status: 'done', stage: 'done', fee: 0, round: 1, ts: t, season: season(), hist: []});
+}
 /* alla firma i giocatori dati in scambio passano al club CPU (o a quello senza manager) e l'eventuale conguaglio entra in cassa */
 async function cpuSwapOut(swp, B, c, d, p){
   const t = now();
@@ -2125,7 +2132,7 @@ async function resolveAgent(fc){
   for (const win of ok){
     if (win.d.rival){
       const d = win.d, lmp = String(fc).startsWith('l_') || free;
-      if (lmp) await db.doc('players/' + String(fc).slice(2)).delete();
+      if (lmp){ const q0 = S.players.find(x => x.id === String(fc).slice(2)); if (q0) await cpuMoveIn(q0, d.rival, c.name); await db.doc('players/' + String(fc).slice(2)).delete(); }
       await Promise.all([c.lm && d.fee ? ledger(c.lm, d.fee, `Cessione ${p.name} a ${d.rival}`) : null,
         upd(d, {status: 'done', wage: win.rw, years: 3}, `${p.name} sceglie ${d.rival}.`, `UFFICIALE: ${p.name} firma con ${d.rival}${d.fee ? ` · ${fmtM(d.fee)} a ${c.name}` : ''}`, 'sign'),
         ...scored.filter(x => x.d.id !== d.id).map(x => upd(x.d, {status: 'rejected'}, `${p.name} ha scelto ${d.rival}.${x.why ? ' ' + x.why : ''}`, null))]);
@@ -2179,6 +2186,7 @@ async function cpuSellDone(d, fee, byCpu){
       db.doc('offers/' + d.id).update({status: 'done', waiting: null, ts: t, msg: `${p.name} va in prestito al ${d.cpuClub} per una stagione.`, hist: [...(d.hist || []), {who: 'user', t: 'Prestito accettato', ts: t}]})]);
     return toast(`${p.name} va in prestito al ${d.cpuClub}`);
   }
+  await cpuMoveIn(p, d.cpuClub, Se.name);
   await db.doc('players/' + p.id).delete();
   await Promise.all([ledger(Se.id, fee, `Cessione ${p.name} a ${d.cpuClub}`),
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: d.cpuClub, fromClubId: Se.id, toClubId: null, fee, kind: 'cpu-out', mode: 'transfer', ovr: p.ovr || 0}),
@@ -3353,6 +3361,7 @@ async function closeAuction(a){
 async function cpuAuctionSold(p, sc, cur, name, ref){
   const t = now();
   await ref.update({status: 'closed', closedTs: t});
+  await cpuMoveIn(p, name, sc.name);
   await db.doc('players/' + p.id).delete();
   await Promise.all([ledger(sc.id, cur.highBid, `Asta: ${p.name} venduto al ${name}`),
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: name, fromClubId: sc.id, toClubId: null, fee: cur.highBid, kind: 'cpu-out', mode: 'transfer', ovr: p.ovr || 0}),
