@@ -1745,11 +1745,14 @@ let TK = null, LMC = null;
 const MOVED = new Set();
 function applyMoves(){
   if (!WORLD || WORLD.err) return;
-  cpuDeals().filter(d => d.rival && d.status === 'done' && typeof d.fcId === 'number' && !MOVED.has(d.id)).forEach(d => {
+  /* in ordine cronologico: un giocatore può cambiare club più volte */
+  cpuDeals().filter(d => d.rival && d.status === 'done' && typeof d.fcId === 'number' && !MOVED.has(d.id)).sort((x, y) => (x.ts || 0) - (y.ts || 0)).forEach(d => {
     MOVED.add(d.id); let pl = null;
     WORLD.clubs.forEach(c => { const i = c.players.findIndex(x => x.fc === d.fcId); if (i >= 0) pl = c.players.splice(i, 1)[0]; });
-    const rc = WORLD.clubs.find(c => c.name === d.rival); if (pl && rc){ pl.ci = rc.i; rc.players.push(pl); rc.players.sort((a, b) => b.ovr - a.ovr); }
-    FCN = null;
+    const rc = WORLD.clubs.find(c => c.name === d.rival) || WORLD.clubs.find(c => normKey(c.name) === normKey(d.rival));
+    if (pl && rc){ pl.ci = rc.i; rc.players.push(pl); rc.players.sort((a, b) => b.ovr - a.ovr); const top = rc.players.slice(0, 16); rc.avg = top.length ? top.reduce((x, y) => x + y.ovr, 0) / top.length : 60; }
+    else if (pl){ const o = WORLD.clubs.find(c => c.i === pl.ci); if (o){ o.players.push(pl); o.players.sort((x, y) => y.ovr - x.ovr); } MOVED.delete(d.id); } /* club di arrivo non trovato: il giocatore resta dov'era e si riprova */
+    FCN = null; TK = null;
   });
 }
 function lmCpuClubs(){
