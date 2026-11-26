@@ -928,7 +928,7 @@ function viewClub(){
         <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ` <span class="pill warn">Infortunato${injLeft(p) ? ' · ' + injLeft(p) + ' g.' : ''}</span>` : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
         <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm ghost" data-act="clause-set" data-id="${p.id}">Clausola</button> <button class="btn sm ghost" data-act="rescind" data-id="${p.id}">Rescindi</button> <button class="btn sm bad" data-act="sell" data-id="${p.id}">Svincola o asta</button>`
             : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
-          : mine && window_() && !p.loan ? `<button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>${p.clause ? ` <button class="btn sm good" data-act="clause-pay" data-id="${p.id}">Paga clausola ${fmtM(p.clause)}</button>` : ''}${p.buyBack?.clubId === mine.id && (p.buyBack.untilSeason || 0) >= season() ? ` <button class="btn sm good" data-act="buyback" data-id="${p.id}">Recompra ${fmtM(p.buyBack.price)}</button>` : ''}` : ''}</td></tr>`; }).join('')}
+          : ''}${mine && mine.id !== c.id && window_() && !p.loan ? ` <button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>${p.clause ? ` <button class="btn sm good" data-act="clause-pay" data-id="${p.id}">Paga clausola ${fmtM(p.clause)}</button>` : ''}${p.buyBack?.clubId === mine.id && (p.buyBack.untilSeason || 0) >= season() ? ` <button class="btn sm good" data-act="buyback" data-id="${p.id}">Recompra ${fmtM(p.buyBack.price)}</button>` : ''}` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : `<div class="empty"><strong>Rosa vuota</strong><span>${can ? 'Copia la rosa dalla tua carriera su FC 27: aggiungi i giocatori uno per uno oppure incolla l’elenco con “Importa rosa”.' : 'Il commissario non ha ancora caricato la rosa.'}</span></div>`}
     </div>
     <aside class="stack">
@@ -1645,7 +1645,7 @@ function viewWorld(){
     </div></div>
   ${list.length || q || minO ? `<div class="panel"><div class="ph"><h3>Risultati</h3><span class="sub">${list.length} giocatori</span></div><div class="list">${list.map(pRow).join('') || '<p class="muted">Nessun giocatore trovato.</p>'}</div></div>` : ''}
   ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${starHtml(wClubStars(sc))} · ${esc(sc.league)}${sc.lm ? ' · club della lega gestito dalla CPU' : ''} · media squadra ${sc.avg.toFixed(1)}</p>${coachLine(sc)}<div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
-    : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> ${starHtml(wClubStars(c))} <span class="sub">· ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
+    : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${S.clubs.filter(c => c.managerId && (c.lg != null ? c.lg : divOf(c) === 'B' ? 1 : 0) === +li).sort((a, b) => a.name.localeCompare(b.name)).map(c => `<div class="li"><div class="main">${clubLink(c, true)}</div><span class="pill info">Manager reale</span></div>`).join('')}${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> ${starHtml(wClubStars(c))} <span class="sub">· ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
   ${cpuPanel()}`;
 }
 
@@ -2249,10 +2249,22 @@ function lgBulk(li){
       toast(errs.length ? `Salvate ${lines.length - errs.length} partite. Non riconosciute: ${errs.length}` : `Salvate ${lines.length} partite`, 6000);
     }, 'Salva risultati');
 }
+function lgSerieView(div){
+  const rows = standings(season(), div), n = rows.length, ab = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : [])];
+  const zone = i => div === 'A' ? (i < 4 ? 'z-cl' : i < 6 ? 'z-el' : i === 6 ? 'z-ecl' : i >= n - RELEG ? 'z-bot' : '') : (i < PROMO ? 'z-top' : i >= 2 && i <= 5 && n >= 6 ? 'z-po' : '');
+  const legend = div === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> Champions League · <span class="zl z-el"></span> Europa League · <span class="zl z-ecl"></span> Conference League · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>` : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
+  const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ab.map(([k, l]) => `<option value="${k}"${k === div ? ' selected' : ''}>${l} · ${S.clubs.filter(c => divOf(c) === k).length} squadre</option>`).join('')}${lgList().map(l => `<option value="${l.li}">${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div></div>`;
+  return sel_ + `<div class="panel"><div class="ph"><h3>${DIVS[div]}</h3></div><div class="tscroll"><table><thead><tr><th></th><th>Squadra</th><th class="r">G</th><th class="r">V</th><th class="r">N</th><th class="r">P</th><th class="r">DR</th><th class="r">Pt</th></tr></thead><tbody>
+    ${rows.map((x, i) => `<tr class="${zone(i)}"><td class="pos">${i + 1}</td><td>${clubLink(x.c, true)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Nessuna squadra.</td></tr>'}</tbody></table></div>${legend}</div>`;
+}
 function lgView(){
+  if (S.route === 'mondo'){ const d = S.lgl === 'B' && hasB() ? 'B' : (S.lgl == null || S.lgl === 'A' || S.lgl === 'B') ? 'A' : null; if (d) return lgSerieView(d); }
+  return lgView0();
+}
+function lgView0(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
-  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
+  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl"><option value="A">Serie A</option>${hasB() ? '<option value="B">Serie B</option>' : ''}${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
     <p class="sub" style="margin:8px 0 0">I campionati esteri li gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle nostre giornate. Qui trovi tutti i campionati: dove c'è almeno un manager vero i risultati li inserisce il commissario.</p>${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0"><b>Questo campionato ha un manager vero: lo gestisci tu</b> (calendario e partite a mano), il sito non lo simula.</p>' : ''}
     ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
@@ -3731,7 +3743,7 @@ const prestige = c => Math.max(0, Math.min(1, (clubStrength(c) - 64) / 20));
 const stDef = c => { const p = prestige(c), cap = Math.round((7000 + 48000 * Math.pow(p, 1.1)) / 500) * 500, price = Math.round(14 + 42 * p); return {cap, price, ref: price, fans: Math.round(cap * (0.7 + 0.3 * p))}; };
 const medK = c => 0.6 + 1.0 * prestige(c);
 const medAt = (c, l) => { const m = MED[l]; if (!m) return m; const k = medK(c); return {...m, cost: roundM(m.cost * k), yearly: roundM(m.yearly * k)}; };
-const playedOf = c => c?.lg != null ? Math.max(0, ...(lgDoc(c.lg)?.rounds || []).map((r, i) => r.m.some(lgPlayed) ? i + 1 : 0)) : playedOf(c);
+const playedOf = c => c?.lg != null ? Math.max(0, ...(lgDoc(c.lg)?.rounds || []).map((r, i) => r.m.some(lgPlayed) ? i + 1 : 0)) : roundInfo(divOf(c)).played;
 /* forza della rosa: media OVR dei migliori 16 */
 function clubStrength(c){
   const o = roster(c.id).map(p => p.ovr || 0).sort((a, b) => b - a).slice(0, 16);
