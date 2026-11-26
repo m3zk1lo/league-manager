@@ -1079,6 +1079,13 @@ function viewClub(){
     </aside></section>`;
 }
 
+/* valutazione di uno scambio: i giocatori dati in cambio valgono l'85% del loro valore, come per i club CPU */
+const offerVal = q => q.value || autoValue(q.ovr || 0, ageOf(q));
+function swapEval(o){
+  const p = S.players.find(x => x.id === o.playerId), sw = (o.x?.swap || []).map(id => S.players.find(q => q.id === id)).filter(Boolean);
+  if (!p || !sw.length || isLoan(o.type)) return null;
+  const worth = offerVal(p), swV = Math.round(sw.reduce((a, q) => a + offerVal(q), 0) * 0.85), gap = Math.max(0, Math.round((worth - (o.fee || 0) - swV) / 1e5) * 1e5);
+  return {worth, swV, gap}; }
 function offerRow(o, mineId){
   const p = S.players.find(x => x.id === o.playerId), B = club(o.buyerId), Se = club(o.sellerId);
   const turn = o.by === 'buyer' ? o.sellerId : o.buyerId;
@@ -1090,12 +1097,14 @@ function offerRow(o, mineId){
   return `<div class="li"><div class="main"><b>${esc(p?.name || o.playerName)}</b> <span class="muted">${esc(Se?.name || '—')} → ${esc(B?.name || '—')}</span><br>
     <span class="pill info">${esc(MODE[o.type || 'transfer'])}</span> <span class="num">${fmtM(o.fee)}</span> · <span class="num">${fmtW(o.wage)}</span>${isLoan(o.type) ? ` · <span class="sub">fino a fine stagione ${season() + (o.dur || 1) - 1}${o.buyout ? `, riscatto ${fmtM(o.buyout)}` : ''}${(o.wagePct ?? 100) < 100 ? `, ingaggio al ${o.wagePct}%` : ''}</span>` : ''}${altLine(o)}${o.note ? ` · <span class="muted">${esc(o.note)}</span>` : ''}</div>
     ${dealSummary(o.x)}
+    ${(() => { const ev = o.status === 'open' ? swapEval(o) : null; if (!ev) return ''; return `<div class="sub" style="margin-top:6px">⚖️ Valutazione: ${esc(p?.name || o.playerName)} vale ${fmtM(ev.worth)} · i giocatori in scambio valgono ${fmtM(ev.swV)}${o.fee ? ` + ${fmtM(o.fee)} in soldi` : ''} → <b>${ev.gap > 0 ? `mancano ${fmtM(ev.gap)} di conguaglio` : 'lo scambio basta'}</b></div>`; })()}
     ${o.status === 'prel' ? `<br><span class="sub">${esc(pc?.name || 'Il club con la prelazione')} può pareggiare ${prelOver ? '— tempo scaduto' : 'entro ' + timeLeft((o.prelUntil || 0) - now())}</span>` : ''}
     <div class="row"><span class="pill ${cls}">${st}</span>
     ${o.status === 'prel' && pc && canManage(pc.id) && !prelOver ? `<button class="btn sm good" data-act="prel-match" data-id="${o.id}">Pareggia l’offerta</button><button class="btn sm" data-act="prel-pass" data-id="${o.id}">Rinuncia</button>` : ''}
     ${o.status === 'prel' && (prelOver || S.comm) && (S.comm || canManage(o.buyerId) || canManage(o.sellerId)) ? `<button class="btn sm good" data-act="prel-done" data-id="${o.id}">Concludi l’affare</button>` : ''}
     ${myTurn && o.alt ? `<div class="sub" style="width:100%">Scegli quale formula accettare o portare avanti:</div><button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm good" data-act="offer-accept-alt" data-id="${o.id}">Accetta: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia: ${esc(MODE[o.type || 'transfer'])}</button><button class="btn sm" data-act="offer-counter-alt" data-id="${o.id}">Rilancia: ${esc(MODE[o.alt.type || 'transfer'])}</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta tutto</button>` : ''}
-    ${myTurn && !o.alt ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">Accetta</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
+    ${myTurn && !o.alt && o.by === 'buyer' && (swapEval(o)?.gap || 0) > 0 ? `<button class="btn sm" data-act="offer-topup" data-id="${o.id}">Chiedi ${fmtM(swapEval(o).gap)} di conguaglio</button>` : ''}
+    ${myTurn && !o.alt ? `<button class="btn sm good" data-act="offer-accept" data-id="${o.id}">${o.x?.swap?.length && !o.fee ? 'Accetta solo lo scambio' : 'Accetta'}</button><button class="btn sm" data-act="offer-counter" data-id="${o.id}">Rilancia</button><button class="btn sm bad" data-act="offer-reject" data-id="${o.id}">Rifiuta</button>` : ''}
     ${iWait ? `<span class="sub">in attesa di risposta</span><button class="btn sm ghost" data-act="offer-withdraw" data-id="${o.id}">Ritira</button>` : ''}</div></div>`;
 }
 function viewMarket(){
@@ -3184,7 +3193,7 @@ function makeOffer(p){
   const seller = club(p.clubId);
   const f = openModal(`Offerta per ${p.name}`, `<p class="sub">${esc(seller.name)} · ${esc(p.pos)} · OVR ${p.ovr || '—'} · valore ${fmtM(p.value || 0)} · ingaggio attuale ${fmtW(p.wage)}</p>
     ${loanFields()}
-    <div class="fgrid">${fld('fee', 'Prezzo offerto (milioni €)', `type="number" min="0" step="0.1" value="${(p.value || 0) / M}" required`, 'Per uno scambio puro metti 0 e scegli i tuoi giocatori in «Clausole e modalità aggiuntive».')}${fld('wage', 'Ingaggio proposto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(p.wage || 0) / K}"`)}
+    <div class="fgrid">${fld('fee', 'Prezzo offerto (milioni €)', `type="number" min="0" step="0.1" value="${(p.value || 0) / M}" required`, 'Solo scambio, senza soldi? Metti 0 e scegli i tuoi giocatori qui sotto: il club valuta e, se serve, ti chiede un conguaglio.')}${fld('wage', 'Ingaggio proposto (migliaia €/sett)', `type="number" min="0" step="0.5" value="${(p.wage || 0) / K}"`)}
     ${fld('note', 'Messaggio (facoltativo)', 'maxlength="120" placeholder="Es. pago subito, niente rilanci"', '', true)}</div>
     ${dealFields(mc)}
     ${altFields(true)}
@@ -3192,16 +3201,22 @@ function makeOffer(p){
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
       const fee = num(fd, 'fee') * M, wage = num(fd, 'wage') * K, L = readLoan(fd), A = readAlt(fd, true);
+      if (fee <= 0 && !fd.getAll('swap').length && !(A && A.fee > 0)) fail('Scrivi un prezzo oppure scegli almeno un giocatore da dare in scambio (puoi anche mettere 0 e fare solo lo scambio).');
       if (A && A.type === L.type) fail('La formula alternativa deve essere diversa da quella principale.');
       if (A && !A.wage) A.wage = wage;
       if (A && !isLoan(A.type) && A.fee > budget(mc)) fail('Non hai budget sufficiente per la formula alternativa.');
       if (fee > budget(mc)) fail('Non hai budget sufficiente per questa offerta.');
       mkGuard(mc, p.ovr, fee);
       if (S.offers.some(o => o.status === 'open' && o.playerId === p.id && o.buyerId === mc.id)) fail('Hai già una trattativa aperta per questo giocatore.');
-      await db.collection('offers').add({ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), ...(A ? {alt: A} : {}), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id});
-      toast(A ? 'Offerta inviata con due formule' : 'Offerta inviata');
+      const ofr = {ts: now(), season: season(), playerId: p.id, playerName: p.name, buyerId: mc.id, sellerId: p.clubId, fee, wage, ...L, x: readDeal(fd, mc, isLoan(L.type)), ...(A ? {alt: A} : {}), note: String(fd.get('note')).trim(), status: 'open', by: 'buyer', actorClub: mc.id};
+      /* società senza manager: valuta subito lo scambio; se non basta chiede il conguaglio, se basta resta pronta da accettare */
+      const ev = !seller.managerId && !A ? swapEval(ofr) : null;
+      if (ev && ev.gap > 0){ ofr.fee = fee + ev.gap; ofr.by = 'seller'; ofr.actorClub = seller.id; ofr.note = `${seller.name}: lo scambio non basta, servono ${fmtM(ev.gap)} di conguaglio`; }
+      await db.collection('offers').add(ofr);
+      toast(ev && ev.gap > 0 ? `${seller.name} valuta lo scambio e chiede ${fmtM(ev.gap)} di conguaglio: lo trovi nelle trattative` : A ? 'Offerta inviata con due formule' : 'Offerta inviata', 5000);
     }, 'Invia offerta');
   wireLoan(f, 'Costo del prestito (milioni €)', 'Prezzo offerto (milioni €)'); wireAlt(f);
+  f.querySelector('details.deal')?.setAttribute('open', '');
 }
 function counterOffer(o){
   const f = openModal('Rilancio', loanFields(o) + `<div class="fgrid">${fld('fee', 'Nuovo prezzo (milioni €)', `type="number" min="0" step="0.1" value="${o.fee / M}" required`)}${fld('wage', 'Ingaggio (migliaia €/sett)', `type="number" min="0" step="0.5" value="${o.wage / K}"`)}
@@ -4843,7 +4858,7 @@ const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); re
 
 /* ---------- permessi ---------- */
 const COMM_ONLY = new Set(['ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-led','adm-led-del','adm-dups','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
-const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
+const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-topup','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT') return;
@@ -5008,6 +5023,8 @@ document.addEventListener('click', async e => {
       case 'fa-del': confirmBox(`Rimuovi ${p().name}`, 'Il giocatore esce dalla lista svincolati.', 'Rimuovi', async () => { await db.doc('players/' + id).delete(); toast('Svincolato rimosso'); }); break;
       case 'offer-accept': b.disabled = true; await acceptOffer(o()); break;
       case 'offer-counter': counterOffer(o()); break;
+      case 'offer-topup': { const oo = o(), ev = oo && swapEval(oo); if (!oo || oo.status !== 'open' || !ev || ev.gap <= 0) fail('Offerta non più valida o scambio già sufficiente.');
+        await db.doc('offers/' + id).update({fee: (oo.fee || 0) + ev.gap, by: 'seller', ts: now(), actorClub: turnOf(oo), note: `Lo scambio non basta: servono ${fmtM(ev.gap)} di conguaglio`}); toast('Conguaglio richiesto'); break; }
       case 'offer-accept-alt': b.disabled = true; await acceptAlt(o()); break;
       case 'offer-counter-alt': if (o()?.alt) counterOffer(altAsMain(o())); break;
       case 'offer-reject': await db.doc('offers/' + id).update({status: 'rejected', ts: now(), actorClub: turnOf(o())}); toast('Offerta rifiutata'); break;
