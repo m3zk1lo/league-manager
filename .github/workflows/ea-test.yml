@@ -6,11 +6,15 @@ jobs:
     steps:
       - name: Cerco la versione FC 27
         run: |
-          curl -s -A "Mozilla/5.0" "https://www.ea.com/games/ea-sports-fc/ratings" -o pag.html
-          echo "== indirizzi trovati nella pagina EA =="
-          grep -o 'drop-api[^"'"'"' ]*' pag.html | sort -u | head -20
-          grep -o '"[^"]*rating/[^"]*"' pag.html | sort -u | head -20
-          for s in ea-sports-fc ea-sports-fc-27 ea-sports-fc27 fc-27 fc27; do
-            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/$s?locale=it&limit=100&offset=0" -o r.json -w "$s HTTP %{http_code} "
+          for l in en en-us it-it fr; do
+            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/ea-sports-fc?locale=$l&limit=100&offset=0" -o r.json -w "$l HTTP %{http_code} "
             python3 -c "import json;d=json.load(open('r.json'));w=[p for p in d.get('items',[]) if p.get('lastName') in ('Wirtz','Isak','Kane')];print('TOTALE',d.get('totalItems'),[(p.get('lastName'),p.get('overallRating')) for p in w])" 2>/dev/null || echo "(nessun dato)"
           done
+          curl -s -A "Mozilla/5.0" "https://www.ea.com/games/ea-sports-fc/ratings" -o pag.html
+          grep -o 'src="[^"]*\.js[^"]*"' pag.html | sed 's/src="//;s/"$//' | sed 's#^/#https://www.ea.com/#' | sort -u > js.txt
+          echo "== file js: $(wc -l < js.txt) =="
+          while read u; do curl -s -A "Mozilla/5.0" "$u" >> tutto.js; echo >> tutto.js; done < js.txt
+          echo "== punti dove si chiama drop-api =="
+          grep -o '.\{160\}drop-api.\{200\}' tutto.js | head -8
+          echo "== parole rating =="
+          grep -o '.\{80\}rating/.\{120\}' tutto.js | head -8
