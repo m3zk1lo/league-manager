@@ -5320,7 +5320,9 @@ async function fc27FromCsv(file, onStep){
   const step = onStep || (() => {}); step('Leggo il CSV…');
   const txt = await file.text(), nl = txt.indexOf('\n'), l1 = txt.slice(0, nl > 0 ? nl : 3000);
   const cnt = c => l1.split(c).length - 1, dl = cnt(';') > cnt(',') ? ';' : cnt('\t') > cnt(',') ? '\t' : ',';
-  const rows = parseCSV(txt, dl), head0 = (rows.shift() || []).map(h => String(h).trim());
+  const rows = parseCSV(txt, dl);
+  if (rows.length && /^\d+$/.test(String(rows[0][1] || '').trim()) && /sofifa\.com\/player\/\d+/.test(String(rows[0][rows[0].length - 1] || ''))) return fc27FromSofifaList(rows, file, step);
+  const head0 = (rows.shift() || []).map(h => String(h).trim());
   const H = head0.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
   const col = (...ks) => { for (const k of ks){ const i = H.indexOf(k); if (i >= 0) return i; } return -1; };
   const cId = col('playerid', 'fcid', 'eaid', 'sofifaid', 'id'), cCom = col('commonname'), cFi = col('firstname', 'givenname'), cLa = col('lastname', 'surname', 'familyname'),
@@ -5392,8 +5394,29 @@ async function fc27FromCsv(file, onStep){
   if (p.length < 3000) throw new Error(`Dal CSV ho letto solo ${p.length} giocatori validi (con nome, valutazione e squadra): controlla che sia il file completo. Colonne usate: ${cols}`);
   return {leagues: oLg, clubs: oCl, p, uploaded: Date.now(), file: file.name, info: {csv: true, st, newNames, cols}};
 }
+/* lista giocatori da SoFIFA senza intestazione e senza club (id, nome, età, ruolo, overall…): aggiorna solo le valutazioni, i club restano quelli del database in uso */
+async function fc27FromSofifaList(rows, file, step){
+  step('Aggiorno le valutazioni…');
+  let old = null; try { old = await fc27Load(); } catch {}
+  if (!old) throw new Error('Questo CSV non ha i club: serve prima un database FC 27 già caricato nel sito.');
+  const p = old.p.map(x => x.slice()), byId = new Map(p.map(x => [x[0], x])), POSOK = new Set(['POR', 'DC', 'TD', 'TS', 'CDC', 'CC', 'COC', 'ED', 'ES', 'AD', 'AS', 'ATT']);
+  const seen = new Set(), st = {rows: rows.length, changed: 0, same: 0, fresh: 0, bad: 0, dup: 0, miss: 0};
+  for (const r of rows){
+    const id = parseInt(r[1], 10), nm = String(r[3] || r[2] || '').trim(), age = parseInt(r[4], 10), ovr = parseInt(r[6], 10), pos = String(r[5] || '').trim().toUpperCase();
+    if (!(id > 0) || !(ovr > 0) || !nm){ st.bad++; continue; }
+    if (seen.has(id)){ st.dup++; continue; } seen.add(id);
+    const x = byId.get(id);
+    if (x){ if (x[4] !== ovr){ st.changed++; x[4] = ovr; } else st.same++; if (ovr > (x[6] || 0)) x[6] = ovr; }
+    else { const n = [id, nm, POSOK.has(pos) ? pos : 'CC', age > 0 ? age : 25, ovr, -1]; p.push(n); byId.set(id, n); st.fresh++; }
+  }
+  st.miss = old.p.filter(x => !seen.has(x[0])).length;
+  if (st.changed + st.same < 3000) throw new Error('Dal CSV ho agganciato meno di 3.000 giocatori del database: controlla che sia il file completo.');
+  return {leagues: old.leagues, clubs: old.clubs, p, uploaded: Date.now(), file: file.name, info: {list: true, st}};
+}
 function fc27CsvConfirm(d, fname){
-  const i = d.info, s = i.st, nn = i.newNames;
+  const i = d.info, s = i.st;
+  if (i.list) return confirmBox('Valutazioni da CSV', `Il file <b>${esc(fname)}</b> è una lista di giocatori <b>senza club</b>: aggiorno solo le valutazioni.<br><br>Su <b>${s.rows.toLocaleString('it-IT')}</b> righe: <b>${s.changed.toLocaleString('it-IT')}</b> giocatori cambiano overall, <b>${s.same.toLocaleString('it-IT')}</b> restano uguali.<br><b>${s.fresh.toLocaleString('it-IT')}</b> giocatori non erano nel database: entrano senza club (li assegni con «Incolla rosa da SoFIFA»).<br><b>${s.miss.toLocaleString('it-IT')}</b> del database non sono nel file e restano come sono.<br><br>Club, ruoli ed età dei giocatori già presenti non cambiano. Poi ti mostro come cambiano le valutazioni nella lega. Budget, mercato e contratti non vengono toccati.`, 'Carica e aggiorna', () => fc27Commit(d, fname));
+  const nn = i.newNames;
   confirmBox('Database da CSV', `Dal file <b>${esc(fname)}</b> ho letto <b>${d.p.length.toLocaleString('it-IT')}</b> giocatori validi (su ${s.rows.toLocaleString('it-IT')} righe).<br><br>Già presenti nel database: <b>${s.id + s.name + s.club}</b> (${s.id} per ID, ${s.name} per nome, ${s.club} per squadra). Nuovi: <b>${s.fresh}</b>.<br>Saltati: ${s.women} donne, ${s.noClub} senza squadra, ${s.bad} righe incomplete, ${s.dup} doppioni.<br><br>Club con nome non riconosciuto: <b>${nn.length}</b>${nn.length ? ':<br>' + nn.slice(0, 12).map(x => esc(x)).join(', ') + (nn.length > 12 ? '…' : '') : ''}.${nn.length > 40 ? '<br><b>Attenzione:</b> sono tanti, i nomi dei club nel CSV potrebbero essere scritti in modo diverso.' : ''}${s.posMiss ? `<br>Ruolo non riconosciuto per ${s.posMiss} giocatori nuovi (messi come CC).` : ''}<br><br>Colonne usate: ${esc(i.cols)}.<br><br>Il database viene salvato per tutti e poi ti mostro cosa cambia nella lega. Budget, mercato e contratti non vengono toccati.`, 'Carica e aggiorna', () => fc27Commit(d, fname));
 }
 async function fc27Commit(d, name){
