@@ -4,15 +4,16 @@ jobs:
   prova:
     runs-on: ubuntu-latest
     steps:
-      - name: Cerco la versione FC 27
+      - name: Cerco un database FC 27 aggiornato
         run: |
-          curl -s -A "Mozilla/5.0" "https://www.ea.com/games/ea-sports-fc/ratings" -o pag.html
-          echo "== E: vicino a drop-api =="
-          grep -o '.\{150\}drop-api.\{150\}' pag.html | head -4
-          echo "== F: vicino a ea-sports-fc-27 =="
-          grep -o '.\{200\}ea-sports-fc-27.\{200\}' pag.html | head -3
-          echo "== G: prove =="
-          for u in "rating/ea-sports-fc-27?locale=en&limit=100&offset=0" "rating/ea-sports-fc-27?locale=en" "rating/fc-27?locale=en&limit=100" "rating/ea-sports-fc?locale=en&limit=100&offset=0&gameSlug=fc-27"; do
-            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/$u" -o r.json -w "$u HTTP %{http_code} "
-            python3 -c "import json;d=json.load(open('r.json'));w=[p for p in d.get('items',[]) if p.get('lastName') in ('Wirtz','Isak','Kane')];print('TOTALE',d.get('totalItems'),[(p.get('lastName'),p.get('overallRating')) for p in w])" 2>/dev/null || echo "(nessun dato)"
+          for pag in "https://www.recharge.com/blog/en-gb/fc-27-player-ratings-database" "https://cmtracker.net/en/players"; do
+            echo "===== $pag"
+            curl -sL -A "Mozilla/5.0" "$pag" -o p.html -w "HTTP %{http_code} $(date +%s)\n"
+            grep -oE 'https?://[^"'"'"' )]*\.(json|csv|gz)[^"'"'"' )]*' p.html | sort -u | head -10 > u.txt
+            grep -oE '"/[^"]*\.(json|csv)[^"]*"' p.html | tr -d '"' | sort -u | head -10 >> u.txt
+            grep -oE 'https?://[^"'"'"' ]*api[^"'"'"' ]*' p.html | sort -u | head -10 >> u.txt
+            cat u.txt
+            while read u; do case "$u" in /*) u="$(echo $pag | cut -d/ -f1-3)$u";; esac
+              curl -sL -A "Mozilla/5.0" "$u" -o f.bin -w "  -> $u HTTP %{http_code} %{size_download} byte\n"
+              head -c 200 f.bin | tr -d '\n'; echo; done < u.txt
           done
