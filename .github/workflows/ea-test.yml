@@ -7,17 +7,12 @@ jobs:
       - name: Cerco la versione FC 27
         run: |
           curl -s -A "Mozilla/5.0" "https://www.ea.com/games/ea-sports-fc/ratings" -o pag.html
-          grep -o 'src="[^"]*\.js[^"]*"' pag.html | sed 's/src="//;s/"$//' | sed 's#^/#https://www.ea.com/#' | sort -u > js.txt
-          while read u; do curl -s -A "Mozilla/5.0" "$u" >> tutto.js; echo >> tutto.js; done < js.txt
-          echo "== A: nomi ea-sports-fc =="
-          cat pag.html tutto.js | grep -o 'ea-sports-fc[a-z0-9-]*' | sort | uniq -c | sort -rn | head -12
-          echo "== B: baseURL =="
-          grep -o '.\{60\}baseURL.\{100\}' tutto.js | head -5
-          echo "== C: pagina, vicino a rating =="
-          grep -o '.\{60\}"[a-zA-Z]*[Ss]lug"[^,]*' pag.html | head -8
-          grep -o '"[a-zA-Z]*[Ss]lug":"[^"]*"' pag.html | sort | uniq -c | head -15
-          echo "== D: prova FC27 con parametri =="
-          for q in "gameVersion=27" "version=27" "game=fc27" "year=27"; do
-            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/ea-sports-fc?locale=en&limit=100&offset=0&$q" -o r.json -w "$q HTTP %{http_code} "
+          echo "== E: vicino a drop-api =="
+          grep -o '.\{150\}drop-api.\{150\}' pag.html | head -4
+          echo "== F: vicino a ea-sports-fc-27 =="
+          grep -o '.\{200\}ea-sports-fc-27.\{200\}' pag.html | head -3
+          echo "== G: prove =="
+          for u in "rating/ea-sports-fc-27?locale=en&limit=100&offset=0" "rating/ea-sports-fc-27?locale=en" "rating/fc-27?locale=en&limit=100" "rating/ea-sports-fc?locale=en&limit=100&offset=0&gameSlug=fc-27"; do
+            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/$u" -o r.json -w "$u HTTP %{http_code} "
             python3 -c "import json;d=json.load(open('r.json'));w=[p for p in d.get('items',[]) if p.get('lastName') in ('Wirtz','Isak','Kane')];print('TOTALE',d.get('totalItems'),[(p.get('lastName'),p.get('overallRating')) for p in w])" 2>/dev/null || echo "(nessun dato)"
           done
