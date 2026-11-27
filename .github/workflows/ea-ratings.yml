@@ -1,0 +1,50 @@
+name: Voti EA
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+permissions:
+  contents: write
+jobs:
+  voti:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scarico i voti ufficiali EA
+        run: |
+          python3 - <<'PY'
+          import json, time, urllib.request
+          out, off, tot = [], 0, None
+          while True:
+              u = f"https://drop-api.ea.com/rating/ea-sports-fc?locale=it&limit=100&offset={off}"
+              req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+              d = json.load(urllib.request.urlopen(req, timeout=60))
+              it = d.get("items") or []
+              tot = d.get("totalItems") or tot or 0
+              for p in it:
+                  nm = p.get("commonName") or f"{p.get('firstName') or ''} {p.get('lastName') or ''}".strip()
+                  out.append([p.get("id"), p.get("overallRating"), nm, (p.get("team") or {}).get("label"), p.get("leagueName")])
+              off += len(it)
+              if not it or off >= tot:
+                  break
+              time.sleep(0.3)
+          print("Giocatori scaricati:", len(out), "su", tot)
+          if len(out) < 10000:
+              raise SystemExit("Troppo pochi giocatori, non aggiorno")
+          out.sort(key=lambda x: x[0] or 0)
+          try:
+              old = json.load(open("ea-ratings.json"))
+          except Exception:
+              old = {}
+          if old.get("p") == out:
+              print("Nessun voto cambiato")
+          else:
+              json.dump({"updated": int(time.time() * 1000), "n": len(out), "p": out}, open("ea-ratings.json", "w"), ensure_ascii=False, separators=(",", ":"))
+              print("File aggiornato")
+          PY
+      - name: Salvo su GitHub
+        run: |
+          git config user.name "voti-ea"
+          git config user.email "voti-ea@users.noreply.github.com"
+          git add ea-ratings.json
+          git diff --cached --quiet && echo "Niente da salvare" || (git commit -m "Voti EA aggiornati" && git push)
