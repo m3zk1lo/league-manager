@@ -4831,7 +4831,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4903,6 +4903,7 @@ document.addEventListener('click', async e => {
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-upload': fc27Upload(); break;
+      case 'fc27-wipe': fc27Wipe(); break;
       case 'sofifa-paste': await fc27Roster(); break;
       case 'sofifa-multi': await fc27RosterMulti(); break;
       case 'mkt-fc27-rt': await fc27RatingsUpdate(); break;
@@ -5534,6 +5535,27 @@ async function fc27Commit(d, name){
   toast(shared ? `Database caricato: ${d.p.length.toLocaleString('it-IT')} giocatori` : 'Database caricato solo su questo dispositivo (salvataggio condiviso non permesso)', 5000);
   setTimeout(() => fc27SyncRosters(), 400);
 }
+/* svuota le rose per ripartire da un CSV con i giocatori già assegnati ai club: i club e i campionati restano, spariscono i giocatori */
+async function fc27Wipe(){
+  let c; try { c = await fc27Load(); } catch { return toast('Database FC 27 non disponibile.'); }
+  const mg = p => !!club(p.clubId)?.managerId, nMgr = S.players.filter(mg).length, nOth = S.players.length - nMgr;
+  openModal('Svuota tutte le rose', `<p>Tolgo i giocatori dalle squadre. I <b>club e i campionati restano</b>; poi carichi il CSV con «Carica database FC 27» e le rose si riempiono da sole.</p>
+    <div class=\"f full\"><label><input type=\"checkbox\" name=\"wdb\" checked> Database FC 27 (Mondo e club CPU): <b>${c.p.length.toLocaleString('it-IT')}</b> giocatori</label></div>
+    <div class=\"f full\"><label><input type=\"checkbox\" name=\"wcpu\" checked> Giocatori nei club della lega senza manager e svincolati: <b>${nOth.toLocaleString('it-IT')}</b></label></div>
+    <div class=\"f full\"><label><input type=\"checkbox\" name=\"wmgr\" checked> Giocatori nelle rose dei manager: <b>${nMgr.toLocaleString('it-IT')}</b></label><span class=\"hint\">Toglila se non vuoi toccare le squadre dei manager.</span></div>
+    <p class=\"sub\">Budget, classifiche e storico trasferimenti non si toccano. Trattative e aste aperte su giocatori eliminati vanno annullate a mano. <b>Non si può annullare.</b></p>
+    <div class=\"f full\"><label for=\"wtxt\">Per confermare scrivi SVUOTA</label><input id=\"wtxt\" name=\"wtxt\" autocomplete=\"off\"></div>`,
+    async fd => {
+      if (String(fd.get('wtxt') || '').trim().toUpperCase() !== 'SVUOTA') fail('Scrivi SVUOTA per confermare.');
+      const wDb = !!fd.get('wdb'), wCpu = !!fd.get('wcpu'), wMgr = !!fd.get('wmgr'); if (!wDb && !wCpu && !wMgr) fail('Scegli cosa svuotare.');
+      const del = S.players.filter(p => mg(p) ? wMgr : wCpu);
+      for (let j = 0; j < del.length; j += 10){ await Promise.all(del.slice(j, j + 10).map(p => db.doc('players/' + p.id).delete())); toast(`Giocatori tolti: ${Math.min(j + 10, del.length)} di ${del.length}`, 1500); }
+      if (wDb){ const out = {leagues: c.leagues, clubs: c.clubs, p: [], uploaded: Date.now(), file: c.file || ''}; const ok = await fc27SaveShared(out); FC27_CACHE = out; WORLD = null; worldLoading = false; loadWorld(); if (!ok) toast('Database svuotato solo su questo dispositivo (salvataggio condiviso non permesso)', 5000); }
+      try { await db.doc('fc27db/wipe').set({at: now()}); } catch {}
+      Object.keys(listeners).forEach(reload);
+      toast('Rose svuotate: ora carica il CSV con «Carica database FC 27»', 7000);
+    }, 'Svuota', true);
+}
 function fc27Upload(){
   const cur = FC27_CACHE; const info = cur ? `${cur.p.length.toLocaleString('it-IT')} giocatori · ${cur.clubs.length} club${cur.uploaded ? ' · caricato il ' + new Date(cur.uploaded).toLocaleDateString('it-IT') : ' · versione incorporata nel sito'}` : 'in caricamento…';
   openModal('Carica database FC 27', `<p class=\"sub\">Database in uso: <b>${esc(info)}</b></p>
@@ -5562,7 +5584,8 @@ async function fc27SyncRosters(){
   const byFc = new Map(), idxToClub = new Map(), openIds = new Set([...S.offers.filter(o => o.status === 'open').map(o => o.playerId), ...openAuctions().map(a => a.playerId)]);
   S.players.forEach(p => { const f = fcOf(p); if (f != null && !byFc.has(f)) byFc.set(f, p); });
   for (const [cid, idx] of pl.map) if (!idxToClub.has(idx)) idxToClub.set(idx, cid);
-  const sold = new Set([...cpuDeals().filter(d => d.status === 'done' && typeof d.fcId === 'number').map(d => d.fcId), ...(S.transfers || []).map(t => String(t.playerId || '').startsWith('fc') ? +String(t.playerId).slice(2) : null).filter(Boolean)]);
+  let wipeAt = 0; try { const {data: wd} = await sb.from('docs').select('data').eq('col', 'fc27db').eq('id', 'wipe'); wipeAt = +(wd?.[0]?.data?.at) || 0; } catch {}
+  const sold = new Set([...cpuDeals().filter(d => d.status === 'done' && typeof d.fcId === 'number' && (d.ts || 0) > wipeAt).map(d => d.fcId), ...(S.transfers || []).filter(t => (t.ts || 0) > wipeAt).map(t => String(t.playerId || '').startsWith('fc') ? +String(t.playerId).slice(2) : null).filter(Boolean)]);
   const add = [], move = [], gone = [], rate = [];
   for (const x of res.p){
     const cid = idxToClub.get(x[5]), p = byFc.get(x[0]);
@@ -5720,7 +5743,7 @@ function admPlayersTab(){
 }
 function admMarketTab(){
   const au = openAuctions().map(a => `<div class="li"><div class="main"><b>${esc(a.playerName || '—')}</b><br><span class="sub">Offerta ${fmtM(a.highBid || 0)} · ${a.highClubId ? esc(cname(a.highClubId)) : 'nessuna offerta'}${a.endsAt ? ' · ' + timeLeft(a.endsAt - now()) : ''}</span></div>${admBtn('auc-time', a.id, 'Cambia durata')}${admBtn('auc-cancel', a.id, 'Annulla asta', 'bad')}</div>`).join('');
-  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><div class=\"row\">${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}${admBtn('sofifa-paste', null, 'Incolla rosa da SoFIFA')}${admBtn('sofifa-multi', null, 'Incolla più squadre insieme')}</div><p class=\"sub\" style=\"margin-top:8px\">«Incolla rosa da SoFIFA» corregge un club alla volta: utile quando il database non è aggiornato all’ultimo mercato.</p>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
+  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><div class=\"row\">${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}${admBtn('sofifa-paste', null, 'Incolla rosa da SoFIFA')}${admBtn('sofifa-multi', null, 'Incolla più squadre insieme')}${admBtn('fc27-wipe', null, 'Svuota tutte le rose', 'bad')}</div><p class=\"sub\" style=\"margin-top:8px\">«Incolla rosa da SoFIFA» corregge un club alla volta: utile quando il database non è aggiornato all’ultimo mercato.</p>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
     + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`);
 }
 function admCalTab(){
