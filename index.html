@@ -462,7 +462,7 @@ const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : 
 const scopeNow = () => { if (S.div && ((S.div !== 'A' && S.div !== 'B') || legaAny())) return S.div; if (myClub()?.lg != null) return 'L' + myClub().lg; if (legaAny()) return curDiv();
   const ls = typeof lgList === 'function' ? lgList() : []; return ls.length ? 'L' + (ls.find(l => l.name === 'Serie A') || ls[0]).li : curDiv(); };
 const divTabs = () => { loadWorld(); const cur = scopeNow(), ls = typeof lgList === 'function' ? lgList() : [];
-  return `<div class="panel" style="margin-bottom:12px"><div class="f full"><label for="scope">Campionato o coppa</label><select id="scope" data-wf="div">${legaAny() ? `<option value="A"${cur === 'A' ? ' selected' : ''}>Serie A (lega)</option>${hasB() ? `<option value="B"${cur === 'B' ? ' selected' : ''}>Serie B (lega)</option>` : ''}` : ''}${ls.map(l => `<option value="L${l.li}"${cur === 'L' + l.li ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="C"${cur === 'C' ? ' selected' : ''}>Coppe</option></select></div></div>`; };
+  return `<div class="panel" style="margin-bottom:12px"><div class="f full"><label for="scope">Campionato o coppa</label><select id="scope" data-wf="div">${legaAny() ? `<option value="A"${cur === 'A' ? ' selected' : ''}>Serie A</option>${hasB() ? `<option value="B"${cur === 'B' ? ' selected' : ''}>Serie B</option>` : ''}` : ''}${ls.map(l => `<option value="L${l.li}"${cur === 'L' + l.li ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="C"${cur === 'C' ? ' selected' : ''}>Coppe</option></select></div></div>`; };
 const worldScope = () => { const d = scopeNow(); if (d !== 'C' && !/^L\d+$/.test(d)) return null; loadWorld(); if (d !== 'C') S.lgl = +d.slice(1); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : d === 'C' ? cupView() : lgView()); };
 const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
 function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
@@ -2192,7 +2192,8 @@ const LG_SKIP = /Libertadores|Sudamericana/;
 const lgRng = seed => { let k = 0; return () => WH(seed + '#' + (k++)); };
 function lgList0(){
   if (!WORLD || WORLD.err) return [];
-  return WORLD.leagues.map((name, li) => ({li, name, clubs: WORLD.clubs.filter(c => c.li === li)})).filter(l => !LG_SKIP.test(l.name) && l.clubs.length >= 6);
+  const dup = n => (n === 'Serie A' && S.clubs.some(c => c.lg == null && divOf(c) === 'A')) || (n === 'Serie B' && hasB());
+  return WORLD.leagues.map((name, li) => ({li, name, clubs: WORLD.clubs.filter(c => c.li === li)})).filter(l => !LG_SKIP.test(l.name) && !dup(l.name) && l.clubs.length >= 6);
 }
 let LGM = null;
 function lgList(){
@@ -2272,17 +2273,17 @@ function lgHumanSet(){ const out = new Set(); if (!WORLD || WORLD.err || !WORLD.
    hand = lo gestisce l'admin a mano: calendario e risultati
    auto = come prima: il sito lo fa avanzare da solo, salvo se c'è un manager reale (allora è a mano)
    Chiavi: numero del campionato del Mondo (0, 2, 3…) oppure 'A' / 'B' per Serie A e Serie B della lega. */
-const LG_MODES = {auto: 'Automatico (come prima)', sim: 'Simulato partita per partita', hand: 'A mano'};
+const LG_MODES = {auto: 'Automatico (CPU simulate, manager a mano)', sim: 'Simulato partita per partita', hand: 'A mano'};
 const lgKey = v => /^\d+$/.test(String(v)) ? +v : String(v);
 const lgModeDoc = () => (S.world || []).find(d => d.id === 'LGMODE') || {};
 const lgHasHuman = k => typeof k === 'number' ? lgHumanSet().has(k) : S.clubs.some(c => c.managerId && c.lg == null && divOf(c) === k);
 const lgModeSet = k => { const m = lgModeDoc().modes?.[k]; return m === 'sim' || m === 'hand' ? m : 'auto'; };
-const lgMode = k => { const m = lgModeSet(k); return m !== 'auto' ? m : (lgHasHuman(k) ? 'hand' : 'auto'); };
-const lgModeLabel = k => { const m = lgMode(k); return m === 'sim' ? 'Simulato partita per partita' : m === 'hand' ? (lgModeSet(k) === 'hand' ? 'A mano' : 'A mano · c’è un manager reale') : 'Automatico'; };
+const lgMode = k => lgModeSet(k);
+const lgModeLabel = k => { const m = lgMode(k); return m === 'sim' ? 'Simulato partita per partita' : m === 'hand' ? 'A mano' : (lgHasHuman(k) ? 'Automatico · partite dei manager a mano' : 'Automatico'); };
 const lgModeNote = k => { const m = lgMode(k);
   return m === 'sim' ? '<p class="sub" style="margin:8px 0 0">Questo campionato si simula <b>partita per partita</b>: l’admin preme «Simula» su ogni partita (o su tutta la giornata). Le partite non simulate restano da giocare.</p>'
     : m === 'hand' ? '<p class="sub" style="margin:8px 0 0">Questo campionato lo gestisce l’admin <b>a mano</b>: calendario e risultati li inserisce lui, il sito non simula nulla.</p>'
-    : '<p class="sub" style="margin:8px 0 0">Questo campionato lo gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanza insieme alle giornate della lega.</p>'; };
+    : '<p class="sub" style="margin:8px 0 0">Le partite tra squadre libere (CPU) le gioca il sito in modo realistico (formazioni, gol, assist, cartellini, infortuni) e avanzano insieme alle giornate. Le partite delle squadre con un manager reale si giocano alla Play e il risultato lo inserisce l’admin.</p>'; };
 const lgModeCtl = (k, name) => `<div class="f full" style="margin-top:10px"><label for="lgmode${k}">Modalità${name ? ' · ' + esc(name) : ' di questo campionato'} (solo admin)</label><select id="lgmode${k}" data-act-change="lgmode" data-id="${k}">${Object.entries(LG_MODES).map(([v, l]) => `<option value="${v}"${lgModeSet(k) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>`;
 document.addEventListener('change', e => { const el = e.target.closest && e.target.closest('[data-act-change="lgmode"]'); if (!el || !S.comm) return;
   lgSetMode(lgKey(el.dataset.id), el.value).catch(err => toast(err.message || 'Operazione non riuscita.')); });
@@ -2370,10 +2371,10 @@ async function lgTick(){
   try {
     const st = stLoad(); let dirty = false; const human = lgHumanSet();
     if (s > 1) for (const d of (S.world || []).filter(d => d.season === s - 1 && d.li != null && lgMode(d.li) === 'auto' && d.rounds.some(r => r.m.some(m => m[2] == null)))){
-      const d2 = JSON.parse(JSON.stringify(d)); d2.rounds.forEach((r, k) => r.m = r.m.map(m => m[2] == null ? lgPlay(lgClub(m[0]) || {i: m[0], players: []}, lgClub(m[1]) || {i: m[1], players: []}, `g${d.li}-${s - 1}-${k}-${m[0]}-${m[1]}`) : m));
+      const d2 = JSON.parse(JSON.stringify(d)); const hI = lgHumIdx(); d2.rounds.forEach((r, k) => r.m = r.m.map(m => m[2] == null && !hI.has(m[0]) && !hI.has(m[1]) ? lgPlay(lgClub(m[0]) || {i: m[0], players: []}, lgClub(m[1]) || {i: m[1], players: []}, `g${d.li}-${s - 1}-${k}-${m[0]}-${m[1]}`) : m));
       await wsave(d.id, d2); return;
     }
-    const mv = s > 1 ? lgMembers(s) : null;
+    const mv = s > 1 ? lgMembers(s) : null, humI = lgHumIdx();
     for (const L of lgList()){
       const mode_ = lgMode(L.li);
       if (mode_ !== 'auto'){ /* simulato partita per partita o a mano: il sito non lo fa avanzare da solo. A mano con un manager reale: via il calendario automatico mai toccato, lo crea il commissario */
@@ -2383,8 +2384,8 @@ async function lgTick(){
       const rounds = doc ? JSON.parse(JSON.stringify(doc.rounds)) : lgSchedule(ids, s, L.li).map(m => ({m: m.map(([h, a]) => [h, a, null, null, [], []])}));
       const total = rounds.length, target = Math.floor(frac * total + 1e-9); let ch = !doc;
       for (let k = 0; k < target; k++){
-        if (rounds[k].m.every(lgPlayed)) continue;
-        rounds[k].m = rounds[k].m.map(m => { if (lgPlayed(m)) return m; const H = lgClub(m[0]), A = lgClub(m[1]); if (!H || !A) return m; const res = lgPlay(H, A, `g${L.li}-${s}-${k}-${m[0]}-${m[1]}`, st); stAfter(st, res); dirty = true; return res; });
+        if (rounds[k].m.every(m => lgPlayed(m) || humI.has(m[0]) || humI.has(m[1]))) continue;
+        rounds[k].m = rounds[k].m.map(m => { if (lgPlayed(m) || humI.has(m[0]) || humI.has(m[1])) return m; const H = lgClub(m[0]), A = lgClub(m[1]); if (!H || !A) return m; const res = lgPlay(H, A, `g${L.li}-${s}-${k}-${m[0]}-${m[1]}`, st); stAfter(st, res); dirty = true; return res; });
         rounds[k].ts = now(); ch = true;
       }
       if (ch) await wsave(`L${L.li}-S${s}`, {li: L.li, name: L.name, manual: !!doc?.manual, season: s, clubs: ids, total, rounds, moves: doc?.moves || mv?.moves[L.name] || null});
@@ -2394,6 +2395,8 @@ async function lgTick(){
   } finally { lgBusy = false; }
 }
 const lgPlayed = m => m && m[2] != null;
+/* squadre del Mondo con un manager reale (le loro partite si giocano alla Play) */
+const lgHumIdx = () => new Set(S.clubs.filter(c => c.managerId && c.lg != null && /^w\d+$/.test(String(c.id))).map(c => +String(c.id).slice(1)));
 function lgTable(doc){
   const t = new Map(doc.clubs.map(i => [i, {i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0}]));
   doc.rounds.forEach(r => r.m.forEach(([h, a, hg, ag]) => { if (hg == null) return; const H = t.get(h), A = t.get(a); if (!H || !A) return; H.g++; A.g++; H.gf += hg; H.gs += ag; A.gf += ag; A.gs += hg;
@@ -2563,7 +2566,7 @@ function lgBulk(li){
     }, 'Salva risultati');
 }
 function lgSerieView(div){
-  const rows = standings(season(), div), n = rows.length, ab = [['A', 'Serie A (lega)'], ...(hasB() ? [['B', 'Serie B (lega)']] : [])];
+  const rows = standings(season(), div), n = rows.length, ab = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : [])];
   const zone = i => div === 'A' ? (i < 4 ? 'z-cl' : i < 6 ? 'z-el' : i === 6 ? 'z-ecl' : i >= n - RELEG ? 'z-bot' : '') : (i < PROMO ? 'z-top' : i >= 2 && i <= 5 && n >= 6 ? 'z-po' : '');
   const legend = div === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> Champions League · <span class="zl z-el"></span> Europa League · <span class="zl z-ecl"></span> Conference League · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>` : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
   const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ab.map(([k, l]) => `<option value="${k}"${k === div ? ' selected' : ''}>${l} · ${S.clubs.filter(c => divOf(c) === k).length} squadre</option>`).join('')}${lgList().map(l => `<option value="${l.li}">${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div></div>`;
@@ -2577,7 +2580,7 @@ function lgView(){
 function lgView0(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
-  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${legaAny() ? `<option value="A">Serie A (lega)</option>${hasB() ? '<option value="B">Serie B (lega)</option>' : ''}` : ''}${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
+  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${legaAny() ? `<option value="A">Serie A</option>${hasB() ? '<option value="B">Serie B</option>' : ''}` : ''}${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
     ${lgModeNote(li)}${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0">In questo campionato c’è almeno un manager reale.</p>' : ''}${S.comm ? lgModeCtl(li) : ''}
     ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-add" data-id="${li}">+ Partita</button><button class="btn sm" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
@@ -5148,7 +5151,7 @@ async function cpuMatchTick(){
   if (!S.loaded.matches || !S.loaded.clubs || !S.loaded.players || !S.clubs.some(c => c.managerId)) return;
   const ms = seasonMatches().filter(m => !m.stage && !m.pre && !m.played), hum = m => !!(club(m.homeId)?.managerId || club(m.awayId)?.managerId);
   const hm = ms.filter(hum), cur = hm.length ? Math.min(...hm.map(m => m.round)) : Infinity, divHuman = new Set(S.clubs.filter(c => c.managerId).map(c => divOf(c)));
-  const todo = ms.filter(m => !divHuman.has(mDiv(m)) && lgMode(mDiv(m)) === 'auto' && m.round <= cur && club(m.homeId) && club(m.awayId) && !cpuSimDone.has(m.id)).sort((a, b) => a.round - b.round).slice(0, 10);
+  const todo = ms.filter(m => !hum(m) && lgMode(mDiv(m)) === 'auto' && m.round <= cur && club(m.homeId) && club(m.awayId) && !cpuSimDone.has(m.id)).sort((a, b) => a.round - b.round).slice(0, 10);
   if (!todo.length) return;
   cpuSimBusy = true;
   try {
@@ -5773,7 +5776,7 @@ function admCalTab(){
   const P = admOld(), ms = seasonMatches().filter(m => !m.stage && !m.pre), rounds = [...new Set(ms.map(m => m.round))].sort((a, b) => a - b);
   const firstOpen = rounds.find(r => ms.some(m => m.round === r && !m.played)) ?? rounds[rounds.length - 1], rd = rounds.includes(+S.admRd) ? +S.admRd : firstOpen;
   const rows = ms.filter(m => m.round === rd).map(m => `<div class="li"><div class="main"><b>${esc(cname(m.homeId))} – ${esc(cname(m.awayId))}</b>${hasB() ? ` <span class="sub">${esc(DIVS[mDiv(m)] || '')}</span>` : ''}<br><span class="sub">${m.played ? `${m.hg}–${m.ag}` : 'da giocare'}</span></div>${serieSimOk(m) ? admBtn('serie-sim', m.id, 'Simula', 'primary') : ''}${admBtn('result', m.id, m.played ? 'Correggi' : 'Risultato', serieSimOk(m) ? '' : 'primary')}${admBtn('fx-edit', m.id, 'Modifica')}${admBtn('fx-del', m.id, 'Elimina', 'bad')}</div>`).join('');
-  const serie = !legaAny() ? '' : admPanel('Serie A e B della vecchia lega · calendario e classifica', `${lgModeCtl('A', 'Serie A')}${hasB() ? lgModeCtl('B', 'Serie B') : ''}<div class="row" style="margin-bottom:8px">${admBtn('gen', null, 'Genera calendario', 'primary')}${admBtn('fx-round', null, 'Inserisci giornata')}${admBtn('fx-add', null, '+ Partita')}${admBtn('recalc', null, 'Ricalcola classifica')}${rounds.length && (lgMode('A') === 'sim' || (hasB() && lgMode('B') === 'sim')) ? admBtn('serie-simr', rd, 'Simula giornata ' + rd, 'primary') : ''}${admBtn('fx-clear', null, 'Svuota calendario', 'bad')}</div>
+  const serie = !legaAny() ? '' : admPanel('Serie A e Serie B · calendario e classifica', `${lgModeCtl('A', 'Serie A')}${hasB() ? lgModeCtl('B', 'Serie B') : ''}<div class="row" style="margin-bottom:8px">${admBtn('gen', null, 'Genera calendario', 'primary')}${admBtn('fx-round', null, 'Inserisci giornata')}${admBtn('fx-add', null, '+ Partita')}${admBtn('recalc', null, 'Ricalcola classifica')}${rounds.length && (lgMode('A') === 'sim' || (hasB() && lgMode('B') === 'sim')) ? admBtn('serie-simr', rd, 'Simula giornata ' + rd, 'primary') : ''}${admBtn('fx-clear', null, 'Svuota calendario', 'bad')}</div>
     ${rounds.length ? `<div class="f full"><label for="admRd">Giornata</label><select id="admRd" data-wf="admRd">${rounds.map(r => `<option value="${r}"${r === rd ? ' selected' : ''}>Giornata ${r}</option>`).join('')}</select></div><div class="list">${rows || '<p class="muted">Nessuna partita.</p>'}</div>` : '<p class="muted">Calendario non ancora creato.</p>'}`);
   let world = '<p class="muted">Campionati in caricamento…</p>';
   if (WORLD && !WORLD.err){ const ls = lgList(), hs = lgHumanSet(), li = ls.some(l => l.li === +S.admLg) ? +S.admLg : (ls.find(l => hs.has(l.li)) || ls[0])?.li, doc = li != null ? lgDoc(li, season()) : null;
