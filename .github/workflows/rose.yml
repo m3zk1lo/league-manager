@@ -1,0 +1,53 @@
+name: Rose vere
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "43 4 * * 1"
+permissions:
+  contents: write
+jobs:
+  rose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scarico le rose da football-data.org
+        env:
+          FD_TOKEN: ${{ secrets.FD_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          tok = os.environ["FD_TOKEN"].strip()
+          def get(path):
+              req = urllib.request.Request("https://api.football-data.org/v4/" + path, headers={"X-Auth-Token": tok})
+              for k in range(3):
+                  try:
+                      return json.load(urllib.request.urlopen(req, timeout=60))
+                  except urllib.error.HTTPError as e:
+                      if e.code == 429: time.sleep(65); continue
+                      raise
+          comps = [c for c in get("competitions")["competitions"] if c.get("type") == "LEAGUE"]
+          print("Campionati:", [c["code"] for c in comps])
+          teams = []
+          for c in comps:
+              time.sleep(7)
+              try:
+                  d = get(f"competitions/{c['code']}/teams")
+              except Exception as e:
+                  print("Saltato", c["code"], e); continue
+              for t in d.get("teams", []):
+                  sq = [[p.get("id"), p.get("name"), p.get("position"), p.get("dateOfBirth"), p.get("nationality")] for p in (t.get("squad") or [])]
+                  teams.append({"id": t["id"], "name": t.get("name"), "short": t.get("shortName"), "tla": t.get("tla"), "comp": c["code"], "league": c["name"], "squad": sq})
+              print(c["code"], len(d.get("teams", [])), "squadre,", sum(len(t["squad"]) for t in teams if t["comp"] == c["code"]), "giocatori")
+          for t in teams:
+              if t["tla"] == "INT":
+                  print("INTER:", ", ".join(p[1] for p in t["squad"]))
+          if len(teams) < 50:
+              raise SystemExit("Troppe poche squadre, non salvo")
+          json.dump({"updated": int(time.time() * 1000), "source": "football-data.org", "teams": teams}, open("rose.json", "w"), ensure_ascii=False, separators=(",", ":"))
+          PY
+      - name: Salvo su GitHub
+        run: |
+          git config user.name "rose-vere"
+          git config user.email "rose-vere@users.noreply.github.com"
+          git add rose.json
+          git diff --cached --quiet && echo "Niente da salvare" || (git commit -m "Rose vere aggiornate" && git push)
