@@ -1,4 +1,16 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+.pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:12px}
+.pcard{border-radius:16px;padding:12px;background:linear-gradient(160deg,color-mix(in srgb,var(--cc,#334) 55%,#10151f) 0%,#10151f 70%);border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:6px;min-width:0}
+.pc-top{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:6px}
+.pc-l{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.pc-ovr{display:inline-block;min-width:38px;text-align:center;font-family:var(--display);font-weight:800;font-size:1.35rem;line-height:1;padding:6px 6px;border-radius:8px;color:#06210f}
+.pc-ph{display:flex;align-items:center;justify-content:center;height:70px}.pc-ph span{width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:1.4rem;font-weight:700;color:rgba(255,255,255,.75)}
+.pc-r{display:flex;flex-direction:column;gap:6px;align-items:flex-end;font-size:.78rem}.pc-pot{opacity:.75;font-weight:700}
+.pc-name{font-weight:800;text-align:center;font-size:1rem;line-height:1.15;overflow-wrap:anywhere}
+.pc-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;font-size:.74rem;opacity:.85}.pc-meta b{font-weight:800}
+.pc-st{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
+.pc-act{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:auto;padding-top:4px}
+</style></head><body>
 <title>League Manager</title>
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0d1220">
 <meta name="description" content="League Manager: lega carriera allenatore su FC 27 tra manager. Mercato, aste, distinte e classifica.">
@@ -1051,6 +1063,18 @@ function viewClub(){
   const ps = pstats('season'), sus = suspended(), rs = roster(c.id);
   const objs = (c.objectives || []).filter(o => (o.season || 1) === season());
   const led = S.ledger.filter(l => l.clubId === c.id).sort((a, b2) => b2.ts - a.ts);
+  const acts = p => `${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm ghost" data-act="clause-set" data-id="${p.id}">Clausola</button> <button class="btn sm ghost" data-act="rescind" data-id="${p.id}">Rescindi</button> <button class="btn sm bad" data-act="sell" data-id="${p.id}">Svincola o asta</button>`
+            : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
+          : ''}${mine && mine.id !== c.id && window_() && !p.loan ? ` <button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>${p.clause ? ` <button class="btn sm good" data-act="clause-pay" data-id="${p.id}">Paga clausola ${fmtM(p.clause)}</button>` : ''}${p.buyBack?.clubId === mine.id && (p.buyBack.untilSeason || 0) >= season() ? ` <button class="btn sm good" data-act="buyback" data-id="${p.id}">Recompra ${fmtM(p.buyBack.price)}</button>` : ''}` : ''}`;
+  const rv = S.rv || (()=>{ try { return localStorage.getItem('rv'); } catch { return null; } })() || 'list';
+  const ovrCol = o => o >= 85 ? '#19d46b' : o >= 75 ? '#9bd32a' : o >= 65 ? '#f0b90b' : '#ff7a45';
+  const cards = () => `<div class="pcards">${[...rs].sort((x, y) => (y.ovr || 0) - (x.ovr || 0)).map(p => { const s2 = ps[p.id] || {g:0,a:0,y:0,r:0}, ini = String(p.name || '?').split(/\s+/).filter(Boolean).map(w => w[0]).slice(-2).join('').toUpperCase();
+    return `<div class="pcard" style="--cc:${hexOk(c.color)}"><div class="pc-top"><div class="pc-l"><span class="pc-ovr" style="background:${ovrCol(p.ovr || 0)}">${p.ovr || '—'}</span>${crest(c)}</div><div class="pc-ph"><span>${esc(ini)}</span></div><div class="pc-r"><span class="pc-pot">POT ${p.pot || '—'}</span><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></div></div>
+      <div class="pc-name">${esc(p.name)} ${sofifa(p.name, fcOf(p))}</div>
+      <div class="pc-meta"><span>ETÀ <b>${ageOf(p) || '—'}</b></span><span>VAL <b>${fmtM(p.value || 0)}</b></span><span>ING <b>${fmtW(p.wage)}</b></span></div>
+      <div class="pc-meta"><span>G <b>${s2.g}</b></span><span>A <b>${s2.a}</b></span>${s2.y ? `<span><span class="card-y"></span> <b>${s2.y}</b></span>` : ''}${s2.r ? `<span><span class="card-r"></span> <b>${s2.r}</b></span>` : ''}</div>
+      <div class="pc-st">${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? `<span class="pill warn">Infortunato${injLeft(p) ? ' · ' + injLeft(p) + ' g.' : ''}</span>` : ''}${p.loan ? `<span class="pill info">Prestito · ${loanNote(p.loan)}</span>` : ''}${!sus.has(p.id) && !p.injured && !p.loan ? '<span class="pill neutral">Disponibile</span>' : ''}</div>
+      <div class="pc-act">${acts(p)}</div></div>`; }).join('')}</div>`;
   return `<div class="panel">
     <div class="clubhead"><div class="who">${crest(c, true)}<div><h2>${esc(c.name)}</h2><span class="sub">${hasB() ? DIVS[divOf(c)] + ' · ' : ''}${esc(mgrName(c))} · ${rs.length}/${S.settings.maxSquad || 30} giocatori</span></div></div>
       <div class="row"><select class="inl" id="clubsel" data-act="clubsel" aria-label="Scegli società">${S.clubs.map(x => `<option value="${x.id}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
@@ -1067,17 +1091,15 @@ function viewClub(){
     ${tplPanel(c)}
     ${kitPanel(c)}
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#mondo">Mondo</a></div>` : ''}</div>
-      ${rs.length ? `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
+      ${rs.length ? `<div class="row" style="margin:0 0 10px"><button class="btn sm ${rv === 'list' ? 'primary' : 'ghost'}" data-act="roster-view" data-id="list">Lista</button><button class="btn sm ${rv === 'cards' ? 'primary' : 'ghost'}" data-act="roster-view" data-id="cards">Schede</button></div>${rv === 'cards' ? cards() : `<div class="tscroll"><table><thead><tr><th>Ruolo</th><th>Giocatore</th><th class="r">OVR</th><th class="r">POT</th><th class="r">Età</th><th class="r">Valore</th><th class="r">Ingaggio</th><th class="r">G</th><th class="r">A</th><th class="r">Cart.</th><th>Stato</th><th></th></tr></thead><tbody>
       ${rs.map(p => { const s = ps[p.id] || {g:0,a:0,y:0,r:0}; return `<tr>
         <td><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span></td><td><b>${esc(p.name)}</b> ${sofifa(p.name, fcOf(p))}${rightsNote(p)}${moraleBadge(p)}${p.loan ? `<span class="mgr">In prestito da ${esc(club(p.loan.ownerClubId)?.name || p.loan.ownerLabel || 'club CPU')} · ${loanNote(p.loan)}</span>` : ''}</td>
         <td class="r ovr">${p.ovr || '—'}</td><td class="r">${p.pot || '—'}</td><td class="r">${ageOf(p) || '—'}</td>
         <td class="r">${fmtM(p.value || 0)}</td><td class="r">${fmtW(p.wage)}</td><td class="r">${s.g}</td><td class="r">${s.a}</td>
         <td class="r">${s.y ? `<span class="card-y"></span> ${s.y}` : ''} ${s.r ? `<span class="card-r"></span> ${s.r}` : ''}</td>
         <td>${sus.has(p.id) ? '<span class="pill bad">Squalificato</span>' : ''}${p.injured ? ` <span class="pill warn">Infortunato${injLeft(p) ? ' · ' + injLeft(p) + ' g.' : ''}</span>` : ''}${!sus.has(p.id) && !p.injured ? '<span class="pill neutral">Disponibile</span>' : ''}</td>
-        <td class="r">${can || canMkt ? `${can ? `<button class="btn sm ghost" data-act="edit-player" data-id="${p.id}">Modifica</button> ` : ''}${!canMkt ? '' : !p.loan ? `<button class="btn sm ghost" data-act="clause-set" data-id="${p.id}">Clausola</button> <button class="btn sm ghost" data-act="rescind" data-id="${p.id}">Rescindi</button> <button class="btn sm bad" data-act="sell" data-id="${p.id}">Svincola o asta</button>`
-            : p.loan.buyout && window_() && p.loan.type !== 'loan' ? `<button class="btn sm good" data-act="redeem" data-id="${p.id}">Riscatta</button>` : ''}`
-          : ''}${mine && mine.id !== c.id && window_() && !p.loan ? ` <button class="btn sm" data-act="offer" data-id="${p.id}">Fai un'offerta</button>${p.clause ? ` <button class="btn sm good" data-act="clause-pay" data-id="${p.id}">Paga clausola ${fmtM(p.clause)}</button>` : ''}${p.buyBack?.clubId === mine.id && (p.buyBack.untilSeason || 0) >= season() ? ` <button class="btn sm good" data-act="buyback" data-id="${p.id}">Recompra ${fmtM(p.buyBack.price)}</button>` : ''}` : ''}</td></tr>`; }).join('')}
-      </tbody></table></div>` : `<div class="empty"><strong>Rosa vuota</strong><span>${can ? 'Copia la rosa dalla tua carriera su FC 27: aggiungi i giocatori uno per uno oppure incolla l’elenco con “Importa rosa”.' : 'Il commissario non ha ancora caricato la rosa.'}</span></div>`}
+        <td class="r">${acts(p)}</td></tr>`; }).join('')}
+      </tbody></table></div>`}` : `<div class="empty"><strong>Rosa vuota</strong><span>${can ? 'Copia la rosa dalla tua carriera su FC 27: aggiungi i giocatori uno per uno oppure incolla l’elenco con “Importa rosa”.' : 'Il commissario non ha ancora caricato la rosa.'}</span></div>`}
     </div>
     <aside class="stack">
       ${loanedOut(c.id).length ? `<div class="panel"><div class="ph"><h3>In prestito altrove</h3><span class="sub">${loanedOut(c.id).length} giocatori</span></div><div class="list">
@@ -4903,6 +4925,7 @@ document.addEventListener('click', async e => {
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-upload': fc27Upload(); break;
+      case 'roster-view': S.rv = id === 'cards' ? 'cards' : 'list'; try { localStorage.setItem('rv', S.rv); } catch {} render(); break;
       case 'fc27-wipe': fc27Wipe(); break;
       case 'sofifa-paste': await fc27Roster(); break;
       case 'sofifa-multi': await fc27RosterMulti(); break;
