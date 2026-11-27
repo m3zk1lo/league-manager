@@ -419,7 +419,57 @@ const fc27Remote = async () => { try { if (typeof sb === 'undefined' || !sb) ret
 const fc27Load = () => { if (FC27_CACHE) return Promise.resolve(FC27_CACHE); if (fc27Load.pending) return fc27Load.pending;
   return fc27Load.pending = (async () => { const rem = await fc27Remote(); if (rem){ FC27_CACHE = rem; return rem; }
     const el = document.getElementById('fc27data'); if (el && el.textContent.trim()){ try { FC27_CACHE = JSON.parse(el.textContent); return FC27_CACHE; } catch {} }
-    const r = await fetch('fc27.json'); if (!r.ok) throw 0; return FC27_CACHE = await r.json(); })().finally(() => { fc27Load.pending = null; }); };
+    const r = await fetch('fc27.json'); if (!r.ok) throw 0; return FC27_CACHE = await r.json(); })().then(eaOverlay).then(rvOverlay).finally(() => { fc27Load.pending = null; }); };
+/* rose vere (football-data.org) sopra al database FC 27 */
+const RV_MAP = {"59":"Blackburn Rovers","60":"Bolton Wanderers","68":"Norwich City","69":"Queens Park Rangers","70":"Stoke City","72":"Swansea City","74":"West Bromwich Albion","76":"Wolverhampton Wanderers","325":"Portsmouth","328":"Burnley","332":"Birmingham City","340":"Southampton","342":"Derby County","343":"Middlesbrough","346":"Watford","348":"Charlton Athletic","356":"Sheffield United","384":"Millwall","387":"Bristol City","404":"Wrexham","563":"West Ham United","715":"Cardiff City","1081":"Preston North End","1126":"Lincoln City","57":"Arsenal","58":"Aston Villa","61":"Chelsea","62":"Everton","63":"Fulham","64":"Liverpool","65":"Manchester City","66":"Manchester United","67":"Newcastle United","71":"Sunderland","73":"Tottenham Hotspur","322":"Hull City","341":"Leeds United","349":"Ipswich Town","351":"Nottingham Forest","354":"Crystal Palace","397":"Brighton & Hove Albion","402":"Brentford","1044":"AFC Bournemouth","1076":"Coventry City","511":"Toulouse FC","512":"Stade Brestois 29","516":"Olympique de Marseille","519":"AJ Auxerre","521":"LOSC Lille","522":"OGC Nice","523":"Olympique Lyonnais","524":"Paris Saint-Germain","525":"FC Lorient","529":"Stade Rennais","531":"ESTAC Troyes","532":"Angers SCO","533":"Le Havre AC","535":"Le Mans FC","546":"RC Lens","548":"AS Monaco","576":"RC Strasbourg","1045":"Paris FC","1":"1. FC Köln","2":"TSG 1899 Hoffenheim","3":"Bayer 04 Leverkusen","4":"Borussia Dortmund","5":"Bayern München","6":"FC Schalke 04","7":"Hamburger SV","10":"VfB Stuttgart","12":"Werder Bremen","15":"1. FSV Mainz 05","16":"FC Augsburg","17":"SC Freiburg","18":"Borussia M'gladbach","19":"Eintracht Frankfurt","28":"1. FC Union Berlin","29":"SC Paderborn 07","719":"SV Elversberg","721":"RB Leipzig","98":"Milan","99":"Fiorentina","100":"Roma","102":"Atalanta","103":"Bologna","104":"Cagliari","107":"Genoa","108":"Inter","109":"Juventus","110":"Lazio","112":"Parma","113":"Napoli","115":"Udinese","454":"Venezia","470":"Frosinone","471":"Sassuolo","586":"Torino","5890":"Lecce","5911":"Monza","7397":"Como","666":"FC Twente","670":"Excelsior","672":"Willem II","673":"sc Heerenveen","674":"PSV","675":"Feyenoord","676":"FC Utrecht","677":"FC Groningen","678":"Ajax","680":"ADO Den Haag","682":"AZ","684":"PEC Zwolle","718":"Go Ahead Eagles","1909":"SC Cambuur","1912":"Telstar","1915":"N.E.C. Nijmegen","1920":"Fortuna Sittard","6806":"Sparta Rotterdam","496":"Rio Ave","498":"Sporting CP","503":"FC Porto","582":"Estoril","583":"Moreirense","712":"Arouca","1903":"Benfica","5527":"Académico de Viseu","5529":"Nacional da Madeira","5530":"Santa Clara","5531":"Famalicão","5533":"Gil Vicente FC","5543":"Vitória de Guimarães","5575":"Marítimo","5613":"Sporting de Braga","6618":"Casa Pia","7822":"Alverca","9136":"Estrela da Amadora","78":"Atlético de Madrid","79":"CA Osasuna","80":"RCD Espanyol","81":"FC Barcelona","82":"Getafe CF","84":"Málaga CF","86":"Real Madrid","87":"Rayo Vallecano","88":"Levante UD","90":"Real Betis Balompié","92":"Real Sociedad","94":"Villarreal CF","95":"Valencia CF","263":"Deportivo Alavés","285":"Elche CF","558":"RC Celta de Vigo","559":"Sevilla FC","560":"RC Deportivo","5335":"Racing de Santander","77":"Athletic Club de Bilbao"};
+const rvNk = s => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ø/g, 'o').replace(/ß/g, 'ss').replace(/[łŁ]/g, 'l').replace(/ı/g, 'i').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim();
+const rvTok = s => rvNk(s).split(/\s+/).filter(w => w.length > 1 || /^[a-z]$/.test(w));
+const RV_POS = {Goalkeeper: 'POR', Defence: 'DC', Midfield: 'CC', Offence: 'ATT'};
+function rvApply(d, R, refMs){
+  const ref = new Date(refMs || Date.now()), ageOf = dob => { if (!dob) return null; const b = new Date(dob); let a = ref.getFullYear() - b.getFullYear(); if (ref.getMonth() < b.getMonth() || (ref.getMonth() === b.getMonth() && ref.getDate() < b.getDate())) a--; return a; };
+  const idx = new Map(); d.p.forEach(r => { const t = rvTok(r[1]); r._rt = t; new Set(t).forEach(w => { if (w.length >= 3){ if (!idx.has(w)) idx.set(w, []); idx.get(w).push(r); } }); });
+  const used = new Set(), roster = new Map(), stats = {teams: 0, matched: 0, added: 0, moved: 0, freed: 0};
+  const cix = new Map(); d.clubs.forEach((c, i) => { if (!cix.has(c[0])) cix.set(c[0], i); });
+  const MAP = {}; Object.entries(RV_MAP).forEach(([k, n]) => { if (cix.has(n)) MAP[k] = cix.get(n); });
+  const teams = (R.teams || []).filter(t => MAP[t.id] != null && (t.squad || []).length >= 11);
+  /* due giri: prima gli abbinamenti sicuri, poi quelli più deboli */
+  const pick = (p, ci, strict) => { const tk = rvTok(p[1]); if (!tk.length) return null; const ts = new Set(tk), age = ageOf(p[3]), cand = new Set();
+    tk.forEach(w => { if (w.length >= 3) (idx.get(w) || []).forEach(r => { if (!used.has(r[0])) cand.add(r); }); });
+    let best = null, bs = 0, tie = false;
+    for (const r of cand){ const nt = r._rt; let sc = 0;
+      const inter = nt.filter(w => ts.has(w)).length;
+      if (inter === nt.length && inter === ts.size) sc = 10; else if (inter === Math.min(nt.length, ts.size) && inter >= 1) sc = inter >= 2 ? 8 : 5; else if (inter >= 2) sc = 6; else sc = 2;
+      if (age != null && Math.abs(age - r[3]) <= 1) sc += 3; else if (age != null) sc -= 4;
+      if (r[5] === ci) sc += 3;
+      if (nt[0] && tk[0] && nt[0][0] === tk[0][0]) sc += 2;
+      if (sc > bs){ bs = sc; best = r; tie = false; } else if (sc === bs) tie = true; }
+    if (!best || tie) return null; return bs >= strict ? best : null; };
+  for (const strict of [15, 11, 9]) for (const t of teams){ const ci = MAP[t.id]; if (!roster.has(ci)) roster.set(ci, {t, ids: new Set(), miss: []});
+    const ro = roster.get(ci); ro.miss = [];
+    for (const p of t.squad){ if (ro.ids.has('f' + p[0])) continue; const r = pick(p, ci, strict); if (r){ used.add(r[0]); ro.ids.add(r[0]); ro.ids.add('f' + p[0]); } else ro.miss.push(p); } }
+  const inSquad = new Map(); for (const [ci, ro] of roster) ro.ids.forEach(id => { if (typeof id === 'number') inSquad.set(id, ci); });
+  d.p.forEach(r => { const to = inSquad.get(r[0]); if (to != null){ stats.matched++; if (r[5] !== to){ r[5] = to; stats.moved++; } } else if (roster.has(r[5])){ r[5] = -1; stats.freed++; } });
+  for (const [ci, ro] of roster){ stats.teams++;
+    const own = d.p.filter(r => r[5] === ci).map(r => r[4]).sort((a, b) => a - b), med = own.length ? own[Math.floor(own.length * 0.4)] : 65;
+    for (const p of ro.miss){ const age = ageOf(p[3]) || 24, ovr = Math.max(50, Math.min(85, med - (age < 21 ? 6 : 2))); d.p.push([900000000 + p[0], p[1], RV_POS[p[2]] || 'CC', age, ovr, ci, Math.min(92, ovr + Math.max(0, 27 - age))]); stats.added++; } }
+  d.p.forEach(r => { delete r._rt; });
+  return stats;
+}
+
+let RV_UPD = 0, RV_STATS = null;
+async function rvOverlay(d){ if (!d || d._rv) return d; d._rv = true;
+  try { const r = await fetch('rose.json?t=' + Math.floor(Date.now() / 6e5)); if (!r.ok) return d; const R = await r.json(); if (!(R.teams || []).length) return d;
+    RV_STATS = rvApply(d, R, R.updated); RV_UPD = +R.updated || 0; } catch {}
+  return d; }
+/* voti ufficiali EA: GitHub scarica ogni giorno ea-ratings.json, il sito cambia solo l’OVR (nessun giocatore cambia squadra) */
+let EA_UPD = 0, EA_N = 0;
+async function eaOverlay(d){ if (!d || d._ea) return d; d._ea = true;
+  try { const r = await fetch('ea-ratings.json?t=' + Math.floor(Date.now() / 6e5)); if (!r.ok) return d; const e = await r.json(), m = new Map();
+    if ((+e.n || 0) < 19000) return d; /* sotto i 19.000 giocatori è ancora il database di FC 26: non lo uso */
+    (e.p || []).forEach(x => { if (x && x[0] != null && x[1]) m.set(+x[0], +x[1]); });
+    let n = 0; (d.p || []).forEach(x => { const o = m.get(+x[0]); if (o && o !== x[4]){ x[4] = o; if (x[6] && x[6] < o) x[6] = o; n++; } });
+    EA_UPD = +e.updated || 0; EA_N = n; } catch {}
+  return d; }
 const M = 1e6, K = 1e3;
 const POS = ['POR','DC','TD','TS','CDC','CC','COC','ED','ES','AD','AS','ATT'];
 const GRP = {POR:'gk',DC:'def',TD:'def',TS:'def',CDC:'mid',CC:'mid',COC:'mid',ED:'mid',ES:'mid',AD:'att',AS:'att',ATT:'att'};
@@ -3379,6 +3429,8 @@ function autoClose(){
   openAuctions().filter(a => a.endsAt <= now() && !closing.has(a.id)).forEach(a => { closing.add(a.id); closeAuction(a).catch(() => closing.delete(a.id)); });
   try { cpuTick(); } catch {}
   try { lgTick(); } catch {}
+  try { eaTick(); } catch {}
+  try { rvTick(); } catch {}
   try { cpuMatchTick(); } catch {}
   try { coachTick(); } catch {}
   try { vacTick(); } catch {}
@@ -5615,12 +5667,13 @@ async function fc27SyncRosters(){
   let wipeAt = 0; try { const {data: wd} = await sb.from('docs').select('data').eq('col', 'fc27db').eq('id', 'wipe'); wipeAt = +(wd?.[0]?.data?.at) || 0; } catch {}
   const sold = new Set([...cpuDeals().filter(d => d.status === 'done' && typeof d.fcId === 'number' && (d.ts || 0) > wipeAt).map(d => d.fcId), ...(S.transfers || []).filter(t => (t.ts || 0) > wipeAt).map(t => String(t.playerId || '').startsWith('fc') ? +String(t.playerId).slice(2) : null).filter(Boolean)]);
   const add = [], move = [], gone = [], rate = [];
+  const bought = new Set([...(S.transfers || []).map(t => t.playerId), ...S.players.filter(p => p.loan).map(p => p.id)]);
   for (const x of res.p){
     const cid = idxToClub.get(x[5]), p = byFc.get(x[0]);
     if (p){
       if (p.loan || openIds.has(p.id)) continue;
-      if (cid && p.clubId !== cid && (!p.clubId || !club(p.clubId)?.managerId)) move.push({p, x, cid});
-      else if (!cid && p.clubId && !club(p.clubId)?.managerId && club(p.clubId)) gone.push(p);
+      if (cid && p.clubId !== cid && (!p.clubId || !club(p.clubId)?.managerId || !bought.has(p.id))) move.push({p, x, cid});
+      else if (!cid && p.clubId && club(p.clubId) && (!club(p.clubId)?.managerId || !bought.has(p.id))) gone.push(p);
       else if (x[4] !== (p.ovr || 0) || (x[6] && x[6] !== p.pot)) rate.push({p, x});
     } else if (cid && !sold.has(x[0])) add.push({x, cid});
   }
@@ -5638,6 +5691,24 @@ async function fc27SyncRosters(){
   });
 }
 /* ---------- aggiorna OVR/POT di tutti i giocatori dal database FC 27, senza spostare nessuno (rose dei manager comprese) ---------- */
+let rvBusy = false;
+async function rvTick(){
+  if (!S.comm || rvBusy || !RV_UPD || !S.loaded.players || !S.loaded.world || !S.loaded.clubs || !FC27_CACHE) return;
+  const done = (S.world || []).find(d => d.id === 'RVUPD'); if (done && +done.at === RV_UPD) return; rvBusy = true;
+  const cb = confirmBox; let job = null;
+  try { confirmBox = (t, h, l, fn) => { job = fn(); }; await fc27SyncRosters(); confirmBox = cb; if (job) await job;
+    await wsave('RVUPD', {at: RV_UPD, ts: now(), ...(RV_STATS || {})}); toast('Rose vere aggiornate a oggi', 5000);
+  } catch (e) { confirmBox = cb; } finally { confirmBox = cb; rvBusy = false; } }
+let eaBusy = false;
+async function eaTick(){
+  if (!S.comm || eaBusy || !EA_UPD || !S.loaded.players || !S.loaded.world || !FC27_CACHE) return;
+  const done = (S.world || []).find(d => d.id === 'EAUPD'); if (done && +done.at === EA_UPD) return; eaBusy = true;
+  try { const byFc = new Map(FC27_CACHE.p.map(x => [x[0], x])), ch = [];
+    for (const p of S.players){ const id = fcOf(p), x = id != null ? byFc.get(id) : null; if (x && x[4] && x[4] !== (p.ovr || 0)) ch.push({p, x}); }
+    for (let j = 0; j < ch.length; j += 10) await Promise.all(ch.slice(j, j + 10).map(({p, x}) => db.doc('players/' + p.id).update({ovr: x[4], value: autoValue(x[4], ageOf(p)), ...(p.pot && p.pot < x[4] ? {pot: x[4]} : {})})));
+    await wsave('EAUPD', {at: EA_UPD, n: ch.length, ts: now()});
+    if (ch.length) toast(`Voti EA aggiornati: ${ch.length} giocatori della lega`, 5000);
+  } finally { eaBusy = false; } }
 async function fc27RatingsUpdate(){
   let res; try { res = await fc27Load(); } catch { return toast('Database FC 27 non disponibile.'); }
   const byFc = new Map(res.p.map(x => [x[0], x])), byName = new Map();
@@ -5771,7 +5842,7 @@ function admPlayersTab(){
 }
 function admMarketTab(){
   const au = openAuctions().map(a => `<div class="li"><div class="main"><b>${esc(a.playerName || '—')}</b><br><span class="sub">Offerta ${fmtM(a.highBid || 0)} · ${a.highClubId ? esc(cname(a.highClubId)) : 'nessuna offerta'}${a.endsAt ? ' · ' + timeLeft(a.endsAt - now()) : ''}</span></div>${admBtn('auc-time', a.id, 'Cambia durata')}${admBtn('auc-cancel', a.id, 'Annulla asta', 'bad')}</div>`).join('');
-  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><p class=\"sub\">Versione del sito: <b>CSV multiplo + svuota rose · 27/11</b></p><div class=\"row\">${admBtn('fc27-fill', null, 'Riempi le rose da FC 27', 'good')}${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}${admBtn('sofifa-paste', null, 'Incolla rosa da SoFIFA')}${admBtn('sofifa-multi', null, 'Incolla più squadre insieme')}${admBtn('fc27-wipe', null, 'Svuota tutte le rose', 'bad')}</div><p class=\"sub\" style=\"margin-top:8px\">«Incolla rosa da SoFIFA» corregge un club alla volta: utile quando il database non è aggiornato all’ultimo mercato.</p>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
+  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><p class=\"sub\">Versione del sito: <b>rose vere · 28/11</b></p><p class=\"sub\">${RV_UPD ? `<b>Rose vere</b> aggiornate il <b>${new Date(RV_UPD).toLocaleString('it-IT', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</b> (football-data.org): ${RV_STATS ? `${RV_STATS.teams} squadre · ${RV_STATS.moved} trasferimenti · ${RV_STATS.added} giocatori nuovi` : ''}. Si applicano da sole ogni settimana; i giocatori comprati nella lega non si toccano.` : 'Rose vere: non ancora scaricate.'}</p><p class=\"sub\">${EA_UPD ? `Voti ufficiali EA aggiornati il <b>${new Date(EA_UPD).toLocaleString('it-IT', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</b>: si applicano da soli a tutte le rose (cambia solo l’OVR, nessuno cambia squadra).` : 'Voti ufficiali EA: non ancora scaricati da GitHub.'}</p><div class=\"row\">${admBtn('fc27-fill', null, 'Riempi le rose da FC 27', 'good')}${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}${admBtn('sofifa-paste', null, 'Incolla rosa da SoFIFA')}${admBtn('sofifa-multi', null, 'Incolla più squadre insieme')}${admBtn('fc27-wipe', null, 'Svuota tutte le rose', 'bad')}</div><p class=\"sub\" style=\"margin-top:8px\">«Incolla rosa da SoFIFA» corregge un club alla volta: utile quando il database non è aggiornato all’ultimo mercato.</p>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
     + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`);
 }
 function admCalTab(){
