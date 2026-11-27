@@ -5166,16 +5166,107 @@ function undoMarketModal(){
 }
 
 /* ---------- porta le rose dei club della lega allo stato di FC 27 senza cancellare mercato, budget e contratti ---------- */
+/* ---------- conversione dello zip del gioco (fifa_ng_db.db + meta.xml) nel database FC 27 del sito ---------- */
+const FC_LG = {31:'Serie A',32:'Serie B',13:'Premier League',14:'EFL Championship',60:'EFL League One',61:'EFL League Two',53:'LaLiga',54:'LaLiga 2',19:'Bundesliga',20:'Bundesliga 2',2076:'3. Liga',16:'Ligue 1',17:'Ligue 2',10:'Eredivisie',308:'Liga Portugal',4:'1A Pro League',68:'Trendyol Süper Lig',41:'Eliteserien',80:'Ö. Bundesliga',50:'Scottish Premiership',189:'Brack Super League',330:'SUPERLIGA',66:'Ekstraklasa',56:'Allsvenskan',1:'Superliga',65:'SSE Airtricity PD',39:'MLS',83:'K League 1',341:'Liga MX',350:'ROSHN Saudi League',351:'A-League Men',353:'Liga Profesional',2012:'Chinese Super League',2149:'Indian Super League',76:'Resto del mondo',1003:'CONMEBOL Libertadores',1014:'CONMEBOL Sudamericana'};
+const FC_POS = ['POR','DC','TD','TD','DC','DC','DC','TS','TS','CDC','CDC','CDC','ED','CC','CC','CC','ES','COC','COC','COC','ATT','ATT','ATT','AD','ATT','ATT','ATT','AS'];
+const FC_ALIAS = {'Bergamo Calcio':'Atalanta','Milano FC':'Milan','Lombardia FC':'Inter','Piemonte Calcio':'Juventus'};
+const FC_JUNK = /marketing team|all[- ]?stars?\b/i;
+async function fcZipEntries(file){
+  const size = file.size, tail = new Uint8Array(await file.slice(Math.max(0, size - 70000), size).arrayBuffer());
+  let e = -1; for (let i = tail.length - 22; i >= 0; i--) if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 5 && tail[i+3] === 6){ e = i; break; }
+  if (e < 0) throw new Error('Non è uno zip valido.');
+  const dv = new DataView(tail.buffer), n = dv.getUint16(e + 10, true), cdSize = dv.getUint32(e + 12, true), cdOff = dv.getUint32(e + 16, true);
+  if (cdOff === 0xffffffff || n === 0xffff) throw new Error('Zip troppo grande (ZIP64): ricomprimilo come zip normale.');
+  const cd = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), cv = new DataView(cd.buffer), out = []; let p = 0;
+  for (let i = 0; i < n; i++){ if (cv.getUint32(p, true) !== 0x02014b50) break;
+    const nl = cv.getUint16(p + 28, true), el = cv.getUint16(p + 30, true), cl = cv.getUint16(p + 32, true);
+    out.push({name: new TextDecoder().decode(cd.subarray(p + 46, p + 46 + nl)), method: cv.getUint16(p + 10, true), date: cv.getUint16(p + 14, true), csz: cv.getUint32(p + 20, true), off: cv.getUint32(p + 42, true)});
+    p += 46 + nl + el + cl; }
+  return out;
+}
+async function fcZipRead(file, en){
+  const lh = new DataView(await file.slice(en.off, en.off + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034b50) throw new Error('Zip danneggiato.');
+  const st = en.off + 30 + lh.getUint16(26, true) + lh.getUint16(28, true), raw = file.slice(st, st + en.csz);
+  if (en.method === 0) return new Uint8Array(await raw.arrayBuffer());
+  if (en.method !== 8) throw new Error('Compressione dello zip non supportata.');
+  if (typeof DecompressionStream === 'undefined') throw new Error('Questo browser non sa aprire gli zip: aggiornalo oppure usa un altro browser.');
+  return new Uint8Array(await new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+}
+function fcDbReader(db, xml){
+  const dv = new DataView(db.buffer, db.byteOffset, db.byteLength);
+  if (db[0] !== 0x44 || db[1] !== 0x42) throw new Error('Il file .db non è un database del gioco.');
+  const n = dv.getUint32(16, true), base = 0x18 + n * 8 + 4, dirs = {}, meta = {};
+  for (let i = 0; i < n; i++){ const o = 0x18 + i * 8; dirs[String.fromCharCode(db[o], db[o+1], db[o+2], db[o+3])] = dv.getUint32(o + 4, true); }
+  const rt = /<table name="([^"]+)" shortname="(\w+)"[^>]*>([\s\S]*?)<\/table>/g; let m;
+  while ((m = rt.exec(xml))){ const fl = {}, rf = /<field name="([^"]+)" shortname="(\w+)" type="(\w+)" depth="(\d+)"[^>]*?rangelow="(-?\d+)"/g; let f;
+    while ((f = rf.exec(m[3]))) fl[f[2]] = [f[1], f[3], +f[4], +f[5]]; meta[m[1]] = [m[2], fl]; }
+  const cache = {};
+  const tbl = nm => { if (cache[nm]) return cache[nm]; if (!meta[nm]) throw new Error('Tabella mancante nel database: ' + nm);
+    const [sn, fl] = meta[nm]; if (!(sn in dirs)) throw new Error('Tabella mancante nel database: ' + nm);
+    const o = base + dirs[sn], nf = dv.getUint32(o + 24, true), f = {};
+    for (let i = 0; i < nf; i++){ const q = o + 36 + i * 16, md = fl[String.fromCharCode(db[q+8], db[q+9], db[q+10], db[q+11])]; if (md) f[md[0]] = {t: dv.getUint32(q, true), bo: dv.getUint32(q + 4, true), dp: dv.getUint32(q + 12, true), lo: md[3]}; }
+    return cache[nm] = {rs: dv.getUint32(o + 4, true), nrec: dv.getUint16(o + 16, true), f, start: o + 36 + nf * 16}; };
+  const bits = (s, bo, dp) => { const b0 = s + (bo >> 3), sh = bo & 7, nb = (sh + dp + 7) >> 3; let v = 0; for (let k = 0; k < nb; k++) v += db[b0 + k] * 2 ** (8 * k); return Math.floor(v / 2 ** sh) % 2 ** dp; };
+  const str = (o, len) => { let e = o; const end = o + len; while (e < end && db[e]) e++; return new TextDecoder().decode(db.subarray(o, e)); };
+  const col = (nm, names) => { const t = tbl(nm), cs = names.map(c => { if (!t.f[c]) throw new Error('Campo mancante nel database: ' + nm + '.' + c); return t.f[c]; }), out = [];
+    for (let i = 0; i < t.nrec; i++){ const s = t.start + i * t.rs; out.push(cs.map(c => c.t === 0 ? str(s + (c.bo >> 3), c.dp >> 3) : bits(s, c.bo, c.dp) + c.lo)); } return out; };
+  /* nomi dei giocatori: stringhe compresse con albero di Huffman dopo i record */
+  const names = () => { const t = tbl('playernames'), nid = t.f.nameid, nf = t.f.name, e = t.start + t.nrec * t.rs, res = new Map();
+    if (nf.t === 0){ for (let i = 0; i < t.nrec; i++){ const s = t.start + i * t.rs; res.set(bits(s, nid.bo, nid.dp) + nid.lo, str(s + (nf.bo >> 3), nf.dp >> 3)); } return res; }
+    const ptr = [], ids = []; let min = 0xffffffff;
+    for (let i = 0; i < t.nrec; i++){ const s = t.start + i * t.rs, p = dv.getUint32(s + (nf.bo >> 3), true); ptr.push(p); ids.push(bits(s, nid.bo, nid.dp) + nid.lo); if (p !== 0xffffffff && p < min) min = p; }
+    const W = new Uint16Array(min >> 1); for (let i = 0; i < W.length; i++) W[i] = dv.getUint16(e + 2 * i, true);
+    for (let r = 0; r < ptr.length; r++){ if (ptr[r] === 0xffffffff){ res.set(ids[r], ''); continue; }
+      const o = e + ptr[r], n = db[o], out = new Uint8Array(n); let k = 0, node = 0;
+      for (let i = o + 1; k < n && i < db.length; i++){ const b = db[i]; for (let j = 7; j >= 0 && k < n; j--){ const w = W[node * 2 + ((b >> j) & 1)]; if ((w & 0xff) === 0 && w){ out[k++] = w >> 8; node = 0; } else node = w; } }
+      res.set(ids[r], new TextDecoder().decode(out)); }
+    return res; };
+  return {col, names};
+}
+async function fc27FromGame(file, onStep){
+  const step = onStep || (() => {}), ents = await fcZipEntries(file);
+  const eDb = ents.find(x => /(^|\/)fifa_ng_db\.db$/.test(x.name)), eMeta = ents.find(x => /(^|\/)fifa_ng_db-meta\.xml$/.test(x.name));
+  if (!eDb || !eMeta) throw new Error('Nello zip mancano data/db/fifa_ng_db.db e fifa_ng_db-meta.xml.');
+  step('Apro lo zip…'); const db = await fcZipRead(file, eDb), xml = new TextDecoder().decode(await fcZipRead(file, eMeta));
+  step('Leggo il database…'); const R = fcDbReader(db, xml), nm = R.names();
+  const ref = new Date(Date.UTC(((eDb.date >> 9) & 127) + 1980, ((eDb.date >> 5) & 15) - 1, eDb.date & 31));
+  const base0 = Date.UTC(1582, 9, 14), ageOf = bd => { const b = new Date(base0 + bd * 864e5); let a = ref.getUTCFullYear() - b.getUTCFullYear(); if (ref.getUTCMonth() < b.getUTCMonth() || (ref.getUTCMonth() === b.getUTCMonth() && ref.getUTCDate() < b.getUTCDate())) a--; return a; };
+  const teamName = new Map(R.col('teams', ['teamid', 'teamname'])), clubs = new Map();
+  for (const [t, l] of R.col('leagueteamlinks', ['teamid', 'leagueid'])) if (FC_LG[l] && teamName.has(t) && !FC_JUNK.test(teamName.get(t))) clubs.set(t, {name: teamName.get(t), lg: FC_LG[l]});
+  const squad = new Map(); for (const [t, p] of R.col('teamplayerlinks', ['teamid', 'playerid'])) if (clubs.has(t)){ if (!squad.has(t)) squad.set(t, []); squad.get(t).push(p); }
+  const pl = new Map(); for (const r of R.col('players', ['playerid', 'overallrating', 'potential', 'birthdate', 'preferredposition1', 'firstnameid', 'lastnameid', 'commonnameid'])) pl.set(r[0], r);
+  /* si parte dal database in uso: indici di club e campionati restano uguali, così calendari e classifiche salvati non si rompono */
+  step('Allineo club e campionati…');
+  let old = null; try { old = await fc27Load(); } catch {}
+  const oLg = old ? old.leagues.slice() : [], oCl = old ? old.clubs.map(c => c.slice()) : [], oldOf = new Map(); if (old) for (const x of old.p) oldOf.set(x[0], x[5]);
+  const lgIdx = n => { let i = oLg.indexOf(n); if (i < 0){ oLg.push(n); i = oLg.length - 1; } return i; };
+  if (!old) Object.values(FC_LG).forEach(lgIdx);
+  const idx = new Map(), used = new Set(), cands = [];
+  for (const [t, sq] of squad){ const cnt = new Map(); for (const p of sq){ const o = oldOf.get(p); if (o != null) cnt.set(o, (cnt.get(o) || 0) + 1); } for (const [o, c] of cnt) if (c >= 0.4 * sq.length || c >= 8) cands.push([c, t, o]); }
+  cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, t, o] of cands){ if (idx.has(t) || used.has(o)) continue; idx.set(t, o); used.add(o); }
+  const byName = new Map(); oCl.forEach((c, i) => { if (!used.has(i)){ const k = normKey(c[0]); if (!byName.has(k)) byName.set(k, i); } });
+  for (const [t, c] of clubs){ if (idx.has(t)) continue; const k = normKey(FC_ALIAS[c.name] || c.name), o = byName.get(k); if (o != null && !used.has(o)){ idx.set(t, o); used.add(o); } }
+  let added = 0; const fresh = [...clubs].filter(([t]) => !idx.has(t) && squad.has(t)).sort((a, b) => lgIdx(a[1].lg) - lgIdx(b[1].lg) || a[1].name.localeCompare(b[1].name));
+  for (const [t, c] of fresh){ oCl.push([FC_ALIAS[c.name] || c.name, lgIdx(c.lg)]); idx.set(t, oCl.length - 1); added++; }
+  for (const [t, o] of idx) if (clubs.has(t)) oCl[o][1] = lgIdx(clubs.get(t).lg);
+  const where = new Map(); for (const [t, sq] of squad) if (idx.has(t)) for (const p of sq){ if (!where.has(p)) where.set(p, []); where.get(p).push(idx.get(t)); }
+  const p = []; for (const [id, cs] of where){ const r = pl.get(id); if (!r) continue; const ci = cs.includes(oldOf.get(id)) ? oldOf.get(id) : cs[0];
+    const n = nm.get(r[7]) || ((nm.get(r[5]) || '') + ' ' + (nm.get(r[6]) || '')).trim(); p.push([id, n, FC_POS[r[4]] || 'CC', ageOf(r[3]), r[1], ci, r[2]]); }
+  if (!p.length) throw new Error('Nel database non ho trovato giocatori nei club.');
+  return {leagues: oLg, clubs: oCl, p, uploaded: Date.now(), file: file.name || 'database', info: {clubsNew: added, ref: ref.toISOString().slice(0, 10)}};
+}
 const fc27Valid = d => d && Array.isArray(d.leagues) && Array.isArray(d.clubs) && Array.isArray(d.p) && d.clubs.length > 0 && d.p.length > 0 && d.clubs.every(c => Array.isArray(c) && typeof c[0] === 'string') && d.p.slice(0, 200).every(x => Array.isArray(x) && x.length >= 6);
 function fc27Upload(){
   const cur = FC27_CACHE; const info = cur ? `${cur.p.length.toLocaleString('it-IT')} giocatori · ${cur.clubs.length} club${cur.uploaded ? ' · caricato il ' + new Date(cur.uploaded).toLocaleDateString('it-IT') : ' · versione incorporata nel sito'}` : 'in caricamento…';
   openModal('Carica database FC 27', `<p class=\"sub\">Database in uso: <b>${esc(info)}</b></p>
-    <div class=\"f full\"><label for=\"fcfile\">File del database (fc27.json)</label><input id=\"fcfile\" name=\"fcfile\" type=\"file\" accept=\".json,application/json\" required></div>
+    <div class=\"f full\"><label for=\"fcfile\">File del database</label><input id=\"fcfile\" name=\"fcfile\" type=\"file\" accept=\".zip,.json,application/zip,application/json\" required><span class=\"hint\">Carica lo zip del gioco così com’è (con data/db dentro) oppure un fc27.json già pronto.</span></div>
     <p class=\"sub\">Il file viene salvato per tutti (Mondo e club CPU) e poi ti mostro cosa cambia nella lega: giocatori nuovi, spostamenti e valutazioni. Budget, mercato e contratti non vengono toccati.</p>`,
     async fd => {
       const f = fd.get('fcfile'); if (!f || !f.size) fail('Scegli il file del database.');
-      let d; try { d = JSON.parse(await f.text()); } catch { fail('Il file non è un JSON valido.'); }
-      if (!fc27Valid(d)) fail('Formato non riconosciuto: servono leagues, clubs e p come in fc27.json.');
+      let d; if (/\.zip$/i.test(f.name)) d = await fc27FromGame(f, m => toast(m, 8000));
+      else { try { d = JSON.parse(await f.text()); } catch { fail('Il file non è né uno zip del gioco né un JSON valido.'); } }
+      if (!fc27Valid(d)) fail('Formato non riconosciuto: serve lo zip del gioco oppure un fc27.json.');
       const out = {leagues: d.leagues, clubs: d.clubs, p: d.p, uploaded: Date.now(), file: f.name};
       let shared = true;
       try { const N = 1500, n = Math.ceil(d.p.length / N);
