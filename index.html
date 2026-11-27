@@ -441,12 +441,16 @@ const seasonMatches = (s = season()) => S.matches.filter(m => m.season === s);
 const DIVS = {A: 'Serie A', B: 'Serie B'}, PROMO = 2, RELEG = 3;
 const divOf = c => (c && c.div) || 'A';
 const mDiv = m => m.div || 'A';
-const hasB = () => S.clubs.some(c => divOf(c) === 'B');
+const hasB = () => S.clubs.some(c => c.lg == null && divOf(c) === 'B');
+/* Serie A e B ora sono campionati del Mondo come gli altri: la vecchia gestione «lega» compare solo se nella lega ci sono ancora club suoi (lg nullo) */
+const legaAny = () => S.clubs.some(c => c.lg == null);
+const legaHasA = () => S.clubs.some(c => c.lg == null && divOf(c) === 'A');
 const leagueMatches = (div, s = season()) => seasonMatches(s).filter(m => mDiv(m) === div && !m.stage);
 const curDiv = () => !hasB() ? 'A' : (S.div === 'A' || S.div === 'B') ? S.div : (divOf(myClub()) === 'B' ? 'B' : 'A');
-const scopeNow = () => S.div || (myClub()?.lg != null ? 'L' + myClub().lg : curDiv());
+const scopeNow = () => { if (S.div && ((S.div !== 'A' && S.div !== 'B') || legaAny())) return S.div; if (myClub()?.lg != null) return 'L' + myClub().lg; if (legaAny()) return curDiv();
+  const ls = typeof lgList === 'function' ? lgList() : []; return ls.length ? 'L' + (ls.find(l => l.name === 'Serie A') || ls[0]).li : curDiv(); };
 const divTabs = () => { loadWorld(); const cur = scopeNow(), ls = typeof lgList === 'function' ? lgList() : [];
-  return `<div class="panel" style="margin-bottom:12px"><div class="f full"><label for="scope">Campionato o coppa</label><select id="scope" data-wf="div"><option value="A"${cur === 'A' ? ' selected' : ''}>Serie A</option>${hasB() ? `<option value="B"${cur === 'B' ? ' selected' : ''}>Serie B</option>` : ''}${ls.map(l => `<option value="L${l.li}"${cur === 'L' + l.li ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="C"${cur === 'C' ? ' selected' : ''}>Coppe</option></select></div></div>`; };
+  return `<div class="panel" style="margin-bottom:12px"><div class="f full"><label for="scope">Campionato o coppa</label><select id="scope" data-wf="div">${legaAny() ? `<option value="A"${cur === 'A' ? ' selected' : ''}>Serie A (lega)</option>${hasB() ? `<option value="B"${cur === 'B' ? ' selected' : ''}>Serie B (lega)</option>` : ''}` : ''}${ls.map(l => `<option value="L${l.li}"${cur === 'L' + l.li ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="C"${cur === 'C' ? ' selected' : ''}>Coppe</option></select></div></div>`; };
 const worldScope = () => { const d = scopeNow(); if (d !== 'C' && !/^L\d+$/.test(d)) return null; loadWorld(); if (d !== 'C') S.lgl = +d.slice(1); return divTabs() + (!WORLD ? panelEmpty('Carico il calcio mondiale…', 'Campionati e coppe di FC 27.') : d === 'C' ? cupView() : lgView()); };
 const poMatches = (s = season()) => seasonMatches(s).filter(m => m.stage && mDiv(m) === 'B');
 function seedOf(id, s = season()){ return standings(s, 'B').findIndex(x => x.c.id === id) + 1; }
@@ -734,7 +738,7 @@ function admOld(){
   const grp = {}; S.clubs.filter(c => c.managerId).forEach(c => { const k = c.lg != null ? (WORLD?.leagues?.[c.lg] || 'Altro campionato') : (DIVS[divOf(c)] || 'Serie A'); (grp[k] ||= []).push(`${S.profiles[c.managerId]?.name || 'Allenatore'} (${c.name})`); });
   const recap = Object.keys(grp).length ? Object.entries(grp).map(([k, v]) => `<div class="li"><div class="main"><b>${esc(k)}</b> · ${v.length}<br><span class="sub">${v.map(esc).join(' · ')}</span></div></div>`).join('') : '<p class="muted">Nessun manager reale assegnato.</p>';
   return {recap: `<div class="panel"><div class="ph"><h3>Manager reali per campionato</h3></div><div class="list">${recap}</div></div>`, cal: `<div class="panel"><div class="ph"><h3>Calendari</h3></div><div class="list">${cal || '<p class="muted">Campionati in caricamento…</p>'}</div>
-    <p class="sub">Serie A e B: <button class="btn sm bad" data-act="fx-clear">Svuota calendario Serie A/B</button>. Nei campionati senza manager reali il sito rigenera il calendario da solo.</p></div>`, mg: `<div class="panel"><div class="ph"><h3>Allenatori reali</h3></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>`, coach: `<div class="panel"><div class="ph"><h3>Allenatori delle squadre CPU</h3></div><p class="sub">Una riga per squadra: <b>Club - Allenatore</b> (anche con «;» o «:»). Vale per tutti i campionati e compare sotto il nome della squadra.</p>
+    ${legaAny() ? '<p class="sub">Vecchia lega Serie A/B: <button class="btn sm bad" data-act="fx-clear">Svuota calendario</button></p>' : ''}<p class="sub">Nei campionati senza manager reali il sito rigenera il calendario da solo.</p></div>`, mg: `<div class="panel"><div class="ph"><h3>Allenatori reali</h3></div><div class="list">${mg || '<p class="muted">Nessun manager assegnato.</p>'}</div></div>`, coach: `<div class="panel"><div class="ph"><h3>Allenatori delle squadre CPU</h3></div><p class="sub">Una riga per squadra: <b>Club - Allenatore</b> (anche con «;» o «:»). Vale per tutti i campionati e compare sotto il nome della squadra.</p>
     <div class="f full"><textarea id="admcoach" style="min-height:150px" placeholder="Manchester City - Pep Guardiola&#10;Real Madrid - Xabi Alonso"></textarea></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="adm-coach">Salva allenatori</button></div></div>`}; }
 function realismPanel(){ return `<div class="panel"><div class="ph"><h3>Realismo economico</h3></div><p class="sub">Ricalcola per <b>tutte</b> le società, anche quelle già assegnate: budget iniziale, monte ingaggi, capienza e prezzo dello stadio, sponsor firmati (con conguaglio) e costi dello staff medico, in base a forza e prestigio della rosa. Le spese già fatte restano registrate.</p><button class="btn primary" data-act="realism">Ricalcola tutto</button></div>`; }
 async function realismAll(){ let n = 0;
@@ -2162,7 +2166,7 @@ function cpuNews(){
 }
 document.addEventListener('change', e => { const el = e.target.closest && e.target.closest('[data-wf]'); if (!el) return; S[el.dataset.wf] = el.value; if (el.dataset.wf === 'wl') S.wc = null; schedule(); });
 /* ---------- campionati virtuali della CPU: avanzano insieme alle giornate della lega ---------- */
-const LG_SKIP = /Libertadores|Sudamericana|^Serie [AB]$/;
+const LG_SKIP = /Libertadores|Sudamericana/;
 const lgRng = seed => { let k = 0; return () => WH(seed + '#' + (k++)); };
 function lgList0(){
   if (!WORLD || WORLD.err) return [];
@@ -2410,9 +2414,55 @@ function lgRoundAdd(li){
       if (!pairs.length) fail('Inserisci almeno una partita.');
       const rounds = (doc?.rounds || []).slice(); while (rounds.length <= r) rounds.push({m: []});
       rounds[r] = {m: [...rounds[r].m.filter(x => !used.has(String(x[0])) && !used.has(String(x[1]))), ...pairs]};
-      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
+      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: rounds.length, rounds, moves: moves || null});
       S.lgr = r + 1; toast(`Giornata ${r + 1} salvata`);
     }, 'Salva giornata');
+}
+/* partita singola: l'admin aggiunge, cambia o toglie una partita come vuole, anche contro club CPU della stessa lega (senza manager reale) */
+function lgBase(li){ const L = lgList().find(x => x.li === li), s = season(), doc = lgDoc(li, s); if (!L) return null; const {ids, moves} = doc ? {ids: doc.clubs, moves: doc.moves} : lgMembersNow(L); return {L, s, doc, ids, moves}; }
+const lgSaveCal = (b, rounds) => wsave(`L${b.L.li}-S${b.s}`, {li: b.L.li, name: b.L.name, manual: true, season: b.s, clubs: b.ids, total: rounds.length, rounds, moves: b.moves || null});
+const lgClubOpts = ids => { const hum = new Set(S.clubs.filter(c => c.managerId).map(c => c.id)); return [['', '—'], ...ids.map(i => [String(i), lgCN(i) + (hum.has('w' + i) ? ' · manager' : '')]).sort((a, b) => a[1].localeCompare(b[1]))]; };
+const lgBusyIn = (rd, h, a) => (rd?.m || []).some(x => [String(x[0]), String(x[1])].some(t => t === String(h) || t === String(a)));
+/* le distinte sono legate alla posizione della partita nella giornata: togliendo una partita le successive scalerebbero */
+const lgLuShift = (li, s, r, j) => S.lineups.some(l => { const mm = String(l.id).match(/^W(\d+)-(\d+)-(\d+)-(\d+)__/); return mm && +mm[1] === li && +mm[2] === s && +mm[3] === r + 1 && +mm[4] > j; });
+function lgMatchAdd(li){
+  const b = lgBase(li); if (!b) return; const next = Math.max(1, b.doc?.rounds.length || 1), opts = lgClubOpts(b.ids);
+  openModal(`+ Partita · ${b.L.name}`, `<div class="fgrid">${fld('mr', 'Giornata', `type="number" min="1" step="1" value="${next}" required`)}</div>
+    <div class="fgrid">${sel('mh', 'Casa', opts, '')}${sel('ma', 'Trasferta', opts, '')}</div>
+    <p class="sub">Puoi scegliere qualsiasi squadra del campionato, anche senza manager reale. Se la giornata non esiste viene creata.</p>`,
+    async fd => {
+      const r = Math.round(num(fd, 'mr')) - 1, h = String(fd.get('mh') || ''), a = String(fd.get('ma') || '');
+      if (r < 0) fail('Giornata non valida.'); if (!h || !a) fail('Scegli casa e trasferta.'); if (h === a) fail('Una squadra non può giocare contro sé stessa.');
+      const rounds = JSON.parse(JSON.stringify(b.doc?.rounds || [])); while (rounds.length <= r) rounds.push({m: []});
+      if (lgBusyIn(rounds[r], h, a)) fail(`Nella giornata ${r + 1} una delle due squadre ha già una partita.`);
+      rounds[r].m.push([+h, +a, null, null, [], []]);
+      await lgSaveCal(b, rounds); S.lgr = r + 1; S.admLr = r + 1; toast(`Partita aggiunta alla giornata ${r + 1}`);
+    }, 'Aggiungi');
+}
+function lgMatchEdit(li, r, j){
+  const b = lgBase(li); if (!b || !b.doc) return; const m = b.doc.rounds[r]?.m[j]; if (!m) return;
+  if (lgPlayed(m)) return toast('Partita già giocata: per cambiarla eliminala e inseriscila di nuovo.', 5000);
+  const opts = lgClubOpts(b.ids);
+  openModal(`Cambia partita · ${b.L.name}`, `<div class="fgrid">${fld('mr', 'Giornata', `type="number" min="1" step="1" value="${r + 1}" required`)}</div>
+    <div class="fgrid">${sel('mh', 'Casa', opts, String(m[0]))}${sel('ma', 'Trasferta', opts, String(m[1]))}</div>`,
+    async fd => {
+      const r2 = Math.round(num(fd, 'mr')) - 1, h = String(fd.get('mh') || ''), a = String(fd.get('ma') || '');
+      if (r2 < 0) fail('Giornata non valida.'); if (!h || !a) fail('Scegli casa e trasferta.'); if (h === a) fail('Una squadra non può giocare contro sé stessa.');
+      const rounds = JSON.parse(JSON.stringify(b.doc.rounds));
+      if (r2 === r){ if (rounds[r].m.some((x, k) => k !== j && lgBusyIn({m: [x]}, h, a))) fail(`Nella giornata ${r + 1} una delle due squadre ha già una partita.`); rounds[r].m[j] = [+h, +a, null, null, [], []]; }
+      else { if (lgLuShift(li, b.s, r, j)) fail('Ci sono distinte già consegnate per le partite successive di questa giornata: spostare questa partita le sfaserebbe.');
+        rounds[r].m.splice(j, 1); while (rounds.length <= r2) rounds.push({m: []});
+        if (lgBusyIn(rounds[r2], h, a)) fail(`Nella giornata ${r2 + 1} una delle due squadre ha già una partita.`);
+        rounds[r2].m.push([+h, +a, null, null, [], []]); while (rounds.length && !rounds[rounds.length - 1].m.length) rounds.pop(); }
+      await lgSaveCal(b, rounds); S.lgr = r2 + 1; S.admLr = r2 + 1; toast('Partita aggiornata');
+    }, 'Salva');
+}
+function lgMatchDel(li, r, j){
+  const b = lgBase(li); if (!b || !b.doc) return; const m = b.doc.rounds[r]?.m[j]; if (!m) return;
+  if (lgLuShift(li, b.s, r, j)) return toast('Ci sono distinte già consegnate per le partite successive di questa giornata: eliminare questa partita le sfaserebbe.', 6000);
+  confirmBox('Elimina partita', `<b>${esc(lgCN(m[0]))} – ${esc(lgCN(m[1]))}</b> (giornata ${r + 1}) viene tolta dal calendario${lgPlayed(m) ? ' insieme al suo risultato: classifica e marcatori si aggiornano, cartellini e infortuni già registrati restano' : ''}.`, 'Elimina', async () => {
+    const rounds = JSON.parse(JSON.stringify(b.doc.rounds)); rounds[r].m.splice(j, 1); while (rounds.length && !rounds[rounds.length - 1].m.length) rounds.pop();
+    await lgSaveCal(b, rounds); toast('Partita eliminata'); });
 }
 /* risultato con marcatori: un menu per ogni gol */
 function scorerOpts(ci){ const c = lgClub(ci) || cupTeam(ci); const ps = c && !c.lm ? lgSquad(c) : (c?.lm ? roster(String(ci).slice(1)).map(p => ({fc: 'p' + p.id, name: p.name, pos: p.pos, inj: p.injured})) : []); return [['', '— marcatore —'], ...ps.map(p => { const st = p.inj ? {t: 'inj'} : typeof p.fc === 'number' ? wStatus(p.fc) : null; return [String(p.fc), `${p.name} (${p.pos})${st ? (st.t === 'inj' ? ' · infortunato' : ' · squalificato') : ''}`]; }), ['og', 'Autogol']]; }
@@ -2491,7 +2541,7 @@ function lgBulk(li){
     }, 'Salva risultati');
 }
 function lgSerieView(div){
-  const rows = standings(season(), div), n = rows.length, ab = [['A', 'Serie A'], ...(hasB() ? [['B', 'Serie B']] : [])];
+  const rows = standings(season(), div), n = rows.length, ab = [['A', 'Serie A (lega)'], ...(hasB() ? [['B', 'Serie B (lega)']] : [])];
   const zone = i => div === 'A' ? (i < 4 ? 'z-cl' : i < 6 ? 'z-el' : i === 6 ? 'z-ecl' : i >= n - RELEG ? 'z-bot' : '') : (i < PROMO ? 'z-top' : i >= 2 && i <= 5 && n >= 6 ? 'z-po' : '');
   const legend = div === 'A' ? `<p class="sub" style="margin-top:8px"><span class="zl z-cl"></span> Champions League · <span class="zl z-el"></span> Europa League · <span class="zl z-ecl"></span> Conference League · <span class="zl z-bot"></span> Retrocede in Serie B (ultime ${RELEG})</p>` : `<p class="sub" style="margin-top:8px"><span class="zl z-top"></span> Promossa in Serie A (prime ${PROMO}) · <span class="zl z-po"></span> Playoff (3ª–6ª)</p>`;
   const sel_ = `<div class="panel"><div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${ab.map(([k, l]) => `<option value="${k}"${k === div ? ' selected' : ''}>${l} · ${S.clubs.filter(c => divOf(c) === k).length} squadre</option>`).join('')}${lgList().map(l => `<option value="${l.li}">${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div></div>`;
@@ -2499,15 +2549,15 @@ function lgSerieView(div){
     ${rows.map((x, i) => `<tr class="${zone(i)}"><td class="pos">${i + 1}</td><td>${clubLink(x.c, true)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Nessuna squadra.</td></tr>'}</tbody></table></div>${legend}</div>`;
 }
 function lgView(){
-  if (S.route === 'mondo'){ const d = S.lgl === 'B' && hasB() ? 'B' : (S.lgl == null || S.lgl === 'A' || S.lgl === 'B') ? 'A' : null; if (d) return lgSerieView(d); }
+  if (S.route === 'mondo' && legaAny()){ const d = S.lgl === 'B' && hasB() ? 'B' : (S.lgl == null || S.lgl === 'A' || S.lgl === 'B') ? 'A' : null; if (d) return lgSerieView(d); }
   return lgView0();
 }
 function lgView0(){
   const ls = lgList(); if (!ls.length) return '<div class="panel"><p class="muted">Campionati non disponibili.</p></div>';
   const li = S.lgl != null && ls.some(l => l.li === +S.lgl) ? +S.lgl : ls[0].li, L = ls.find(l => l.li === li), doc = lgDoc(li);
-  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl"><option value="A">Serie A</option>${hasB() ? '<option value="B">Serie B</option>' : ''}${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
+  const sel_ = `<div class="panel">${S.route === 'mondo' ? `<div class="f full"><label for="lgl">Campionato</label><select id="lgl" data-wf="lgl">${legaAny() ? `<option value="A">Serie A (lega)</option>${hasB() ? '<option value="B">Serie B (lega)</option>' : ''}` : ''}${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${l.clubs.length} squadre</option>`).join('')}</select></div>` : ''}
     ${lgModeNote(li)}${lgHumanSet().has(li) ? '<p class="sub" style="margin:8px 0 0">In questo campionato c’è almeno un manager reale.</p>' : ''}${S.comm ? lgModeCtl(li) : ''}
-    ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
+    ${S.comm ? `<div class="row" style="margin-top:10px"><button class="btn sm primary" data-act="lg-add" data-id="${li}">+ Partita</button><button class="btn sm" data-act="lg-round" data-id="${li}">+ Inserisci giornata a mano</button><button class="btn sm" data-act="lg-cal" data-id="${li}">Incolla calendario</button><button class="btn sm" data-act="lg-gen" data-id="${li}">${doc ? 'Rigenera' : 'Genera'} automatico</button>${doc ? `<button class="btn sm" data-act="lg-bulk" data-id="${li}">Correggi risultati (incolla)</button>` : ''}</div>` : ''}</div>`;
   const tab = doc ? lgTable(doc) : L.clubs.map(c => ({i: c.i, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0})), nR = doc ? doc.rounds.length : 0;
   const firstOpen = doc ? doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) : -1, r = Math.min(Math.max(1, +S.lgr || (firstOpen >= 0 ? firstOpen + 1 : nR)), nR || 1), rd = doc?.rounds[r - 1], sc = doc ? lgScorerTable(doc) : [];
   const done = doc ? doc.rounds.filter(x => x.m.length && x.m.every(lgPlayed)).length : 0;
@@ -2596,7 +2646,8 @@ const LG_RULES = {
   'Trendyol Süper Lig': {cl: 2, el: 1, ecl: 1}, 'Eliteserien': {cl: 2, el: 1, ecl: 1}, 'Ö. Bundesliga': {cl: 1, el: 2, ecl: 0},
   'Scottish Premiership': {cl: 1, el: 1, ecl: 1}, 'Metropolitan Division': {cl: 1, el: 0, ecl: 3}, 'SUPERLIGA': {cl: 0, el: 0, ecl: 1},
   'Ekstraklasa': {cl: 0, el: 2, ecl: 0}, 'Allsvenskan': {cl: 0, el: 0, ecl: 1}, 'Brack Super League': {cl: 0, el: 0, ecl: 2},
-  'Serie A': {cl: 4, el: 2, ecl: 1}
+  'Serie A': {cl: 4, el: 2, ecl: 1, down: 3, lower: 'Serie B'},
+  'Serie B': {up: 2, po: [3, 6]}
 };
 const ruleOf = name => LG_RULES[name] || {champ: true};
 function lzone(name, k, n){
@@ -2669,7 +2720,7 @@ function cupParticipants(s){
     const add = (code, k) => { if (k != null && !used.has(k)){ out[code].push(k); used.add(k); } };
     Object.entries(LG_RULES).forEach(([name, r]) => {
       let order = [];
-      if (name === 'Serie A'){ try { order = standings(s - 1, 'A').map(x => 'L' + x.c.id); } catch {} }
+      if (name === 'Serie A'){ const dW = (S.world || []).find(x => x.name === name && x.season === s - 1 && x.li != null && x.rounds); if (dW) order = lgTable(dW).map(x => x.i); else { try { order = standings(s - 1, 'A').map(x => 'L' + x.c.id); } catch {} } }
       else { const d = (S.world || []).find(x => x.name === name && x.season === s - 1); if (d) order = lgTable(d).map(x => x.i); }
       let k = 0; for (const [code, c] of [['UCL', r.cl], ['UEL', r.el], ['UECL', r.ecl]]) for (let j = 0; j < (c || 0); j++) add(code, order[k++]);
     });
@@ -3918,7 +3969,7 @@ function clubsWipeModal(){
   openModal('Svuota tutti i club', `<p>Cancella <b>tutte le ${S.clubs.length} società</b>, i <b>${S.players.length} giocatori</b>, le <b>${S.matches.length} partite</b> con le distinte, le trattative, le aste, i movimenti di budget e i trasferimenti. Nessun utente resta assegnato a una squadra. Account, impostazioni della lega, stagione corrente e modalità dei campionati non si toccano.</p>
     <div class="f full"><label><input type="checkbox" name="cal" checked> Cancella anche i ${wd.length} calendari, coppe e stati dei campionati del Mondo (infortuni, squalifiche, posta)</label></div>
     <div class="f full"><label><input type="checkbox" name="bk" checked> Scarica prima una copia dei dati (consigliato)</label></div>
-    <p class="sub">Dopo lo svuotamento si carica il database FC 27: le squadre CPU di Serie A e B con «Importa squadre CPU Serie A/B», tutti gli altri club CPU del Mondo si assegnano agli utenti dall’admin.</p>
+    <p class="sub">Dopo lo svuotamento tutti i club, Serie A e Serie B comprese, sono club CPU del Mondo: si assegnano agli utenti dall’admin.</p>
     <div class="f full"><label for="wconf">Per confermare scrivi <b>SVUOTA</b></label><input id="wconf" name="wconf" autocomplete="off"></div>`,
     async fd => {
       if (String(fd.get('wconf') || '').trim().toUpperCase() !== 'SVUOTA') fail('Scrivi SVUOTA per confermare.');
@@ -4989,6 +5040,9 @@ document.addEventListener('click', async e => {
       case 'lg-res': { const [a, b, c] = id.split('|').map(Number); lgRes(a, b, c); break; }
       case 'lg-sim': { const [a, b, c] = id.split('|').map(Number); await lgSimMatch(a, b, c); break; }
       case 'lg-simr': { const [a, b] = id.split('|').map(Number); await lgSimRound(a, b); break; }
+      case 'lg-add': lgMatchAdd(+id); break;
+      case 'lg-medit': { const [a, b, c] = id.split('|').map(Number); lgMatchEdit(a, b, c); break; }
+      case 'lg-mdel': { const [a, b, c] = id.split('|').map(Number); lgMatchDel(a, b, c); break; }
       case 'lg-mode-all': await lgSetModeAll(id); break;
       case 'serie-sim': await serieSimMatch(id); break;
       case 'serie-simr': await serieSimRound(+id); break;
@@ -5032,7 +5086,7 @@ function lgCalPaste(li){
       const {rounds, errs} = lgCalParse(String(fd.get('calpaste') || ''), ids, lgCN, normKey);
       if (errs.length) fail(`Righe non riconosciute (${errs.length}): ${errs.slice(0, 3).join(' | ')}${errs.length > 3 ? '…' : ''}`);
       if (!rounds.some(r => r.m.length)) fail('Incolla almeno una giornata con le sue partite.');
-      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: Math.max(rounds.length, (ids.length - 1 + ids.length % 2) * 2), rounds, moves: moves || null});
+      await wsave(`L${li}-S${s}`, {li, name: L.name, manual: true, season: s, clubs: ids, total: rounds.length, rounds, moves: moves || null});
       S.lgr = 1; toast(`Calendario salvato: ${rounds.length} giornate`);
     }, 'Salva calendario');
 }
@@ -5619,15 +5673,15 @@ function admCalTab(){
   const P = admOld(), ms = seasonMatches().filter(m => !m.stage && !m.pre), rounds = [...new Set(ms.map(m => m.round))].sort((a, b) => a - b);
   const firstOpen = rounds.find(r => ms.some(m => m.round === r && !m.played)) ?? rounds[rounds.length - 1], rd = rounds.includes(+S.admRd) ? +S.admRd : firstOpen;
   const rows = ms.filter(m => m.round === rd).map(m => `<div class="li"><div class="main"><b>${esc(cname(m.homeId))} – ${esc(cname(m.awayId))}</b>${hasB() ? ` <span class="sub">${esc(DIVS[mDiv(m)] || '')}</span>` : ''}<br><span class="sub">${m.played ? `${m.hg}–${m.ag}` : 'da giocare'}</span></div>${serieSimOk(m) ? admBtn('serie-sim', m.id, 'Simula', 'primary') : ''}${admBtn('result', m.id, m.played ? 'Correggi' : 'Risultato', serieSimOk(m) ? '' : 'primary')}${admBtn('fx-edit', m.id, 'Modifica')}${admBtn('fx-del', m.id, 'Elimina', 'bad')}</div>`).join('');
-  const serie = admPanel('Serie A e B · calendario e classifica', `${lgModeCtl('A', 'Serie A')}${hasB() ? lgModeCtl('B', 'Serie B') : ''}<div class="row" style="margin-bottom:8px">${admBtn('gen', null, 'Genera calendario', 'primary')}${admBtn('fx-round', null, 'Inserisci giornata')}${admBtn('fx-add', null, '+ Partita')}${admBtn('recalc', null, 'Ricalcola classifica')}${rounds.length && (lgMode('A') === 'sim' || (hasB() && lgMode('B') === 'sim')) ? admBtn('serie-simr', rd, 'Simula giornata ' + rd, 'primary') : ''}${admBtn('fx-clear', null, 'Svuota calendario', 'bad')}</div>
+  const serie = !legaAny() ? '' : admPanel('Serie A e B della vecchia lega · calendario e classifica', `${lgModeCtl('A', 'Serie A')}${hasB() ? lgModeCtl('B', 'Serie B') : ''}<div class="row" style="margin-bottom:8px">${admBtn('gen', null, 'Genera calendario', 'primary')}${admBtn('fx-round', null, 'Inserisci giornata')}${admBtn('fx-add', null, '+ Partita')}${admBtn('recalc', null, 'Ricalcola classifica')}${rounds.length && (lgMode('A') === 'sim' || (hasB() && lgMode('B') === 'sim')) ? admBtn('serie-simr', rd, 'Simula giornata ' + rd, 'primary') : ''}${admBtn('fx-clear', null, 'Svuota calendario', 'bad')}</div>
     ${rounds.length ? `<div class="f full"><label for="admRd">Giornata</label><select id="admRd" data-wf="admRd">${rounds.map(r => `<option value="${r}"${r === rd ? ' selected' : ''}>Giornata ${r}</option>`).join('')}</select></div><div class="list">${rows || '<p class="muted">Nessuna partita.</p>'}</div>` : '<p class="muted">Calendario non ancora creato.</p>'}`);
   let world = '<p class="muted">Campionati in caricamento…</p>';
   if (WORLD && !WORLD.err){ const ls = lgList(), hs = lgHumanSet(), li = ls.some(l => l.li === +S.admLg) ? +S.admLg : (ls.find(l => hs.has(l.li)) || ls[0])?.li, doc = li != null ? lgDoc(li, season()) : null;
     const lr = doc ? (doc.rounds[+S.admLr - 1] ? +S.admLr : (doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) + 1 || doc.rounds.length)) : 0;
-    const rows2 = doc ? (doc.rounds[lr - 1]?.m || []).map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))} – ${esc(lgCN(x[1]))}</b><br><span class="sub">${lgPlayed(x) ? `${x[2]}–${x[3]}` : 'da giocare'}</span></div>${!lgPlayed(x) && lgMode(li) === 'sim' ? admBtn('lg-sim', `${li}|${lr - 1}|${j}`, 'Simula', 'primary') : ''}${admBtn('lg-res', `${li}|${lr - 1}|${j}`, lgPlayed(x) ? 'Correggi' : 'Risultato', lgMode(li) === 'sim' ? '' : 'primary')}</div>`).join('') : '';
+    const rows2 = doc ? (doc.rounds[lr - 1]?.m || []).map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))} – ${esc(lgCN(x[1]))}</b><br><span class="sub">${lgPlayed(x) ? `${x[2]}–${x[3]}` : 'da giocare'}</span></div>${!lgPlayed(x) && lgMode(li) === 'sim' ? admBtn('lg-sim', `${li}|${lr - 1}|${j}`, 'Simula', 'primary') : ''}${admBtn('lg-res', `${li}|${lr - 1}|${j}`, lgPlayed(x) ? 'Correggi' : 'Risultato', lgMode(li) === 'sim' ? '' : 'primary')}${!lgPlayed(x) ? admBtn('lg-medit', `${li}|${lr - 1}|${j}`, 'Cambia') : ''}${admBtn('lg-mdel', `${li}|${lr - 1}|${j}`, 'Elimina', 'bad')}</div>`).join('') : '';
     world = ls.length ? `<div class="f full"><label for="admLg">Campionato</label><select id="admLg" data-wf="admLg">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${esc(lgModeLabel(l.li))}</option>`).join('')}</select></div>
       ${lgModeCtl(li)}<div class="row" style="margin:6px 0"><span class="sub">Tutti i campionati:</span>${admBtn('lg-mode-all', 'sim', 'Partita per partita')}${admBtn('lg-mode-all', 'hand', 'A mano')}${admBtn('lg-mode-all', 'auto', 'Automatico', 'ghost')}</div>
-      <div class="row" style="margin:8px 0">${admBtn('lg-round', li, 'Inserisci giornata a mano', 'primary')}${admBtn('lg-cal', li, 'Incolla calendario')}${admBtn('lg-gen', li, 'Genera automatico')}${doc ? admBtn('lg-bulk', li, 'Correggi risultati') : ''}${doc ? admBtn('adm-delcal', li, 'Elimina calendario', 'bad') : ''}</div>
+      <div class="row" style="margin:8px 0">${admBtn('lg-add', li, '+ Partita', 'primary')}${admBtn('lg-round', li, 'Inserisci giornata a mano')}${admBtn('lg-cal', li, 'Incolla calendario')}${admBtn('lg-gen', li, 'Genera automatico')}${doc ? admBtn('lg-bulk', li, 'Correggi risultati') : ''}${doc ? admBtn('adm-delcal', li, 'Elimina calendario', 'bad') : ''}</div>
       ${doc ? `<div class="f full"><label for="admLr">Giornata</label><select id="admLr" data-wf="admLr">${doc.rounds.map((r, i) => `<option value="${i + 1}"${i + 1 === lr ? ' selected' : ''}>Giornata ${i + 1}</option>`).join('')}</select></div>${lgMode(li) === 'sim' && doc.rounds[lr - 1]?.m.some(x => !lgPlayed(x)) ? `<div class="row" style="margin:6px 0">${admBtn('lg-simr', `${li}|${lr - 1}`, 'Simula giornata ' + lr, 'primary')}</div>` : ''}<div class="list">${rows2 || '<p class="muted">Nessuna partita.</p>'}</div>` : '<p class="muted">Calendario non creato.</p>'}` : '<p class="muted">Nessun campionato.</p>'; }
   return serie + admPanel('Campionati del Mondo', world) + P.cal;
 }
