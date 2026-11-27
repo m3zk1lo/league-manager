@@ -4935,8 +4935,8 @@ document.addEventListener('click', async e => {
       case 'result': { const m = S.matches.find(x => x.id === id);
         if (!m.played && luRequired() && !S.comm && !(luDone(m.id, m.homeId) && luDone(m.id, m.awayId))) return toast('Prima entrambi gli allenatori devono consegnare la distinta di gara.');
         resultModal(m); break; }
-      case 'lineup': lineupPick(S.matches.find(x => x.id === id)); break;
-      case 'lineups': viewLineups(S.matches.find(x => x.id === id)); break;
+      case 'lineup': { const m = luMatch(id); if (!m) return toast('Partita non trovata: ricarica la pagina e riprova.'); lineupPick(m); break; }
+      case 'lineups': { const m = luMatch(id); if (!m) return toast('Partita non trovata: ricarica la pagina e riprova.'); viewLineups(m); break; }
       case 'sp-sign': { const [cid, oid] = id.split('|'); await signSponsor(cid, oid); break; }
       case 'st-edit': stadiumModal(club(id)); break;
       case 'kit-edit': { const [cid, sl] = id.split('|'); kitModal(cid, sl); break; }
