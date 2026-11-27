@@ -4,7 +4,13 @@ jobs:
   prova:
     runs-on: ubuntu-latest
     steps:
-      - name: Scarico 3 giocatori da EA
+      - name: Cerco la versione FC 27
         run: |
-          curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/ea-sports-fc?locale=it&limit=3&offset=0" -o ea.json -w "HTTP %{http_code}\n"
-          python3 -c "import json;d=json.load(open('ea.json'));print('TOTALE',d.get('totalItems'));[print(p.get('firstName'),p.get('lastName'),'|',p.get('overallRating'),'|',(p.get('team') or {}).get('label'),'|',p.get('leagueName')) for p in d.get('items',[])]" || head -c 600 ea.json
+          curl -s -A "Mozilla/5.0" "https://www.ea.com/games/ea-sports-fc/ratings" -o pag.html
+          echo "== indirizzi trovati nella pagina EA =="
+          grep -o 'drop-api[^"'"'"' ]*' pag.html | sort -u | head -20
+          grep -o '"[^"]*rating/[^"]*"' pag.html | sort -u | head -20
+          for s in ea-sports-fc ea-sports-fc-27 ea-sports-fc27 fc-27 fc27; do
+            curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/$s?locale=it&limit=100&offset=0" -o r.json -w "$s HTTP %{http_code} "
+            python3 -c "import json;d=json.load(open('r.json'));w=[p for p in d.get('items',[]) if p.get('lastName') in ('Wirtz','Isak','Kane')];print('TOTALE',d.get('totalItems'),[(p.get('lastName'),p.get('overallRating')) for p in w])" 2>/dev/null || echo "(nessun dato)"
+          done
