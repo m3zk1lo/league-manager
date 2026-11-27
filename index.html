@@ -4454,11 +4454,11 @@ const kitLocked = (c, slot) => ((c.kits || {})[slot] || {}).season === season();
 /* ---------- importa svincolati da file CSV (commissario) ---------- */
 function normKey(s){ const SP = {'ł':'l','ø':'o','đ':'d','ð':'d','ı':'i','ß':'ss','æ':'ae','œ':'oe'};
   return String(s || '').toLowerCase().replace(/[łøđðıßæœ]/g, c => SP[c]).normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, ''); }
-function parseCSV(t){ const rows = []; let row = [], cur = '', q = false;
+function parseCSV(t, d){ d = d || ','; const rows = []; let row = [], cur = '', q = false;
   t = t.replace(/^﻿/, '');
   for (let i = 0; i < t.length; i++){ const ch = t[i];
     if (q){ if (ch === '"'){ if (t[i + 1] === '"'){ cur += '"'; i++; } else q = false; } else cur += ch; }
-    else if (ch === '"') q = true; else if (ch === ','){ row.push(cur); cur = ''; }
+    else if (ch === '"') q = true; else if (ch === d){ row.push(cur); cur = ''; }
     else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && t[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.length > 1 || row[0]) rows.push(row); row = []; }
     else cur += ch; }
   if (cur || row.length){ row.push(cur); rows.push(row); }
@@ -5315,21 +5315,106 @@ async function fc27Roster(){
   f.querySelector('#sfq').addEventListener('input', e => { f.querySelector('#sfc').innerHTML = opts(e.target.value); });
 }
 const fc27Valid = d => d && Array.isArray(d.leagues) && Array.isArray(d.clubs) && Array.isArray(d.p) && d.clubs.length > 0 && d.p.length > 0 && d.clubs.every(c => Array.isArray(c) && typeof c[0] === 'string') && d.p.slice(0, 200).every(x => Array.isArray(x) && x.length >= 6);
+/* CSV da internet (Kaggle, GitHub, FIFPlay…): le colonne si riconoscono dal nome; club e giocatori si agganciano al database già in uso, così calendari e classifiche non si rompono */
+async function fc27FromCsv(file, onStep){
+  const step = onStep || (() => {}); step('Leggo il CSV…');
+  const txt = await file.text(), nl = txt.indexOf('\n'), l1 = txt.slice(0, nl > 0 ? nl : 3000);
+  const cnt = c => l1.split(c).length - 1, dl = cnt(';') > cnt(',') ? ';' : cnt('\t') > cnt(',') ? '\t' : ',';
+  const rows = parseCSV(txt, dl), head0 = (rows.shift() || []).map(h => String(h).trim());
+  const H = head0.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const col = (...ks) => { for (const k of ks){ const i = H.indexOf(k); if (i >= 0) return i; } return -1; };
+  const cId = col('playerid', 'fcid', 'eaid', 'sofifaid', 'id'), cCom = col('commonname'), cFi = col('firstname', 'givenname'), cLa = col('lastname', 'surname', 'familyname'),
+    cNm = col('name', 'playername', 'fullname', 'longname', 'displayname', 'shortname', 'player'), cOv = col('overall', 'overallrating', 'ovr', 'rating', 'ovrrating'),
+    cPo = col('potential', 'pot', 'potentialrating'), cAg = col('age'), cDb = col('dob', 'dateofbirth', 'birthdate', 'birthday'),
+    cPs = col('position', 'positions', 'pos', 'bestposition', 'primaryposition', 'preferredposition', 'positionshort', 'positionshortlabel', 'positionlabel', 'shortlabel'),
+    cCl = col('club', 'team', 'clubname', 'teamname', 'currentclub', 'clubteam', 'teamlabel'), cLg = col('league', 'leaguename', 'clubleague', 'competition', 'leaguelabel'), cGe = col('gender', 'sex');
+  if (cOv < 0 || cCl < 0 || (cCom < 0 && cNm < 0 && cLa < 0)) throw new Error(`Non riconosco le colonne del CSV: servono nome, overall e squadra. Colonne trovate: ${head0.slice(0, 30).join(', ')}`);
+  const nameOf = r => { const c = cCom >= 0 ? String(r[cCom] || '').trim() : ''; if (c) return c;
+    const f = cFi >= 0 ? String(r[cFi] || '').trim() : '', l = cLa >= 0 ? String(r[cLa] || '').trim() : ''; if (f || l) return (f + ' ' + l).trim();
+    return cNm >= 0 ? String(r[cNm] || '').trim() : ''; };
+  const PM = {GK: 'POR', SW: 'DC', CB: 'DC', RCB: 'DC', LCB: 'DC', LB: 'TS', LWB: 'TS', RB: 'TD', RWB: 'TD', CDM: 'CDC', RDM: 'CDC', LDM: 'CDC', CM: 'CC', RCM: 'CC', LCM: 'CC',
+    CAM: 'COC', RAM: 'COC', LAM: 'COC', RM: 'ED', LM: 'ES', RW: 'AD', LW: 'AS', ST: 'ATT', CF: 'ATT', RF: 'ATT', LF: 'ATT', RS: 'ATT', LS: 'ATT', FW: 'ATT',
+    POR: 'POR', DC: 'DC', TD: 'TD', TS: 'TS', CDC: 'CDC', CC: 'CC', COC: 'COC', ED: 'ED', ES: 'ES', AD: 'AD', AS: 'AS', ATT: 'ATT'};
+  step('Allineo club e giocatori…');
+  let old = null; try { old = await fc27Load(); } catch {}
+  const oLg = old ? old.leagues.slice() : Object.values(FC_LG), oCl = old ? old.clubs.map(c => c.slice()) : [], oP = old ? old.p : [];
+  const core = s => normKey(String(s || '').replace(/\b(fc|cf|ac|as|sc|ssc|afc|us|ss|sv|vfl|vfb|tsg|fk|sk|bk|cd|ud|rcd|rc|ca|cs|club|calcio|de|del|the)\b/gi, ' '));
+  const byExact = new Map(), byCore = new Map();
+  oCl.forEach((c, i) => { const a = normKey(c[0]), b = core(c[0]); if (!byExact.has(a)) byExact.set(a, i); if (b && !byCore.has(b)) byCore.set(b, i); });
+  const clubIdx = new Map(), newNames = [];
+  const findClub = raw => { if (clubIdx.has(raw)) return clubIdx.get(raw);
+    const a = FC_ALIAS[raw] || raw, n1 = normKey(a), n2 = core(a); let i = byExact.get(n1); if (i == null) i = byCore.get(n2);
+    if (i == null && n1.length >= 5){ const hits = []; oCl.forEach((c, j) => { const n = normKey(c[0]); if (n.length >= 5 && (n.includes(n1) || n1.includes(n))) hits.push(j); }); if (hits.length === 1) i = hits[0]; }
+    if (i == null) i = -1; clubIdx.set(raw, i); return i; };
+  const rest = () => { let i = oLg.indexOf('Resto del mondo'); if (i < 0){ oLg.push('Resto del mondo'); i = oLg.length - 1; } return i; };
+  const lgOf = nm => { const n = normKey(nm || ''); if (!n) return rest(); let i = oLg.findIndex(l => normKey(l) === n);
+    if (i < 0 && n.length >= 5) i = oLg.findIndex(l => { const m = normKey(l); return m.length >= 5 && (m.includes(n) || n.includes(m)); });
+    if (i >= 0) return i; if (old) return rest(); oLg.push(String(nm).trim()); return oLg.length - 1; };
+  const oldById = new Map(oP.map(x => [x[0], x])), oldByName = new Map(), oldByClub = new Map();
+  for (const x of oP){ const k = normKey(x[1]); if (!oldByName.has(k)) oldByName.set(k, []); oldByName.get(k).push(x); if (!oldByClub.has(x[5])) oldByClub.set(x[5], []); oldByClub.get(x[5]).push(x); }
+  const toks = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z]+/).filter(w => w.length > 2);
+  const sameName = (a, b) => { const B = new Set(toks(b)); return toks(a).some(w => B.has(w)); };
+  const sameLast = (a, b) => { const A = toks(a).pop(), B = toks(b).pop(); return !!A && A === B; };
+  const tNow = Date.now(), used = new Map(), st = {rows: rows.length, women: 0, noClub: 0, bad: 0, dup: 0, id: 0, name: 0, club: 0, fresh: 0, posMiss: 0};
+  let synth = 900000000;
+  for (const r of rows){
+    const ovr = parseInt(r[cOv], 10), nm = nameOf(r), cn = String(r[cCl] || '').trim();
+    if (!(ovr > 0) || !nm){ st.bad++; continue; }
+    if (cGe >= 0 && /wom|fem|^f$/i.test(String(r[cGe] || '').trim())){ st.women++; continue; }
+    if (!cn || /^(free ?agents?|svincolat\w*|retired|none|n\/a|-)$/i.test(cn)){ st.noClub++; continue; }
+    let ci = findClub(cn);
+    if (ci < 0){ oCl.push([cn, lgOf(cLg >= 0 ? r[cLg] : '')]); ci = oCl.length - 1; clubIdx.set(cn, ci); newNames.push(cn); }
+    let age = cAg >= 0 ? parseInt(r[cAg], 10) : NaN;
+    if (!(age > 0) && cDb >= 0){ const t = Date.parse(r[cDb]); if (t) age = Math.floor((tNow - t) / 31557600000); }
+    const pr = cPs >= 0 ? String(r[cPs] || '').toUpperCase().split(/[^A-Z]+/).filter(Boolean)[0] : '', pos0 = PM[pr] || null;
+    const eid = cId >= 0 ? parseInt(r[cId], 10) : NaN;
+    let m = null, how = '';
+    const byId = eid > 0 ? oldById.get(eid) : null;
+    if (byId && sameName(byId[1], nm)){ m = byId; how = 'id'; }
+    if (!m){ const c = (oldByName.get(normKey(nm)) || []).filter(x => !(age > 0) || Math.abs(x[3] - age) <= 2); if (c.length){ m = c.find(x => x[5] === ci) || (c.length === 1 ? c[0] : null); if (m) how = 'name'; } }
+    if (!m){ const c = (oldByClub.get(ci) || []).filter(x => (!(age > 0) || Math.abs(x[3] - age) <= 2) && sameLast(x[1], nm)); if (c.length === 1){ m = c[0]; how = 'club'; } }
+    const potCsv = cPo >= 0 ? parseInt(r[cPo], 10) : NaN;
+    let row;
+    if (m){
+      if (used.has(m[0])){ st.dup++; continue; }
+      st[how]++; const pot = potCsv > 0 ? potCsv : (m[6] || 0);
+      row = [m[0], m[1], pos0 || m[2], age > 0 ? age : m[3], ovr, ci]; if (pot) row.push(pot);
+    } else {
+      let id = (eid > 0 && !oldById.has(eid) && !used.has(eid)) ? eid : 0; if (!id){ do { synth++; } while (oldById.has(synth) || used.has(synth)); id = synth; }
+      if (!pos0) st.posMiss++; st.fresh++;
+      row = [id, nm, pos0 || 'CC', age > 0 ? age : 25, ovr, ci]; if (potCsv > 0) row.push(potCsv);
+    }
+    used.set(row[0], row);
+  }
+  const p = [...used.values()];
+  const hn = i => i >= 0 ? head0[i] : '—';
+  const cols = `id: ${hn(cId)}, nome: ${hn(cCom >= 0 ? cCom : cNm >= 0 ? cNm : cLa)}, overall: ${hn(cOv)}, potenziale: ${hn(cPo)}, età: ${hn(cAg >= 0 ? cAg : cDb)}, ruolo: ${hn(cPs)}, squadra: ${hn(cCl)}, campionato: ${hn(cLg)}`;
+  if (p.length < 3000) throw new Error(`Dal CSV ho letto solo ${p.length} giocatori validi (con nome, valutazione e squadra): controlla che sia il file completo. Colonne usate: ${cols}`);
+  return {leagues: oLg, clubs: oCl, p, uploaded: Date.now(), file: file.name, info: {csv: true, st, newNames, cols}};
+}
+function fc27CsvConfirm(d, fname){
+  const i = d.info, s = i.st, nn = i.newNames;
+  confirmBox('Database da CSV', `Dal file <b>${esc(fname)}</b> ho letto <b>${d.p.length.toLocaleString('it-IT')}</b> giocatori validi (su ${s.rows.toLocaleString('it-IT')} righe).<br><br>Già presenti nel database: <b>${s.id + s.name + s.club}</b> (${s.id} per ID, ${s.name} per nome, ${s.club} per squadra). Nuovi: <b>${s.fresh}</b>.<br>Saltati: ${s.women} donne, ${s.noClub} senza squadra, ${s.bad} righe incomplete, ${s.dup} doppioni.<br><br>Club con nome non riconosciuto: <b>${nn.length}</b>${nn.length ? ':<br>' + nn.slice(0, 12).map(x => esc(x)).join(', ') + (nn.length > 12 ? '…' : '') : ''}.${nn.length > 40 ? '<br><b>Attenzione:</b> sono tanti, i nomi dei club nel CSV potrebbero essere scritti in modo diverso.' : ''}${s.posMiss ? `<br>Ruolo non riconosciuto per ${s.posMiss} giocatori nuovi (messi come CC).` : ''}<br><br>Colonne usate: ${esc(i.cols)}.<br><br>Il database viene salvato per tutti e poi ti mostro cosa cambia nella lega. Budget, mercato e contratti non vengono toccati.`, 'Carica e aggiorna', () => fc27Commit(d, fname));
+}
+async function fc27Commit(d, name){
+  const out = {leagues: d.leagues, clubs: d.clubs, p: d.p, uploaded: Date.now(), file: name};
+  const shared = await fc27SaveShared(out);
+  FC27_CACHE = out; WORLD = null; worldLoading = false; loadWorld();
+  toast(shared ? `Database caricato: ${d.p.length.toLocaleString('it-IT')} giocatori` : 'Database caricato solo su questo dispositivo (salvataggio condiviso non permesso)', 5000);
+  setTimeout(() => fc27SyncRosters(), 400);
+}
 function fc27Upload(){
   const cur = FC27_CACHE; const info = cur ? `${cur.p.length.toLocaleString('it-IT')} giocatori · ${cur.clubs.length} club${cur.uploaded ? ' · caricato il ' + new Date(cur.uploaded).toLocaleDateString('it-IT') : ' · versione incorporata nel sito'}` : 'in caricamento…';
   openModal('Carica database FC 27', `<p class=\"sub\">Database in uso: <b>${esc(info)}</b></p>
-    <div class=\"f full\"><label for=\"fcfile\">File del database</label><input id=\"fcfile\" name=\"fcfile\" type=\"file\" accept=\".zip,.json,application/zip,application/json\" required><span class=\"hint\">Carica lo zip del gioco così com’è (con data/db dentro) oppure un fc27.json già pronto.</span></div>
+    <div class=\"f full\"><label for=\"fcfile\">File del database</label><input id=\"fcfile\" name=\"fcfile\" type=\"file\" accept=\".zip,.json,.csv,application/zip,application/json,text/csv\" required><span class=\"hint\">Carica lo zip del gioco così com’è (con data/db dentro) un fc27.json già pronto oppure un CSV con tutti i giocatori (Kaggle, GitHub…).</span></div>
     <p class=\"sub\">Il file viene salvato per tutti (Mondo e club CPU) e poi ti mostro cosa cambia nella lega: giocatori nuovi, spostamenti e valutazioni. Budget, mercato e contratti non vengono toccati.</p>`,
     async fd => {
       const f = fd.get('fcfile'); if (!f || !f.size) fail('Scegli il file del database.');
       let d; if (/\.zip$/i.test(f.name)) d = await fc27FromGame(f, m => toast(m, 8000));
-      else { try { d = JSON.parse(await f.text()); } catch { fail('Il file non è né uno zip del gioco né un JSON valido.'); } }
+      else if (/\.csv$/i.test(f.name)){ d = await fc27FromCsv(f, m => toast(m, 8000)); setTimeout(() => fc27CsvConfirm(d, f.name), 0); return; }
+      else { try { d = JSON.parse(await f.text()); } catch { fail('Il file non è né uno zip, né un CSV, né un JSON valido.'); } }
       if (!fc27Valid(d)) fail('Formato non riconosciuto: serve lo zip del gioco oppure un fc27.json.');
-      const out = {leagues: d.leagues, clubs: d.clubs, p: d.p, uploaded: Date.now(), file: f.name};
-      const shared = await fc27SaveShared(out);
-      FC27_CACHE = out; WORLD = null; worldLoading = false; loadWorld();
-      toast(shared ? `Database caricato: ${d.p.length.toLocaleString('it-IT')} giocatori` : 'Database caricato solo su questo dispositivo (salvataggio condiviso non permesso)', 5000);
-      setTimeout(() => fc27SyncRosters(), 400);
+      await fc27Commit(d, f.name);
     }, 'Carica e aggiorna');
 }
 async function fc27SyncRosters(){
