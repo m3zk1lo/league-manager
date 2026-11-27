@@ -432,6 +432,10 @@ const wMatches = () => { const s_ = season(), hum = new Set(S.clubs.filter(c => 
     out.push({id: `W${d.li}-${s_}-${ri + 1}-${j}`, w: true, li: d.li, r: ri, j, season: s_, round: ri + 1, homeId: h, awayId: a, played: m[2] != null, hg: m[2], ag: m[3], div: 'W'}); }))); return out; };
 const myClub = () => S.me ? S.clubs.find(c => c.managerId === S.me) : null;
 const season = () => S.settings?.season || 1;
+/* sezioni della società che l'admin può nascondere (non eliminate): stadio e biglietteria, staff medico e cure, sponsor */
+const SEC_HIDE = {stadium: 'Stadio e biglietteria', medical: 'Staff medico e cure', sponsor: 'Sponsor'};
+const SEC_ACT = {'st-edit': 'stadium', 'med-up': 'medical', 'med-cure': 'medical', 'sp-sign': 'sponsor'};
+const secHidden = k => !!S.settings?.hide?.[k];
 const seasonMatches = (s = season()) => S.matches.filter(m => m.season === s);
 /* ---------- due divisioni: Serie A e Serie B ---------- */
 const DIVS = {A: 'Serie A', B: 'Serie B'}, PROMO = 2, RELEG = 3;
@@ -1054,8 +1058,8 @@ function viewClub(){
       <div class="kpi"><div class="l">Posizione</div><div class="v num">${pos ? pos + '°' : '—'}</div><div class="sub">su ${S.clubs.length} società</div></div>
     </div></div>
   <section class="grid2">
-    <section class="grid2">${stadiumPanel(c)}${medicalPanel(c)}</section>
-    ${sponsorPanel(c)}
+    ${secHidden('stadium') && secHidden('medical') ? '' : `<section class="grid2">${secHidden('stadium') ? '' : stadiumPanel(c)}${secHidden('medical') ? '' : medicalPanel(c)}</section>`}
+    ${secHidden('sponsor') ? '' : sponsorPanel(c)}
     ${tplPanel(c)}
     ${kitPanel(c)}
     <div class="panel"><div class="ph"><h3>Rosa</h3>${can ? `<div class="row"><button class="btn sm" data-act="add-player" data-id="${c.id}">Aggiungi giocatore</button><button class="btn sm" data-act="import" data-id="${c.id}">Importa rosa</button><button class="btn sm" data-act="assign" data-id="${c.id}">Prendi dagli svincolati</button><a class="btn sm primary" href="#mondo">Mondo</a></div>` : ''}</div>
@@ -4567,7 +4571,7 @@ function viewHome(){
     ['mercato', 'Mercato', 'Offerte e trattative'],
     ['mondo', 'Mondo', 'Club CPU e rose vere di FC 27'],
     ['svincolati', 'Svincolati', nA ? `${nA} ${nA === 1 ? 'asta' : 'aste'} in corso` : 'Aste e lista giocatori'],
-    ['societa', mc ? 'La mia società' : 'Società', 'Rosa, stadio, sponsor'],
+    ['societa', mc ? 'La mia società' : 'Società', [ 'Rosa', secHidden('stadium') ? '' : 'stadio', secHidden('sponsor') ? '' : 'sponsor'].filter(Boolean).join(', ')],
     ['statistiche', 'Statistiche', 'Marcatori e assist'],
     ['precampionato', 'Precampionato', preOn() ? (S.pre.done ? 'Concluso' : preAllIn() ? 'Partite in corso' : 'Scelta dei gironi') : '4 gironi, premi per il mercato'],
     ['posta', 'Posta', mailUnread() ? `${mailUnread()} da leggere` : 'Proposte dei club']];
@@ -4776,7 +4780,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['fc27-upload','sofifa-paste','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['fc27-upload','sofifa-paste','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4786,6 +4790,7 @@ document.addEventListener('click', async e => {
   const p = () => S.players.find(x => x.id === id), o = () => S.offers.find(x => x.id === id);
   if (COMM_ONLY.has(act) && !S.comm) return toast('Questa operazione la fa solo il commissario.');
   if (MKT_ACTS.has(act) && !S.comm && !window_()) return toast('Il mercato è chiuso.');
+  if (SEC_ACT[act] && secHidden(SEC_ACT[act])) return toast('Questa sezione al momento non è attiva.');
   try {
     switch (act){
       case 'club': S.viewClub = id; if (location.hash !== '#societa') location.hash = 'societa'; else render(); window.scrollTo({top: 0}); break;
@@ -4810,6 +4815,9 @@ document.addEventListener('click', async e => {
       case 'adm-club-fix': { const c = club(id) || club(S.admMkC); if (c) admClubFix(c); else toast('Scegli una società.'); break; }
       case 'adm-pl-move': admMovePlayer(); break;
       case 'adm-tab': S.admTab = id; schedule(); break;
+      case 'sec-toggle': { if (!SEC_HIDE[id]) return; const hide = {...(S.settings?.hide || {}), [id]: !secHidden(id)};
+        await db.doc('league/settings').update({hide}); S.settings = {...S.settings, hide}; schedule();
+        toast(`${SEC_HIDE[id]}: ${hide[id] ? 'nascosta a tutti' : 'di nuovo visibile'}`); break; }
       case 'adm-inline': try { localStorage.setItem('ivpl_adm_inline', admInline() ? '0' : '1'); } catch {} schedule(); break;
       case 'adm-u-free': { const c = S.clubs.find(x => x.managerId === id); if (!c) return; confirmBox('Togli dalla squadra', `${esc(S.profiles[id]?.name || 'Il manager')} lascia ${esc(c.name)}, che resta senza allenatore.`, 'Conferma', async () => { await db.doc('clubs/' + c.id).update({managerId: null}); toast('Manager tolto dalla squadra'); }); break; }
       case 'adm-u-assign': admAssign(id); break;
@@ -5627,6 +5635,7 @@ function admSeasonTab(){
   return admPanel('Stagione', `<div class="row">${admBtn('settings', null, 'Impostazioni della lega')}${admBtn('start-budgets', null, 'Applica budget iniziali')}${admBtn('close-season', null, 'Chiudi la stagione', 'bad')}${admBtn('reset-league', null, 'Azzera la lega', 'bad')}</div>`)
     + admPanel('Sorteggio panchine', `<p class="sub">${S.draw?.active ? 'Sorteggio in corso.' : 'Nessun sorteggio attivo.'}</p><div class="row">${admBtn('draw-new', null, 'Nuovo sorteggio')}${admBtn('draw-next', null, 'Prossimo turno')}${admBtn('draw-all', null, 'Tutti i turni')}${admBtn('draw-skip', null, 'Salta')}${admBtn('draw-end', null, 'Chiudi sorteggio', 'bad')}</div>`)
     + admPanel('Dati e distinte', `<div class="row">${admBtn('lu-win', null, 'Finestra distinte')}${admBtn('lu-copy', null, 'Copia distinte mancanti')}</div>`)
+    + admPanel('Sezioni della società', `<p class="sub">Nascondi a tutti queste sezioni dalla pagina società: i dati restano salvati e le puoi riattivare quando vuoi.</p><div class="list">${Object.entries(SEC_HIDE).map(([k, l]) => `<div class="li"><div class="main"><b>${l}</b> <span class="pill ${secHidden(k) ? 'warn' : 'info'}">${secHidden(k) ? 'nascosta' : 'visibile'}</span></div>${admBtn('sec-toggle', k, secHidden(k) ? 'Mostra' : 'Nascondi', secHidden(k) ? 'primary' : '')}</div>`).join('')}</div>`)
     + admPanel('Pulsanti admin nelle altre pagine', `<label><input type="checkbox" data-act="adm-inline"${admInline() ? ' checked' : ''}> Mostra i pulsanti admin anche nelle altre pagine</label><p class="sub">Di base sono nascosti: si gestisce tutto da qui.</p>`)
     + realismPanel();
 }
