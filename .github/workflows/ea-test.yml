@@ -1,0 +1,10 @@
+name: Prova voti EA
+on: workflow_dispatch
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarico 3 giocatori da EA
+        run: |
+          curl -s -A "Mozilla/5.0" "https://drop-api.ea.com/rating/ea-sports-fc?locale=it&limit=3&offset=0" -o ea.json -w "HTTP %{http_code}\n"
+          python3 -c "import json;d=json.load(open('ea.json'));print('TOTALE',d.get('totalItems'));[print(p.get('firstName'),p.get('lastName'),'|',p.get('overallRating'),'|',(p.get('team') or {}).get('label'),'|',p.get('leagueName')) for p in d.get('items',[])]" || head -c 600 ea.json
