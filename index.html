@@ -4776,7 +4776,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['fc27-upload','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['fc27-upload','sofifa-paste','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -4844,6 +4844,7 @@ document.addEventListener('click', async e => {
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-upload': fc27Upload(); break;
+      case 'sofifa-paste': await fc27Roster(); break;
       case 'mkt-fc27-rt': await fc27RatingsUpdate(); break;
       case 'mkt-undo-all': undoMarketModal(); break;
       case 'mail-pl': moraleModal(id); break;
@@ -5256,6 +5257,63 @@ async function fc27FromGame(file, onStep){
   if (!p.length) throw new Error('Nel database non ho trovato giocatori nei club.');
   return {leagues: oLg, clubs: oCl, p, uploaded: Date.now(), file: file.name || 'database', info: {clubsNew: added, ref: ref.toISOString().slice(0, 10)}};
 }
+/* salva il database FC 27 per tutti (a pezzi nella tabella docs); only = insieme dei pezzi cambiati, se manca si riscrive tutto */
+async function fc27SaveShared(c, only){
+  try { const N = 1500, n = Math.ceil(c.p.length / N);
+    for (let i = 0; i < n; i++){ if (only && !only.has(i)) continue; await db.doc('fc27db/p' + i).set({p: c.p.slice(i * N, (i + 1) * N)}); toast(`Salvataggio database ${i + 1} di ${n}…`, 1500); }
+    await db.doc('fc27db/meta').set({leagues: c.leagues, clubs: c.clubs, chunks: n, uploaded: c.uploaded, file: c.file || '', total: c.p.length});
+    if (!only){ const {data: ex} = await sb.from('docs').select('id').eq('col', 'fc27db'); for (const r of (ex || []).filter(r => /^p\d+$/.test(r.id) && +r.id.slice(1) >= n)) await db.doc('fc27db/' + r.id).delete(); }
+    return true; } catch (e) { return false; }
+}
+/* ---------- rosa di un club incollata da SoFIFA ---------- */
+const sfTok = s => String(s || '').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => normKey(w)).filter(Boolean);
+function sfMatch(text, clubIdx, c){
+  if (!c._sfIdx){ const m = new Map(); c.p.forEach(r => { const t = sfTok(r[1]); r._t = t; new Set(t).forEach(w => { if (w.length >= 3){ if (!m.has(w)) m.set(w, []); m.get(w).push(r); } }); }); c._sfIdx = m; }
+  const found = new Map(), unknown = [];
+  for (const line of String(text || '').split(/\r?\n/)){
+    const raw = line.trim(); if (!raw) continue; const tk = sfTok(raw); if (!tk.length) continue;
+    const nums = new Set((raw.match(/\d+/g) || []).map(Number)), tset = new Set(tk), ini = new Set(tk.filter(t => t.length === 1)), cand = new Set();
+    tk.forEach(t => { if (t.length >= 3) (c._sfIdx.get(t) || []).forEach(r => cand.add(r)); });
+    let best = null, bs = 0, tie = false;
+    for (const r of cand){ const nt = r._t; if (!nt.length) continue; let sc = 0;
+      if (nt.every(t => tset.has(t)) && (nt.length > 1 || nt[0].length >= 3)) sc = 10 + nt.length;
+      else if (nt.length > 1 && ini.has(nt[0][0]) && nt.slice(1).every(t => tset.has(t))) sc = 6 + nt.length;
+      else if (nt.length > 1 && nt[nt.length - 1].length >= 3 && tset.has(nt[nt.length - 1])) sc = 2; else continue;
+      if (nums.has(r[4])) sc += 2; if (nums.has(r[3])) sc += 1; if (r[6] && nums.has(r[6])) sc += 1; if (r[5] === clubIdx) sc += 3;
+      if (sc > bs){ bs = sc; best = r; tie = false; } else if (sc === bs && best && r !== best) tie = true; }
+    if (best && bs >= 5 && !tie) found.set(best[0], best);
+    else if (tk.some(t => t.length >= 3) && [...nums].some(n => n >= 40 && n <= 99) && unknown.length < 15) unknown.push(raw.slice(0, 60));
+  }
+  return {found, unknown};
+}
+async function fc27PatchDb(chg){
+  const c = await fc27Load(), pos = new Map(), ch = new Set(); c.p.forEach((r, i) => pos.set(r[0], i));
+  for (const [id, ci] of chg){ const i = pos.get(id); if (i != null){ c.p[i][5] = ci; ch.add(Math.floor(i / 1500)); } }
+  const had = !!c.uploaded; c.uploaded = Date.now();
+  const ok = await fc27SaveShared(c, had ? ch : null);
+  WORLD = null; worldLoading = false; loadWorld();
+  return ok;
+}
+async function fc27Roster(){
+  let c; try { c = await fc27Load(); } catch { return toast('Database FC 27 non disponibile.'); }
+  const opts = q => { const k = normKey(q || ''); return c.leagues.map((ln, li) => { const cs = c.clubs.map((x, i) => [i, x[0], x[1]]).filter(x => x[2] === li && (!k || normKey(x[1]).includes(k))).sort((a, b) => a[1].localeCompare(b[1]));
+    return cs.length ? `<optgroup label="${esc(ln)}">${cs.map(x => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</optgroup>` : ''; }).join('') || '<option value="">Nessun club trovato</option>'; };
+  const f = openModal('Incolla rosa da SoFIFA', `<p class="sub">Apri su SoFIFA la pagina della squadra, copia la tabella della rosa (bastano anche solo i nomi) e incollala qui. I giocatori riconosciuti vengono messi in questo club.</p>
+    <div class="f full"><label for="sfq">Cerca club</label><input id="sfq" autocomplete="off" placeholder="Es. Juventus"></div>
+    <div class="f full"><label for="sfc">Club</label><select id="sfc" name="sfc">${opts('')}</select></div>
+    <div class="f full"><label for="sft">Rosa copiata da SoFIFA</label><textarea id="sft" name="sft" style="min-height:180px" placeholder="D. Vlahović&#10;K. Thuram&#10;…"></textarea></div>
+    <div class="f full"><label><input type="checkbox" name="sfrm"> La lista è completa: togli dal club chi non c’è</label><span class="hint">Chi viene tolto resta senza club finché non incolli la sua nuova squadra.</span></div>`,
+    async fd => { const ci = +fd.get('sfc'); if (!(ci >= 0) || !c.clubs[ci]) fail('Scegli un club.'); const text = String(fd.get('sft') || ''); if (!text.trim()) fail('Incolla la rosa.');
+      const {found, unknown} = sfMatch(text, ci, c); if (!found.size) fail('Non ho riconosciuto nessun giocatore: incolla la tabella con i nomi dei giocatori.');
+      const rm = !!fd.get('sfrm'), inc = [...found.values()].filter(r => r[5] !== ci), already = found.size - inc.length, out = rm ? c.p.filter(r => r[5] === ci && !found.has(r[0])) : [];
+      const nmOf = r => `${esc(r[1])}${r[5] >= 0 && c.clubs[r[5]] ? ' <span class="sub">(da ' + esc(c.clubs[r[5]][0]) + ')</span>' : ''}`, list = (a, n) => a.slice(0, n).map(nmOf).join(', ') + (a.length > n ? '…' : '');
+      setTimeout(() => confirmBox(`Rosa · ${esc(c.clubs[ci][0])}`, `Riconosciuti <b>${found.size}</b> giocatori: <b>${already}</b> erano già qui, <b>${inc.length}</b> arrivano${inc.length ? ':<br>' + list(inc, 14) : ''}.${out.length ? `<br><br><b>${out.length}</b> tolti dal club: ${list(out, 14)}.` : ''}${unknown.length ? `<br><br><b>Righe non riconosciute</b> (controllale): ${unknown.map(esc).join(' · ')}` : ''}${found.size < 8 ? '<br><br><b>Attenzione:</b> sono pochi giocatori, la lista è completa?' : ''}<br><br>Poi ti mostro come cambiano le rose della lega. Budget, mercato e contratti non vengono toccati.`, 'Applica', async () => {
+        const chg = new Map(); inc.forEach(r => chg.set(r[0], ci)); out.forEach(r => chg.set(r[0], -1));
+        if (!chg.size) return toast('Questo club ha già tutti questi giocatori.');
+        const ok = await fc27PatchDb(chg); toast(ok ? 'Rosa salvata per tutti' : 'Rosa salvata solo su questo dispositivo (salvataggio condiviso non permesso)', 5000);
+        setTimeout(() => fc27SyncRosters(), 400); }), 300); }, 'Controlla');
+  f.querySelector('#sfq').addEventListener('input', e => { f.querySelector('#sfc').innerHTML = opts(e.target.value); });
+}
 const fc27Valid = d => d && Array.isArray(d.leagues) && Array.isArray(d.clubs) && Array.isArray(d.p) && d.clubs.length > 0 && d.p.length > 0 && d.clubs.every(c => Array.isArray(c) && typeof c[0] === 'string') && d.p.slice(0, 200).every(x => Array.isArray(x) && x.length >= 6);
 function fc27Upload(){
   const cur = FC27_CACHE; const info = cur ? `${cur.p.length.toLocaleString('it-IT')} giocatori · ${cur.clubs.length} club${cur.uploaded ? ' · caricato il ' + new Date(cur.uploaded).toLocaleDateString('it-IT') : ' · versione incorporata nel sito'}` : 'in caricamento…';
@@ -5268,13 +5326,7 @@ function fc27Upload(){
       else { try { d = JSON.parse(await f.text()); } catch { fail('Il file non è né uno zip del gioco né un JSON valido.'); } }
       if (!fc27Valid(d)) fail('Formato non riconosciuto: serve lo zip del gioco oppure un fc27.json.');
       const out = {leagues: d.leagues, clubs: d.clubs, p: d.p, uploaded: Date.now(), file: f.name};
-      let shared = true;
-      try { const N = 1500, n = Math.ceil(d.p.length / N);
-        for (let i = 0; i < n; i++){ await db.doc('fc27db/p' + i).set({p: d.p.slice(i * N, (i + 1) * N)}); toast(`Salvataggio database ${i + 1} di ${n}…`, 1500); }
-        await db.doc('fc27db/meta').set({leagues: d.leagues, clubs: d.clubs, chunks: n, uploaded: out.uploaded, file: f.name, total: d.p.length});
-        const {data: ex} = await sb.from('docs').select('id').eq('col', 'fc27db'); const dead = (ex || []).filter(r => /^p\d+$/.test(r.id) && +r.id.slice(1) >= n);
-        for (const r of dead) await db.doc('fc27db/' + r.id).delete();
-      } catch (e) { shared = false; }
+      const shared = await fc27SaveShared(out);
       FC27_CACHE = out; WORLD = null; worldLoading = false; loadWorld();
       toast(shared ? `Database caricato: ${d.p.length.toLocaleString('it-IT')} giocatori` : 'Database caricato solo su questo dispositivo (salvataggio condiviso non permesso)', 5000);
       setTimeout(() => fc27SyncRosters(), 400);
@@ -5444,7 +5496,7 @@ function admPlayersTab(){
 }
 function admMarketTab(){
   const au = openAuctions().map(a => `<div class="li"><div class="main"><b>${esc(a.playerName || '—')}</b><br><span class="sub">Offerta ${fmtM(a.highBid || 0)} · ${a.highClubId ? esc(cname(a.highClubId)) : 'nessuna offerta'}${a.endsAt ? ' · ' + timeLeft(a.endsAt - now()) : ''}</span></div>${admBtn('auc-time', a.id, 'Cambia durata')}${admBtn('auc-cancel', a.id, 'Annulla asta', 'bad')}</div>`).join('');
-  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><div class=\"row\">${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}</div>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
+  return admPanel('Database FC 27', `<p class=\"sub\">Carica qui il nuovo file ogni volta che FC 27 si aggiorna: aggiorna rose, giocatori e valutazioni di tutta la lega.</p><div class=\"row\">${admBtn('fc27-upload', null, 'Carica database FC 27', 'primary')}${admBtn('sofifa-paste', null, 'Incolla rosa da SoFIFA')}</div><p class=\"sub\" style=\"margin-top:8px\">«Incolla rosa da SoFIFA» corregge un club alla volta: utile quando il database non è aggiornato all’ultimo mercato.</p>`) + admPanel('Apertura mercato', `<p class="sub">Il mercato è <b>${window_() ? 'aperto' : 'chiuso'}</b>. Si apre da solo a ogni nuova stagione.</p><div class="row">${admBtn('window', null, window_() ? 'Chiudi il mercato' : 'Apri il mercato', window_() ? 'bad' : 'good')}${admBtn('mkt-undo-all', null, 'Annulla tutto il mercato', 'bad')}</div>`) + adminMarketPanel() + admPanel('Regole e date del mercato', `<div class="row">${admBtn('mkt-edit', null, 'Modifica date e regole')}${admBtn('mkt-start', null, 'Avvia il mercato')}</div>`)
     + admPanel(`Aste in corso (${openAuctions().length})`, `<div class="list">${au || '<p class="muted">Nessuna asta aperta.</p>'}</div>`);
 }
 function admCalTab(){
