@@ -3229,7 +3229,8 @@ const RULES_LIST = () => [
   <li><b>Le squadre dei manager partono identiche a quelle che il commissario ha su FC 27 alla Play</b>: stessi giocatori, ruoli e OVR. Da lì in poi le cambia solo il mercato della lega.</li>
   <li>Le rose dei club CPU partono da <b>FC 27</b> e, per i principali campionati (Serie A, Premier League, Championship, LaLiga, Bundesliga, Ligue 1, Eredivisie, Portogallo), sono <b>le rose vere di oggi</b>, aggiornate <b>ogni lunedì</b> in automatico.</li>
   <li>L’aggiornamento settimanale vale <b>solo per i club CPU</b>. <b>Le rose dei manager sono bloccate</b>: le cambia solo il vostro mercato. Un giocatore comprato nella lega resta vostro anche se nella realtà cambia squadra.</li>
-  <li>I giocatori passati alla CPU con il nostro mercato (venduti, vinti all’asta o in trattativa da un club CPU) restano in quel club anche dopo gli aggiornamenti.</li>
+  <li>I giocatori passati alla CPU con il nostro mercato (venduti, vinti all’asta o in trattativa da un club CPU) restano in quel club anche dopo gli aggiornamenti: <b>gli acquisti dei club CPU fatti sul sito valgono più della realtà</b>.</li>
+  <li>Ogni movimento della lega il commissario lo ripete in FC 27 (sezione <b>Da fare sulla Play</b> dell’area admin), così le rose sulla Play restano identiche a quelle del sito.</li>
   <li><b>OVR</b>: quello di FC 27. Quando EA pubblicherà i voti aggiornati di FC 27, il sito li applicherà da solo. Per i dettagli di ogni giocatore c’è il link <b>SoFIFA ↗</b>.</li></ul>`],
  ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione. Non esiste il mercato di gennaio.</b></p><ol>
   <li>Il commissario apre il mercato (lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Si gioca tutta la stagione.</li>
@@ -5120,7 +5121,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['play-ok','play-undo','play-all','play-start','al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -5193,6 +5194,10 @@ document.addEventListener('click', async e => {
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-fill': await fc27SyncRosters(); break;
       case 'gr-make': await grMake(); break;
+      case 'play-ok': await playMark([id], true); break;
+      case 'play-undo': await playMark([id], false); break;
+      case 'play-all': confirmBox('Segna tutti come fatti', 'Tutti i movimenti in elenco vengono segnati come già fatti sulla Play.', 'Conferma', () => playMark(playItems().map(x => x.id), true)); break;
+      case 'play-start': confirmBox('Rose allineate a oggi', 'Da adesso l’elenco mostra solo i movimenti nuovi. Usalo quando le rose sulla Play sono uguali a quelle del sito.', 'Conferma', async () => { await db.doc('league/settings').update({playFrom: now()}); toast('Elenco ripartito da oggi'); }); break;
       case 'al-go': { const cid = document.getElementById('alc')?.value || id, tx = document.getElementById('altx')?.value || ''; if (!cid) return toast('Scegli la squadra'); await alApply(cid, tx); break; }
       case 'gr-all': confirmBox('Applica tutti', 'Segna come fatti tutti i giocatori rimasti e aggiorna il loro OVR sul sito.', 'Applica', () => grDone(id, null, true)); break;
       case 'gr-done': { const [d, pid] = String(id).split('|'); await grDone(d, pid, false); break; }
@@ -6141,13 +6146,34 @@ function admAlignPanel(){
     <div class="f full"><label for="altx">Rosa sulla Play</label><textarea id="altx" rows="10" placeholder="Yann Sommer; POR; 83&#10;Alessandro Bastoni; DC; 86&#10;…"></textarea></div>
     <div class="row">${admBtn('al-go', cur || '', 'Controlla e allinea', 'primary')}</div>`); }
 
+/* ===================== DA FARE SULLA PLAY =====================
+   Ogni movimento di giocatori della lega (manager, club CPU, aste, rivali CPU, prestiti, svincoli) da ripetere in FC 27,
+   così le rose sulla Play restano uguali a quelle del sito. Il commissario spunta «Fatto». */
+const playDoc = () => (S.world || []).find(d => d.id === 'PLAYTODO') || {done: {}};
+function playItems(){
+  const from = +(S.settings?.playFrom || 0), out = [];
+  (S.transfers || []).filter(t => (t.ts || 0) > from && t.playerName && (t.fromLabel || '') !== (t.toLabel || '')).forEach(t => {
+    const loan = /loan|prestito/i.test(String(t.mode || '')) || t.kind === 'return';
+    out.push({id: 't:' + t.id, ts: t.ts || 0, name: t.playerName, from: t.fromLabel || 'Svincolati', to: t.toLabel || 'Svincolati', tag: t.kind === 'return' ? 'Rientro dal prestito' : loan ? 'Prestito' : t.kind === 'release' || t.kind === 'rescind' ? 'Svincolo' : t.mode === 'auction' || t.kind === 'auction' ? 'Asta' : String(t.kind || '').startsWith('cpu') ? 'Con un club CPU' : 'Trasferimento'}); });
+  cpuDeals().filter(d => d.rival && d.status === 'done' && (d.ts || 0) > from).forEach(d => out.push({id: 'r:' + d.id, ts: d.ts || 0, name: d.playerName, from: d.cpuClub || '—', to: d.rival, tag: 'Tra club CPU'}));
+  return out.sort((a, b) => b.ts - a.ts); }
+async function playMark(ids, val){ const d = JSON.parse(JSON.stringify(playDoc())); d.done ||= {}; ids.forEach(i => { if (val) d.done[i] = 1; else delete d.done[i]; }); const {id: _i, ...rest} = d; void _i; await wsave('PLAYTODO', rest); }
+function admPlayTab(){
+  const items = playItems(), done = playDoc().done || {}, todo = items.filter(x => !done[x.id]), gr = grDoc().flatMap(d => d.list.filter(x => !x.done)).length;
+  const row = x => `<div class="li"><div class="main"><b>${esc(x.name)}</b> <span class="pill neutral">${esc(x.tag)}</span><br><span class="sub">${esc(x.from)} → <b>${esc(x.to)}</b> · ${new Date(x.ts).toLocaleString('it-IT', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</span></div>${done[x.id] ? `<span class="pill good">Fatto</span> ${admBtn('play-undo', x.id, 'Annulla', 'ghost')}` : admBtn('play-ok', x.id, 'Fatto', 'good')}</div>`;
+  return admPanel('Da fare sulla Play', `<p class="sub">Qui trovi <b>ogni giocatore che cambia squadra</b> nella lega: acquisti e cessioni dei manager, club CPU che comprano, aste, prestiti, rientri e svincoli. Ripeti ogni movimento in FC 27 dal menu di <b>modifica delle squadre → trasferimenti giocatori</b> e premi <b>Fatto</b>: così le rose sulla Play restano identiche a quelle del sito e non ti sfugge nessuno.</p>
+    <div class="row"><span class="pill ${todo.length ? 'bad' : 'good'}">${todo.length ? todo.length + ' da fare' : 'Tutto allineato'}</span>${gr ? `<span class="pill neutral">${gr} crescite da fare (scheda Rose e crescita)</span>` : ''}${todo.length > 1 ? admBtn('play-all', null, 'Segna tutti come fatti', 'ghost') : ''}${admBtn('play-start', null, 'Le rose sulla Play sono allineate a oggi', 'ghost')}</div>
+    ${S.settings?.playFrom ? `<p class="sub">Elenco dei movimenti dal ${new Date(+S.settings.playFrom).toLocaleString('it-IT', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'})}.</p>` : ''}`)
+    + admPanel(`Da fare (${todo.length})`, `<div class="list">${todo.map(row).join('') || '<p class="muted">Niente da fare: le rose sulla Play sono uguali al sito.</p>'}</div>`)
+    + (items.length > todo.length ? admPanel('Già fatti', `<div class="list">${items.filter(x => done[x.id]).slice(0, 60).map(row).join('')}</div>`) : ''); }
+
 function viewAdmin(){
   if (!S.comm) return panelEmpty('Area riservata', 'Solo il commissario può entrare qui.');
   loadWorld();
-  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['crescita', 'Rose e crescita'], ['stagione', 'Stagione e impostazioni']];
+  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['play', 'Da fare sulla Play'], ['crescita', 'Rose e crescita'], ['stagione', 'Stagione e impostazioni']];
   const t = tabs.some(x => x[0] === S.admTab) ? S.admTab : 'utenti';
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<button type="button" class="${t === k ? 'on' : ''}" data-act="adm-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
-  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, crescita: () => admAlignPanel() + admGrowTab(), stagione: () => admSeasonTab() + admMailPanel()}[t]();
+  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, play: admPlayTab, crescita: () => admAlignPanel() + admGrowTab(), stagione: () => admSeasonTab() + admMailPanel()}[t]();
   return `<div class="panel"><div class="ph"><h2>Area admin</h2><span class="sub">Solo commissario</span></div><p class="sub">Da qui gestisci tutto il sito: utenti, società, giocatori, mercato, calendari, classifiche e stagione. Le altre pagine servono solo a consultare.</p></div>${nav}${body}`;
 }
 function admUsersTab(){
