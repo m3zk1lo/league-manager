@@ -5080,7 +5080,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -5152,6 +5152,9 @@ document.addEventListener('click', async e => {
         try { await takeClub(o.key, S.me, false); o.st = 'done'; await ofrSave(d); toast('Sei il nuovo allenatore'); } catch (e) { toast(e.message || 'Errore'); } break; }
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-fill': await fc27SyncRosters(); break;
+      case 'gr-make': await grMake(); break;
+      case 'gr-all': confirmBox('Applica tutti', 'Segna come fatti tutti i giocatori rimasti e aggiorna il loro OVR sul sito.', 'Applica', () => grDone(id, null, true)); break;
+      case 'gr-done': { const [d, pid] = String(id).split('|'); await grDone(d, pid, false); break; }
       case 'rv-mgr': { const on = S.settings?.rvMgr !== true; await db.doc('league/settings').update({rvMgr: on}); toast(on ? 'Rose dei manager: si allineano alla realtà' : 'Rose dei manager bloccate'); if (on) setTimeout(() => fc27SyncRosters(), 600); break; }
       case 'fc27-upload': fc27Upload(); break;
       case 'roster-view': S.rv = id === 'cards' ? 'cards' : 'list'; try { localStorage.setItem('rv', S.rv); } catch {} render(); break;
@@ -5988,13 +5991,69 @@ const admByName = (a, b) => String(a.name || '').localeCompare(String(b.name || 
 const admRpcErr = e => /could not find|does not exist|schema cache|not found/i.test(e?.message || '') ? 'Manca lo script su Supabase: esegui «admin_account.sql» una volta sola (SQL Editor).' : (e?.message || 'Operazione non riuscita.');
 const admBtn = (act, id, label, cls = '') => `<button type="button" class="btn sm ${cls}" data-act="${act}"${id != null ? ` data-id="${esc(id)}"` : ''}>${label}</button>`;
 const admPanel = (title, body, extra = '') => `<div class="panel"><div class="ph"><h3>${title}</h3>${extra}</div>${body}</div>`;
+/* ===================== CRESCITA DEI GIOCATORI (dal sito al gioco) =====================
+   Due sessioni a stagione (metà e fine): il sito decide chi sale e chi scende in base a età, potenziale e presenze
+   dalle distinte, e dice quali attributi cambiare in FC 27 (Modifica giocatore). Il commissario spunta «Fatto». */
+const GR_ATTR = {
+  POR: ['Tuffo Por', 'Riflessi Por', 'Piazzamento Por', 'Presa Por', 'Rinvio Por'],
+  DC: ['Contrasto in piedi', 'Scivolata', 'Intercettazioni', 'Precisione di testa', 'Forza'],
+  TD: ['Contrasto in piedi', 'Intercettazioni', 'Scivolata', 'Velocità scatto', 'Cross'], TS: ['Contrasto in piedi', 'Intercettazioni', 'Scivolata', 'Velocità scatto', 'Cross'],
+  CDC: ['Intercettazioni', 'Contrasto in piedi', 'Passaggi corti', 'Passaggi lunghi', 'Resistenza'],
+  CC: ['Passaggi corti', 'Passaggi lunghi', 'Visione', 'Controllo di palla', 'Dribbling'],
+  COC: ['Passaggi corti', 'Visione', 'Controllo di palla', 'Dribbling', 'Tiri dalla distanza'],
+  ED: ['Dribbling', 'Controllo di palla', 'Cross', 'Accelerazione', 'Velocità scatto'], ES: ['Dribbling', 'Controllo di palla', 'Cross', 'Accelerazione', 'Velocità scatto'],
+  AD: ['Dribbling', 'Controllo di palla', 'Finalizzazione', 'Posizione', 'Accelerazione'], AS: ['Dribbling', 'Controllo di palla', 'Finalizzazione', 'Posizione', 'Accelerazione'],
+  ATT: ['Finalizzazione', 'Posizione', 'Potenza tiro', 'Controllo di palla', 'Precisione di testa']};
+const grDoc = (s = season()) => (S.world || []).filter(d => String(d.id).startsWith(`GROW-S${s}-`)).sort((a, b) => a.n - b.n);
+/* presenze dalle distinte della stagione: titolare / entrato */
+function grApps(cid){
+  const s = season(), out = new Map(), add = (pid, k) => { const o = out.get(pid) || {xi: 0, sub: 0}; o[k]++; out.set(pid, o); };
+  const okW = id => { const m = /^W(\d+)-(\d+)-(\d+)-(\d+)__/.exec(id); if (!m || +m[2] !== s) return null; const d = lgDoc(+m[1], s); return lgPlayed(d?.rounds?.[+m[3] - 1]?.m?.[+m[4]]); };
+  const lm = new Map(seasonMatches().map(m => [m.id, m]));
+  S.lineups.filter(l => l.clubId === cid).forEach(l => { const id = String(l.id), w = okW(id); let ok = w;
+    if (w == null){ const m = lm.get(id.split('__')[0]); ok = !!m?.played; } if (!ok) return;
+    (l.xi || []).forEach(pid => add(pid, 'xi')); (l.subs || []).forEach(x => x?.in && add(x.in, 'sub')); });
+  return out; }
+function grDelta(p, ap, played, seed){
+  const age = ageOf(p) || 25, ovr = p.ovr || 60, pot = p.pot || ovr;
+  let base = age <= 20 ? 2 : age <= 23 ? 1.5 : age <= 26 ? 0.7 : age <= 29 ? 0.2 : age <= 31 ? -0.4 : age <= 33 ? -1 : -1.6;
+  const share = played ? ((ap?.xi || 0) + (ap?.sub || 0) * 0.4) / played : 0;
+  if (base > 0) base *= share >= 0.6 ? 1.35 : share >= 0.3 ? 1 : share >= 0.1 ? 0.6 : 0.3;
+  else base *= share >= 0.6 ? 0.6 : 1.1;
+  if (base > 0 && pot - ovr >= 8) base += 0.5;
+  base += (WH(seed) - 0.5) * 0.9;
+  let d = Math.round(base); if (d > 0) d = Math.min(d, Math.max(0, pot - ovr), 4); d = Math.max(-3, d);
+  return {d, share}; }
+const grAttrs = (pos, d) => { const a = GR_ATTR[pos] || GR_ATTR.CC; return a.map((x, i) => `${x} ${d > 0 ? '+' : '−'}${Math.abs(d) + (i < 2 ? 1 : 0)}`).join(' · '); };
+async function grMake(){
+  if (!S.comm) return toast('Solo il commissario.');
+  const s = season(), have = grDoc(s); if (have.length >= 2) return toast('Le due sessioni di crescita di questa stagione sono già state fatte.');
+  const n = have.length + 1, list = [];
+  for (const c of S.clubs.filter(c => c.managerId)){ const ap = grApps(c.id), played = playedOf(c);
+    for (const p of roster(c.id).filter(p => !p.loan)){ const {d, share} = grDelta(p, ap.get(p.id), played, `gr${s}-${n}-${p.id}`); if (!d) continue;
+      list.push({pid: p.id, name: p.name, pos: p.pos, cid: c.id, club: c.name, from: p.ovr || 0, to: (p.ovr || 0) + d, d, share: Math.round(share * 100), done: false}); } }
+  confirmBox(`Crescita · sessione ${n} di 2`, `${n === 1 ? 'Metà stagione' : 'Fine stagione'}: cambiano <b>${list.length}</b> giocatori delle squadre dei manager (${list.filter(x => x.d > 0).length} salgono, ${list.filter(x => x.d < 0).length} scendono).<br>Poi li modifichi in FC 27 e spunti «Fatto» uno alla volta, oppure «Applica tutti».`, 'Calcola', async () => {
+    await wsave(`GROW-S${s}-${n}`, {season: s, n, ts: now(), list}); S.admTab = 'crescita'; toast('Crescita calcolata'); });
+}
+async function grDone(docId, pid, all){
+  const d = (S.world || []).find(x => x.id === docId); if (!d) return; const nd = JSON.parse(JSON.stringify(d));
+  for (const x of nd.list.filter(x => !x.done && (all || x.pid === pid))){ const p = S.players.find(q => q.id === x.pid);
+    if (p) await db.doc('players/' + p.id).update({ovr: x.to, value: autoValue(x.to, ageOf(p)), ...(p.pot && p.pot < x.to ? {pot: x.to} : {})}); x.done = true; }
+  const {id: _i, ...rest} = nd; void _i; await wsave(docId, rest); toast(all ? 'Crescita applicata a tutti' : 'Fatto'); }
+function admGrowTab(){
+  const docs = grDoc(), cur = docs[docs.length - 1];
+  const head = admPanel('Crescita dei giocatori', `<p class="sub">Due sessioni a stagione (metà e fine). Il sito decide chi sale e chi scende in base a età, potenziale e presenze dalle distinte. Tu modifichi gli attributi in FC 27 (Modifica giocatore → Fisico → Attributi) e spunti «Fatto»: l’OVR si aggiorna anche sul sito. Per +1 OVR alza di 1 i cinque attributi indicati (+2 i primi due); controlla l’OVR nel gioco e aggiusta se serve.</p><div class="row">${docs.length < 2 ? admBtn('gr-make', null, `Calcola sessione ${docs.length + 1} (${docs.length ? 'fine' : 'metà'} stagione)`, 'primary') : '<span class="pill neutral">Sessioni di questa stagione completate</span>'}${cur && cur.list.some(x => !x.done) ? admBtn('gr-all', cur.id, 'Applica tutti', 'good') : ''}</div>`);
+  if (!cur) return head;
+  const by = {}; cur.list.forEach(x => (by[x.club] ||= []).push(x));
+  return head + Object.entries(by).sort((a, b) => a[0].localeCompare(b[0])).map(([cl, arr]) => admPanel(`${cl} · sessione ${cur.n}`, `<div class="list">${arr.sort((a, b) => b.d - a.d).map(x => `<div class="li"><div class="main"><span class="posb ${GRP[x.pos] || 'mid'}">${esc(x.pos || '')}</span> <b>${esc(x.name)}</b> <span class="pill ${x.d > 0 ? 'good' : 'bad'}">${x.from} → ${x.to}</span><br><span class="sub">${esc(grAttrs(x.pos, x.d))} · presenze ${x.share}%</span></div>${x.done ? '<span class="pill good">Fatto</span>' : admBtn('gr-done', cur.id + '|' + x.pid, 'Fatto')}</div>`).join('')}</div>`)).join(''); }
+
 function viewAdmin(){
   if (!S.comm) return panelEmpty('Area riservata', 'Solo il commissario può entrare qui.');
   loadWorld();
-  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['stagione', 'Stagione e impostazioni']];
+  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['crescita', 'Crescita'], ['stagione', 'Stagione e impostazioni']];
   const t = tabs.some(x => x[0] === S.admTab) ? S.admTab : 'utenti';
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<button type="button" class="${t === k ? 'on' : ''}" data-act="adm-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
-  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, stagione: () => admSeasonTab() + admMailPanel()}[t]();
+  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, crescita: admGrowTab, stagione: () => admSeasonTab() + admMailPanel()}[t]();
   return `<div class="panel"><div class="ph"><h2>Area admin</h2><span class="sub">Solo commissario</span></div><p class="sub">Da qui gestisci tutto il sito: utenti, società, giocatori, mercato, calendari, classifiche e stagione. Le altre pagine servono solo a consultare.</p></div>${nav}${body}`;
 }
 function admUsersTab(){
