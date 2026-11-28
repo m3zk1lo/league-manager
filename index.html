@@ -456,10 +456,11 @@ function rvApply(d, R, refMs){
   return stats;
 }
 
-let RV_UPD = 0, RV_STATS = null;
+let RV_UPD = 0, RV_STATS = null; const RV_COACH = {};
 async function rvOverlay(d){ if (!d || d._rv) return d; d._rv = true;
   try { const r = await fetch('rose.json?t=' + Math.floor(Date.now() / 6e5)); if (!r.ok) return d; const R = await r.json(); if (!(R.teams || []).length) return d;
-    RV_STATS = rvApply(d, R, R.updated); RV_UPD = +R.updated || 0; } catch {}
+    RV_STATS = rvApply(d, R, R.updated); RV_UPD = +R.updated || 0;
+    (R.teams || []).forEach(t => { const n = RV_MAP[t.id]; if (n && t.coach) RV_COACH[n] = t.coach; }); } catch {}
   return d; }
 /* voti ufficiali EA: GitHub scarica ogni giorno ea-ratings.json, il sito cambia solo l’OVR (nessun giocatore cambia squadra) */
 let EA_UPD = 0, EA_N = 0;
@@ -637,7 +638,7 @@ SL Benfica|Benfica:José Mourinho
 Sporting CP|Sporting:Rui Borges
 PSV:Peter Bosz
 Feyenoord:Robin van Persie`.split('\n').forEach(l => { const i = l.lastIndexOf(':'); l.slice(0, i).split('|').forEach(a => COACH_SEED.set(normKey(a), l.slice(i + 1))); });
-const wCoachName = name => coachMap()[name] ?? COACHES[name] ?? COACH_SEED.get(normKey(name)) ?? '';
+const wCoachName = name => coachMap()[name] ?? RV_COACH[name] ?? COACHES[name] ?? COACH_SEED.get(normKey(name)) ?? '';
 const wCoachLine = name => { const sc = S.clubs.find(c => normKey(c.name) === normKey(name)); if (sc?.managerId) return mgrName(sc); const cn = wCoachName(name);
   if (ofrDoc().sacked?.includes(name)) return 'Panchina libera' + (cn ? ' · esonerato ' + cn : ''); return cn ? 'All. ' + cn + ' · CPU' : ''; };
 /* esonero CPU: se la squadra va male la società esonera (1 volta a stagione per club) e offre la panchina al miglior manager reale */
