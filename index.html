@@ -1973,10 +1973,15 @@ function viewWorld(){
   loadWorld();
   if (!WORLD) return '<div class="panel"><div class="empty"><strong>Carico il calcio mondiale…</strong><span>Squadre e rose vere di FC 27.</span></div></div>';
   if (WORLD.err) return panelEmpty('Database non trovato', 'Il database FC 27 non si carica: ricarica la pagina o ricarica index.html su GitHub.');
-  const mc = myClub(), q = normKey(S.wq || ''), li = S.wl ?? 0, minO = +(S.wo || 0);
+  const mc = myClub(), q = normKey(S.wq || ''), li = S.wl ?? 0, minO = +(S.wo || 0), maxO = +(S.wox || 0), wr = S.wr || '', maxA = +(S.wa || 0), maxV = +(S.wv || 0) * 1e6, wlf = S.wlf || 'all', ws = S.ws || 'ovr';
   const AC = allClubs(), LIO = lgLiOf(), clubs = AC.filter(c => q ? true : (c.lm ? c.li : LIO.get(c.i) ?? c.li) === +li);
   let list = [];
-  if (q || minO){ AC.forEach(c => wAvailable(c).forEach(p => { if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO) list.push({p, c}); })); list = list.sort((a, b) => b.p.ovr - a.p.ovr).slice(0, 60); }
+  const srch = !!(q || minO || maxO || wr || maxA || maxV);
+  if (srch){ const okPos = p => !wr || (wr.startsWith('g:') ? (GRP[p.pos] || 'mid') === wr.slice(2) : p.pos === wr);
+    AC.forEach(c => { if (wlf !== 'all' && (c.lm ? c.li : LIO.get(c.i) ?? c.li) !== +li) return; wAvailable(c).forEach(p => { const v = autoValue(p.ovr, p.age);
+      if ((!q || normKey(p.name).includes(q) || normKey(c.name).includes(q)) && p.ovr >= minO && (!maxO || p.ovr <= maxO) && okPos(p) && (!maxA || p.age <= maxA) && (!maxV || v <= maxV)) list.push({p, c, v}); }); });
+    const key = {ovr: x => -x.p.ovr, pot: x => -(x.p.pot || x.p.ovr), age: x => x.p.age, val: x => x.v}[ws] || (x => -x.p.ovr);
+    list = list.sort((a, b) => key(a) - key(b) || b.p.ovr - a.p.ovr).slice(0, 80); }
   const pRow = ({p, c}) => { const d = dealsFor(p.fc); return `<div class="li"><div class="main"><span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <b>${esc(p.name)}</b> <span class="sub">${p.ovr}${p.pot ? ' (pot ' + p.pot + ')' : ''} · ${p.age} anni · ${esc(c.name)}</span> ${sofifa(p.name, p.fc)}${(() => { const st = p.inj ? {t: 'inj', left: p.injLeft} : typeof p.fc === 'number' ? wStatus(p.fc) : null; const un = !st && !c.lm && !c.free && cpuProfile(c, p).unhappy ? ' <span class="pill info">😠 Scontento · vuole giocare</span>' : ''; return un + (st ? ` <span class="pill ${st.t === 'inj' ? 'warn' : 'bad'}">${st.t === 'inj' ? `Infortunato${st.left ? ' · ' + st.left + ' g.' : ''}` : 'Squalificato'}</span>` : ''); })()}${d.length ? `<br><span class="pill warn">In trattativa: ${d.map(x => esc(club(x.buyerId)?.name || '—')).join(', ')}</span>` : ''}</div>
     <span class="num">${fmtM(autoValue(p.ovr, p.age))}</span>${mc && window_() ? ` <button class="btn sm" data-act="w-offer" data-id="${p.fc}">Tratta</button>` : ''}</div>`; };
   const sc = S.wc != null ? AC.find(c => String(c.i) === String(S.wc)) : null, wt = S.wt || 'club', nl = tables().length, fl = freeList();
@@ -1995,12 +2000,19 @@ function viewWorld(){
   <div class="panel"><div class="ph"><h3>Mondo · club CPU</h3><span class="sub">Squadre e rose vere di FC 27. Tratti con il direttore sportivo, poi con il procuratore.</span></div>
     <div class="fgrid">
       <div class="f"><label for="wq">Cerca giocatore o squadra</label><input id="wq" data-wf="wq" value="${esc(S.wq || '')}" placeholder="Es. Benfica o Leão"></div>
-      <div class="f"><label for="wo">Overall minimo</label><input id="wo" data-wf="wo" type="number" min="0" max="99" value="${minO || ''}" placeholder="Es. 78"></div>
+      <div class="f"><label for="wr">Ruolo</label><select id="wr" data-wf="wr"><option value="">Tutti</option>${[['g:gk', 'Portieri'], ['g:def', 'Difensori'], ['g:mid', 'Centrocampisti'], ['g:att', 'Attaccanti']].map(([k, l]) => `<option value="${k}"${wr === k ? ' selected' : ''}>${l}</option>`).join('')}${['POR', 'DC', 'TD', 'TS', 'CDC', 'CC', 'COC', 'ED', 'ES', 'AD', 'AS', 'ATT'].map(k => `<option value="${k}"${wr === k ? ' selected' : ''}>${k}</option>`).join('')}</select></div>
+      <div class="f"><label for="wo">OVR minimo</label><input id="wo" data-wf="wo" type="number" min="0" max="99" value="${minO || ''}" placeholder="Es. 75"></div>
+      <div class="f"><label for="wox">OVR massimo</label><input id="wox" data-wf="wox" type="number" min="0" max="99" value="${maxO || ''}" placeholder="Es. 82"></div>
+      <div class="f"><label for="wa">Età massima</label><input id="wa" data-wf="wa" type="number" min="15" max="45" value="${maxA || ''}" placeholder="Es. 23"></div>
+      <div class="f"><label for="wv">Valore massimo (M€)</label><input id="wv" data-wf="wv" type="number" min="0" step="0.5" value="${maxV ? maxV / 1e6 : ''}" placeholder="Es. 20"></div>
+      <div class="f"><label for="ws">Ordina per</label><select id="ws" data-wf="ws">${[['ovr', 'OVR'], ['pot', 'Potenziale'], ['age', 'Più giovani'], ['val', 'Valore più basso']].map(([k, l]) => `<option value="${k}"${ws === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="f"><label for="wlf">Dove cercare</label><select id="wlf" data-wf="wlf"><option value="all"${wlf === 'all' ? ' selected' : ''}>Tutto il Mondo</option><option value="lg"${wlf === 'lg' ? ' selected' : ''}>Solo il campionato scelto</option></select></div>
+      ${srch ? `<div class="f"><label>&nbsp;</label><button class="btn ghost" data-act="w-clr">Azzera filtri</button></div>` : ''}
       <div class="f full"><label for="wl">Campionato</label><select id="wl" data-wf="wl">${WORLD.leagues.map((l, i) => `<option value="${i}"${+li === i ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
     </div></div>
-  ${list.length || q || minO ? `<div class="panel"><div class="ph"><h3>Risultati</h3><span class="sub">${list.length} giocatori</span></div><div class="list">${list.map(pRow).join('') || '<p class="muted">Nessun giocatore trovato.</p>'}</div></div>` : ''}
+  ${srch ? `<div class="panel"><div class="ph"><h3>Risultati</h3><span class="sub">${list.length} giocatori</span></div><div class="list">${list.map(pRow).join('') || '<p class="muted">Nessun giocatore trovato.</p>'}</div></div>` : ''}
   ${sc ? `<div class="panel"><div class="ph"><h3>${esc(sc.name)}</h3><button class="btn sm ghost" data-act="w-club" data-id="">Chiudi</button></div><p class="sub">${starHtml(wClubStars(sc))} · ${esc(sc.league)}${sc.lm ? ' · club della lega gestito dalla CPU' : ''} · media squadra ${sc.avg.toFixed(1)}</p>${coachLine(sc)}<div class="list">${wByRole(wAvailable(sc)).map(([g, ps]) => `<div class="rolehd">${g}</div>` + ps.map(p => pRow({p, c: sc})).join('')).join('')}</div></div>`
-    : !q && !minO ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${S.clubs.filter(c => c.managerId && (c.lg != null ? c.lg : divOf(c) === 'B' ? 1 : 0) === +li).sort((a, b) => a.name.localeCompare(b.name)).map(c => `<div class="li"><div class="main">${clubLink(c, true)}</div><span class="pill info">Manager reale</span></div>`).join('')}${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> ${starHtml(wClubStars(c))} <span class="sub">· ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
+    : !srch ? `<div class="panel"><div class="ph"><h3>${esc(WORLD.leagues[li] || '')}</h3></div><div class="list">${S.clubs.filter(c => c.managerId && (c.lg != null ? c.lg : divOf(c) === 'B' ? 1 : 0) === +li).sort((a, b) => a.name.localeCompare(b.name)).map(c => `<div class="li"><div class="main">${clubLink(c, true)}</div><span class="pill info">Manager reale</span></div>`).join('')}${clubs.sort((a, b) => b.avg - a.avg).map(c => `<button type="button" class="li" data-act="w-club" data-id="${c.i}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${esc(c.name)}</b> ${starHtml(wClubStars(c))} <span class="sub">· ${wAvailable(c).length} giocatori</span></div><span class="sub">Apri ›</span></button>`).join('')}</div></div>` : ''}
   ${cpuPanel()}`;
 }
 
@@ -3270,7 +3282,7 @@ const RULES_LIST = () => [
   <li>Il morale <b>non cambia il rendimento in partita</b>: pesa su contratti e mercato. Il morale dei club CPU lo gestisce il sito.</li></ul>`],
  ['📈 Crescita dei giocatori', `<ul>
   <li><b>Due volte a stagione</b> (a metà e a fine stagione) il sito calcola chi sale e chi scende nelle squadre dei manager: conta <b>età</b>, <b>presenze</b> dalle distinte e <b>potenziale</b> (non si supera mai il POT). I giovani che giocano crescono di più, i giocatori sopra i 30 anni calano.</li>
-  <li>Le variazioni vanno da −3 a +4 per sessione. Il commissario modifica gli attributi in FC 27 (Modifica giocatore → Fisico → Attributi) e l’OVR si aggiorna anche sul sito.</li></ul>`],
+  <li>Le variazioni sono graduali: di solito 0 o ±1, al massimo +2 per sessione (+3 solo per un giovane fino a 21 anni, titolare, con tanto potenziale) e −2 per chi cala; i giocatori da 85 in su crescono pochissimo. Il commissario modifica gli attributi in FC 27 (Modifica giocatore → Fisico → Attributi) e l’OVR si aggiorna anche sul sito.</li></ul>`],
  ['🎓 Mercato allenatori (fine stagione)', `<p>Quando finisce la stagione ogni manager riceve un <b>voto da 1 a 10</b>: conta dove arriva la squadra rispetto alle attese del club (le sue stelle), più titolo e podio, meno la retrocessione.</p><ul>
   <li><b>Da 7,5 in su</b>: 1–3 offerte da club CPU <b>più prestigiosi</b>.</li>
   <li><b>Da 5,5 a 7,4</b>: 1–2 offerte da club CPU dello <b>stesso livello</b> o poco sotto.</li>
@@ -5105,7 +5117,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -5178,6 +5190,7 @@ document.addEventListener('click', async e => {
       case 'mkt-fc27': await fc27RestoreModal(); break;
       case 'fc27-fill': await fc27SyncRosters(); break;
       case 'gr-make': await grMake(); break;
+      case 'al-go': { const cid = document.getElementById('alc')?.value || id, tx = document.getElementById('altx')?.value || ''; if (!cid) return toast('Scegli la squadra'); await alApply(cid, tx); break; }
       case 'gr-all': confirmBox('Applica tutti', 'Segna come fatti tutti i giocatori rimasti e aggiorna il loro OVR sul sito.', 'Applica', () => grDone(id, null, true)); break;
       case 'gr-done': { const [d, pid] = String(id).split('|'); await grDone(d, pid, false); break; }
       case 'rv-mgr': { const on = S.settings?.rvMgr !== true; await db.doc('league/settings').update({rvMgr: on}); toast(on ? 'Rose dei manager: si allineano alla realtà' : 'Rose dei manager bloccate'); if (on) setTimeout(() => fc27SyncRosters(), 600); break; }
@@ -5210,6 +5223,7 @@ document.addEventListener('click', async e => {
       case 'cm-apply': { const b = cmBenchesFor(S.me), x = b?.list.find(y => y.key === id); if (!x || x.tried) return;
         const d = JSON.parse(JSON.stringify(mailDoc(S.me))); d.list ||= []; d.list.push({id: 'a' + now().toString(36), kind: 'apply', key: x.key, club: x.name, ts: now(), read: true, st: 'want'}); await mailSave(S.me, d);
         toast(`Candidatura inviata al ${x.name}`); if (S.comm) setTimeout(() => cmTick(), 800); break; }
+      case 'w-clr': ['wq', 'wo', 'wox', 'wr', 'wa', 'wv', 'ws', 'wlf'].forEach(k => { S[k] = ''; }); render(); break;
       case 'mail-prev': { let pl; try { pl = cmPlan(season()); } catch (e) { return toast('Anteprima non disponibile'); }
         { const nm = uid => S.profiles[uid]?.name || 'Manager';
           openModal('Anteprima mercato allenatori', `<h3 style="margin:0 0 6px">Manager</h3><div class="list">${pl.mg.map(x => { const of = pl.offers.filter(o => o.uid === x.uid); return `<div class="li"><div class="main"><b>${esc(nm(x.uid))}</b> · ${esc(x.name)} <span class="sub">${x.pos}° su ${x.n} (atteso ${x.exp}°)</span><br><span class="sub">${cmTier(x.vote)}${x.vote < CM_SACK ? ' · <b>esonerato</b>' : of.length ? ' · offerte: ' + of.map(o => esc(o.p.name) + ' ' + String(o.p.stars).replace('.', ',') + '★').join(', ') : ' · nessuna offerta'}</span></div><span class="pts num">${x.vote}</span></div>`; }).join('') || '<p class="muted">Nessun manager con partite giocate.</p>'}</div>
@@ -6041,13 +6055,15 @@ function grApps(cid){
   return out; }
 function grDelta(p, ap, played, seed){
   const age = ageOf(p) || 25, ovr = p.ovr || 60, pot = p.pot || ovr;
-  let base = age <= 20 ? 2 : age <= 23 ? 1.5 : age <= 26 ? 0.7 : age <= 29 ? 0.2 : age <= 31 ? -0.4 : age <= 33 ? -1 : -1.6;
+  let base = age <= 20 ? 1.2 : age <= 23 ? 0.9 : age <= 26 ? 0.4 : age <= 29 ? 0.1 : age <= 31 ? -0.3 : age <= 33 ? -0.7 : -1.2;
   const share = played ? ((ap?.xi || 0) + (ap?.sub || 0) * 0.4) / played : 0;
   if (base > 0) base *= share >= 0.6 ? 1.35 : share >= 0.3 ? 1 : share >= 0.1 ? 0.6 : 0.3;
   else base *= share >= 0.6 ? 0.6 : 1.1;
-  if (base > 0 && pot - ovr >= 8) base += 0.5;
-  base += (WH(seed) - 0.5) * 0.9;
-  let d = Math.round(base); if (d > 0) d = Math.min(d, Math.max(0, pot - ovr), 4); d = Math.max(-3, d);
+  if (base > 0 && pot - ovr >= 8) base += 0.3;
+  if (base > 0 && ovr >= 85) base *= 0.5; /* i campioni crescono pochissimo */
+  base += (WH(seed) - 0.5) * 0.8;
+  let d = Math.round(base); const top = age <= 21 && pot - ovr >= 10 && share >= 0.6 ? 3 : 2;
+  if (d > 0) d = Math.min(d, Math.max(0, pot - ovr), top); d = Math.max(-2, d);
   return {d, share}; }
 const grAttrs = (pos, d) => { const a = GR_ATTR[pos] || GR_ATTR.CC; return a.map((x, i) => `${x} ${d > 0 ? '+' : '−'}${Math.abs(d) + (i < 2 ? 1 : 0)}`).join(' · '); };
 async function grMake(){
@@ -6072,13 +6088,61 @@ function admGrowTab(){
   const by = {}; cur.list.forEach(x => (by[x.club] ||= []).push(x));
   return head + Object.entries(by).sort((a, b) => a[0].localeCompare(b[0])).map(([cl, arr]) => admPanel(`${cl} · sessione ${cur.n}`, `<div class="list">${arr.sort((a, b) => b.d - a.d).map(x => `<div class="li"><div class="main"><span class="posb ${GRP[x.pos] || 'mid'}">${esc(x.pos || '')}</span> <b>${esc(x.name)}</b> <span class="pill ${x.d > 0 ? 'good' : 'bad'}">${x.from} → ${x.to}</span><br><span class="sub">${esc(grAttrs(x.pos, x.d))} · presenze ${x.share}%</span></div>${x.done ? '<span class="pill good">Fatto</span>' : admBtn('gr-done', cur.id + '|' + x.pid, 'Fatto')}</div>`).join('')}</div>`)).join(''); }
 
+/* ===================== ALLINEA ROSA ALLA PLAY =====================
+   Il commissario incolla la rosa che ha in FC 27 (una riga per giocatore: Nome; RUOLO; OVR; età facoltativa)
+   e la squadra sul sito diventa identica: stessi giocatori, stessi ruoli e OVR. Chi non è nella lista esce dalla rosa. */
+const AL_POS = new Set(['POR', 'DC', 'TD', 'TS', 'CDC', 'CC', 'COC', 'ED', 'ES', 'AD', 'AS', 'ATT', 'TDA', 'TSA', 'SP']);
+function alParse(txt){ return String(txt || '').split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => { const f = l.split(/\s*[;|\t]\s*/);
+  if (f.length < 3){ const m = l.match(/^(.*?)\s+([A-Z]{2,3})\s+(\d{2})(?:\s+(\d{2}))?$/); if (!m) return {bad: l}; return {name: m[1], pos: m[2], ovr: +m[3], age: m[4] ? +m[4] : null}; }
+  const pos = f[1].toUpperCase(); return {name: f[0], pos: AL_POS.has(pos) ? (pos === 'TDA' ? 'TD' : pos === 'TSA' ? 'TS' : pos === 'SP' ? 'ATT' : pos) : 'CC', ovr: +f[2] || 0, age: +f[3] || null}; }); }
+async function alPlan(cid, rows){
+  const db27 = await fc27Load(); const R = roster(cid), byName = new Map(), dbName = new Map();
+  S.players.forEach(p => { const k = normKey(p.name); if (!byName.has(k) || p.clubId === cid) byName.set(k, p); });
+  (db27?.p || []).forEach(x => { const k = normKey(x[1]); dbName.set(k, dbName.has(k) ? null : x); });
+  const lastOf = s => rvTok(s).pop() || '';
+  const findDbBySurname = r => { const last = lastOf(r.name); const c = (db27?.p || []).filter(x => lastOf(x[1]) === last && (!r.age || Math.abs(x[3] - r.age) <= 1) && Math.abs(x[4] - r.ovr) <= 4); return c.length === 1 ? c[0] : null; };
+  const keep = new Set(), upd = [], move = [], add = [], bad = [];
+  for (const r of rows){ if (r.bad){ bad.push(r.bad); continue; } const k = normKey(r.name);
+    let p = byName.get(k) || R.find(x => lastOf(x.name) === lastOf(r.name) && Math.abs((x.ovr || 0) - r.ovr) <= 4);
+    if (p){ keep.add(p.id); if (p.clubId !== cid) move.push({p, r}); else if ((p.ovr || 0) !== r.ovr || p.pos !== r.pos) upd.push({p, r}); continue; }
+    const x = dbName.get(k) || findDbBySurname(r);
+    const ex = x ? S.players.find(q => fcOf(q) === x[0]) : null; if (ex){ keep.add(ex.id); move.push({p: ex, r}); continue; }
+    add.push({r, x}); }
+  const out = R.filter(p => !keep.has(p.id) && !p.loan);
+  return {upd, move, add, out, bad};
+}
+async function alApply(cid, txt){
+  const rows = alParse(txt); if (rows.length < 11) return toast('Servono almeno 11 righe: Nome; RUOLO; OVR');
+  const pl = await alPlan(cid, rows), c = club(cid), mg = pl.move.filter(m => club(m.p.clubId)?.managerId);
+  const li = a => a.slice(0, 40).map(s => esc(s)).join(', ') + (a.length > 40 ? '…' : '');
+  confirmBox(`Allinea ${c?.name || ''} alla Play`, `<p>Rosa nella lista: <b>${rows.length - pl.bad.length}</b> giocatori.</p>
+    <p>✏️ OVR o ruolo aggiornati: <b>${pl.upd.length}</b>${pl.upd.length ? ' — ' + li(pl.upd.map(m => `${m.p.name} ${m.p.ovr}→${m.r.ovr}`)) : ''}</p>
+    <p>➡️ Arrivano da un altro club: <b>${pl.move.length}</b>${pl.move.length ? ' — ' + li(pl.move.map(m => `${m.p.name} (${cname(m.p.clubId) || 'svincolato'})`)) : ''}</p>
+    <p>➕ Nuovi sul sito: <b>${pl.add.length}</b>${pl.add.length ? ' — ' + li(pl.add.map(m => m.r.name)) : ''}</p>
+    <p>➖ Escono dalla rosa (tornano al loro club nel Mondo): <b>${pl.out.length}</b>${pl.out.length ? ' — ' + li(pl.out.map(p => p.name)) : ''}</p>
+    ${mg.length ? `<p class="notice">⚠️ ${mg.length} giocatori sono ora in squadre di altri manager: ${li(mg.map(m => m.p.name + ' (' + cname(m.p.clubId) + ')'))}. Controlla prima di confermare.</p>` : ''}
+    ${pl.bad.length ? `<p class="notice">Righe non capite: ${li(pl.bad)}</p>` : ''}`, 'Allinea', async () => {
+    const s = season(), t = now();
+    for (const {p, r} of [...pl.upd, ...pl.move]) await db.doc('players/' + p.id).update({clubId: cid, ovr: r.ovr, pos: r.pos, value: autoValue(r.ovr, r.age || ageOf(p)), ...(r.age ? {age: r.age, ageSeason: s} : {}), ...(p.pot && p.pot < r.ovr ? {pot: r.ovr} : {}), loan: null, freeSince: null});
+    for (const {r, x} of pl.add){ const age = r.age || (x ? x[3] : 25), id = x ? 'fc' + x[0] : 'pl' + t.toString(36) + Math.random().toString(36).slice(2, 6);
+      await db.doc('players/' + id).set({name: x ? x[1] : r.name, pos: r.pos, age, ageSeason: s, ovr: r.ovr, pot: Math.max(r.ovr, x?.[6] || 0, r.ovr + Math.max(0, 26 - age)), value: autoValue(r.ovr, age), wage: autoWage(r.ovr, age), injured: false, clubId: cid, loan: null, ...(x ? {fcId: x[0]} : {}), contractUntil: s + 1 + Math.floor(WH('c' + id) * 3)}); }
+    for (const p of pl.out) await db.doc('players/' + p.id).delete();
+    toast(`${c?.name || 'Squadra'} allineata alla Play`, 5000); });
+}
+function admAlignPanel(){
+  const mine = S.clubs.filter(c => c.managerId).sort((a, b) => a.name.localeCompare(b.name)), cur = mine.some(c => c.id === S.alC) ? S.alC : mine[0]?.id;
+  return admPanel('Allinea rosa alla Play', `<p class="sub">Per far partire le squadre dei manager identiche a FC 27. Incolla la rosa che hai sulla Play, una riga per giocatore: <b>Nome Cognome; RUOLO; OVR</b> (età facoltativa, es. <i>Nicolò Barella; CC; 87; 29</i>). Il sito aggiorna OVR e ruoli, prende i giocatori dal loro club se servono, aggiunge quelli che mancano e toglie quelli che non sono nella lista. Prima di salvare vedi il riepilogo.</p>
+    <div class="f full"><label for="alc">Squadra</label><select id="alc" data-wf="alC">${mine.map(c => `<option value="${c.id}"${c.id === cur ? ' selected' : ''}>${esc(c.name)} · ${esc(S.profiles[c.managerId]?.name || '')}</option>`).join('')}</select></div>
+    <div class="f full"><label for="altx">Rosa sulla Play</label><textarea id="altx" rows="10" placeholder="Yann Sommer; POR; 83&#10;Alessandro Bastoni; DC; 86&#10;…"></textarea></div>
+    <div class="row">${admBtn('al-go', cur || '', 'Controlla e allinea', 'primary')}</div>`); }
+
 function viewAdmin(){
   if (!S.comm) return panelEmpty('Area riservata', 'Solo il commissario può entrare qui.');
   loadWorld();
-  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['crescita', 'Crescita'], ['stagione', 'Stagione e impostazioni']];
+  const tabs = [['utenti', 'Utenti'], ['societa', 'Società'], ['giocatori', 'Giocatori'], ['mercato', 'Mercato'], ['calendari', 'Calendari e classifiche'], ['crescita', 'Rose e crescita'], ['stagione', 'Stagione e impostazioni']];
   const t = tabs.some(x => x[0] === S.admTab) ? S.admTab : 'utenti';
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<button type="button" class="${t === k ? 'on' : ''}" data-act="adm-tab" data-id="${k}">${l}</button>`).join('')}</nav>`;
-  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, crescita: admGrowTab, stagione: () => admSeasonTab() + admMailPanel()}[t]();
+  const body = {utenti: admUsersTab, societa: admClubsTab, giocatori: admPlayersTab, mercato: admMarketTab, calendari: admCalTab, crescita: () => admAlignPanel() + admGrowTab(), stagione: () => admSeasonTab() + admMailPanel()}[t]();
   return `<div class="panel"><div class="ph"><h2>Area admin</h2><span class="sub">Solo commissario</span></div><p class="sub">Da qui gestisci tutto il sito: utenti, società, giocatori, mercato, calendari, classifiche e stagione. Le altre pagine servono solo a consultare.</p></div>${nav}${body}`;
 }
 function admUsersTab(){
