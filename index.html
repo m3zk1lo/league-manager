@@ -3197,73 +3197,98 @@ function moraleNews(){
   return S.players.filter(p => p.req && p.clubId).map(p => ({ts: 0, ic: {sale: '✈️', loan: '🔁', raise: '💰'}[p.req], live: true, html: `<b>${esc(p.name)}</b> (${esc(club(p.clubId)?.name || '')}) ${{sale: 'chiede di essere ceduto', loan: 'chiede di andare a giocare in prestito', raise: 'chiede la rivalutazione'}[p.req]}`}));
 }
 /* ---------- regolamento ufficiale: come funziona il sito ---------- */
-const RULES_SECTIONS = [
- ['🧭 Il sito in breve', `<p>Il sito è in stile <b>Carriera allenatore di FC 27</b>. Dal menu in alto:</p><ul>
-  <li><b>Centrale</b>: la tua squadra, la prossima partita con la distinta da consegnare, budget, monte ingaggi, bacheca trattative, notizie e classifica.</li>
-  <li><b>Squadra</b>: rosa, stadio, sponsor, bilancio.</li><li><b>Mercato</b>: le tue trattative (con i club CPU e con gli altri manager), le notizie di mercato e il registro trasferimenti.</li>
-  <li><b>Mondo</b>: tutte le squadre vere di FC 27, campionati, coppe e trattative in diretta.</li><li><b>Calendario</b>, <b>Classifica</b>, <b>Statistiche</b>, <b>Lega</b>, <b>Regolamento</b>.</li></ul>`],
- ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione.</b></p><ol>
-  <li>Si apre il mercato (il commissario lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Parte la stagione e si gioca tutto il campionato.</li><li>Finisce la stagione.</li><li>Prima della stagione successiva si riapre il mercato.</li></ol>
-  <p><b>Non esiste un mercato di gennaio.</b> A mercato chiuso non si compra e non si vende nulla: si possono solo guardare le rose.</p>`],
- ['⚽ Le partite', `<p>Ogni manager allena una squadra del campionato che preferisce: <b>Serie A, Serie B, Premier League, Bundesliga, campionati africani o qualsiasi altro</b>. Le regole sono <b>identiche per tutti i campionati</b>.</p><ul>
-  <li>Le partite delle squadre con un manager vero le gioca il commissario alla PlayStation, con la distinta del manager; il commissario inserisce risultato, marcatori, assist, cartellini e infortuni.</li>
-  <li>Per ogni campionato l’admin sceglie come si gioca: <b>simulato partita per partita</b> (il sito simula una partita alla volta quando l’admin preme «Simula»), <b>a mano</b> (i risultati li inserisce l’admin) oppure automatico (come prima: lo simula il sito, a meno che ci sia un manager vero).</li>
-  <li>Le squadre le assegna sempre l’admin: tutti i club CPU di tutti i campionati possono essere affidati a qualsiasi utente, ma nessuno se le sceglie da solo.</li>
-  <li>Vittoria 3 punti, pareggio 1. Classifiche e calendari di tutti i campionati e delle coppe sono in <b>Classifica</b> e <b>Calendario</b>: scegli il campionato dal menu.</li>
-  <li><b>Distinte uguali per tutti</b>: ogni giornata il commissario apre e chiude le distinte per tutti i campionati insieme. Chi non consegna gioca con la formazione di default di FC 27 e prende una distinta mancata; <b>alla 5ª perde la panchina</b>. Dal Calendario di ogni campionato si apre il pulsante «Distinte» sulle partite dei manager.</li></ul>`]
- ['🏆 Campionati, promozioni e coppe', `<ul><li>Ogni campionato ha le sue regole vere di qualificazione, promozioni, retrocessioni e playoff (dove nel gioco esiste la serie inferiore o superiore).</li>
-  <li>Le coppe europee si giocano con il formato vero; ci si qualifica con le classifiche della stagione prima. Tutto in <b>Mondo → Coppe</b> e nel menu Campionato di Classifica e Calendario.</li></ul>`],
- ['🧢 Squadre, allenatori ed esoneri', `<ul><li><b>Qualsiasi squadra di qualsiasi campionato</b>: un manager può prendere la squadra che vuole, anche di un altro campionato, dal pannello «Cambia squadra» in Lega.</li>
-  <li><b>Un cambio a stagione</b>, a mercato aperto, come il calciomercato. Vale sia scegliendo una squadra sia accettando un'offerta.</li>
-  <li>Ogni squadra CPU ha il suo allenatore reale. Se va male in classifica la società <b>lo esonera</b>, la panchina si libera e la società offre il posto al <b>miglior manager reale</b>, che può accettare o rifiutare.</li>
-  <li>Il commissario può liberare una panchina o assegnarne una in qualsiasi momento.</li></ul>`],
- ['💶 Budget, ingaggi, stadio, sponsor e staff medico', `<p>Tutto è proporzionato alla squadra che alleni, come nella realtà, senza differenze tra campionati.</p><ul>
-  <li><b>Budget trasferimenti</b>: serve per cartellini, riscatti e commissioni; parte in base alla forza e al prestigio della rosa e cresce con incassi, sponsor e premi.</li>
-  <li><b>Budget stipendi</b>: è un budget separato e annuale (stipendi della rosa più lo stesso margine per tutti, × 52 settimane). Non si scala dal budget trasferimenti: <b>gli stipendi di tutta la rosa si pagano a fine stagione</b>, insieme a manutenzione stadio e staff medico. Ogni nuovo ingaggio deve entrare nel budget stipendi.</li>
-  <li><b>Stadio</b>: capienza, prezzo e pubblico dipendono dal prestigio del club; l'incasso entra a ogni partita in casa.</li>
-  <li><b>Sponsor</b>: gli importi crescono con il prestigio e gli obiettivi sono quelli del tuo campionato.</li>
-  <li><b>Staff medico</b>: costo di potenziamento e costo annuo scalano con il prestigio.</li>
-  <li>Non esiste nessuna tassa o bonus legati alla categoria del campionato.</li></ul>`]
- ['🏆 Coppe europee', `<p><b>Champions League, Europa League e Conference League</b> con il formato vero: fase campionato a 36 squadre (8 partite, 6 in Conference), poi spareggi, ottavi, quarti, semifinali andata e ritorno e finale secca.</p><ul>
-  <li><b>Prima stagione</b>: niente coppe, si gioca solo il campionato.</li>
-  <li><b>Dalla seconda stagione</b> ci si qualifica con le classifiche della stagione prima (la nostra Serie A con la nostra classifica); chi vince Champions o Europa League va in Champions l'anno dopo. Sorteggio e calendario delle coppe li crea il sito in automatico.</li>
-  <li>Sorteggio e calendario li crea il sito. <b>Le partite delle squadre della lega le gioca il commissario alla PlayStation</b> (anche contro club CPU) e ne inserisce risultato, marcatori, cartellini e infortuni; le partite tra club del Mondo le simula il sito in modo realistico.</li></ul><p>Tutto in <b>Mondo → Coppe</b>.</p>`],
- ['🌍 Il Mondo: da chi si compra', `<p>Non esiste più la lista degli svincolati: si compra dal <b>Mondo</b>.</p><ul>
-  <li><b>Club e rose</b>: tutti i club veri di FC 27 con le rose divise per ruolo, comprese le squadre CPU della nostra Serie A e B.</li>
-  <li><b>Senza squadra</b>: i giocatori svincolati dai manager della lega (niente cartellino, si tratta subito con giocatore e procuratore).</li>
-  <li><b>Sala trattative</b>: tutte le trattative in corso, in diretta.</li></ul>
-  <p>Ogni club ha la sua società, ogni giocatore il suo carattere e il suo procuratore: <b>si tratta come nella realtà, prima con il club, poi con il giocatore, poi con il procuratore.</b></p>`],
- ['🤝 Come si compra un giocatore', `<p>Apri il club, scegli il giocatore, premi <b>Tratta</b>. Le fasi sono quattro.</p>
-  <p><b>🏢 Fase 1 – La società (5 minuti)</b></p><ul><li>Scegli la <b>formula</b>: acquisto definitivo, <b>prestito secco</b>, <b>prestito con diritto</b> o <b>con obbligo di riscatto</b>, con durata, quota di ingaggio pagata e prezzo di riscatto. La società valuta il prestito in proporzione al valore del giocatore.</li><li>Fai l'offerta per il cartellino: la prima offerta fa partire un conto alla rovescia di <b>5 minuti</b>, uguale per tutti.</li>
-  <li>In quei 5 minuti <b>chiunque può entrare</b>: gli altri manager e anche <b>un club CPU</b> a cui piace il giocatore.</li>
-  <li>Puoi <b>rilanciare</b> finché il tempo non scade. <b>Se qualcuno entra o rilancia nell'ultimo minuto, il tempo si allunga di 1 minuto per tutti.</b></li>
-  <li>Allo scadere la società valuta <b>tutte le offerte insieme</b>: chi ha offerto abbastanza passa alla fase 2 (anche più squadre); se nessuno basta ma qualcuno si avvicina, la società chiede di più e ci sono <b>3 minuti</b> per rilanciare (massimo 3 giri); le offerte troppo basse vengono scartate.</li>
-  <li>Le società non regalano niente: un titolare costa più di una riserva, i giovani costano di più, <b>i pilastri dei club più forti sono quasi incedibili</b>. Alcuni club però hanno bisogno di soldi.</li></ul>
-  <p><b>👤 Fase 2 – Il giocatore (circa 1 minuto e mezzo)</b></p><p>Il giocatore valuta ogni squadra rimasta in corsa: se giocherebbe <b>titolare</b>, la forza della rosa, la categoria, la sua età e ambizione. Può aprire alla tua squadra o dire di no spiegando il motivo.</p>
-  <p><b>🧑‍💼 Fase 3 – Il procuratore (4 minuti)</b></p><ul><li>Il procuratore dice cosa chiede: <b>ingaggio settimanale, anni di contratto e commissione</b>.</li><li>Fai la tua proposta; puoi modificarla finché il tempo non scade.</li>
-  <li>Ogni procuratore ha il suo carattere: collaborativo, duro, esoso o specializzato in campioni.</li>
-  <li>Allo scadere il giocatore sceglie <b>la proposta migliore per lui</b>: conta lo stipendio ma anche il progetto e il posto da titolare. Se nessuno arriva alla cifra ma qualcuno ci va vicino, il procuratore alza la richiesta e dà altri <b>2 minuti</b>.</li></ul>
-  <p><b>✍️ Fase 4 – La firma</b></p><p>Paghi il cartellino alla società, la commissione al procuratore. Il giocatore entra subito in rosa e parte la notizia <b>UFFICIALE</b>.</p>
-  <p>⚠️ <b>Controlli automatici</b>: non puoi offrire più del tuo <b>budget</b>, l'ingaggio deve entrare nel tuo <b>monte ingaggi</b> e la rosa non può superare il <b>massimo di giocatori</b>. Altrimenti la trattativa non parte o salta.</p>`],
- ['👀 Tutti vedono tutto', `<p>Nella <b>Sala trattative</b> e nella <b>Bacheca</b> della Centrale vedi in diretta: il giocatore trattato e il suo club, <b>chi è in corsa</b> (manager e club CPU), la fase, il tempo che manca e la cronaca mossa per mossa.</p>
-  <p>🔒 <b>Le cifre restano segrete fino alla firma.</b> Si sa che qualcuno ha rilanciato, non di quanto.</p><p><b>Nessuno può dire «non l'ho visto»: ogni trattativa è pubblica e c'è sempre il tempo per entrare.</b> A mercato aperto bisogna stare online: le trattative durano minuti, non giorni.</p>`],
- ['🤖 La CPU nelle trattative', `<ul><li><b>La CPU può inserirsi nelle trattative</b>: se un club del Mondo vede che un giocatore gli piace, entra e fa la sua offerta come un manager (più spesso con i giocatori forti). Se vince la CPU, il giocatore va in quel club e lo vedrai giocare lì.</li>
-  <li><b>La CPU può chiedere i tuoi giocatori</b>: l'offerta arriva in «Le tue trattative» e nelle notizie. <b>Decidi tu</b>: accettare, chiedere di più o rifiutare. Nessuno ti obbliga a vendere.</li>
-  <li>Hai <b>6 minuti</b> per rispondere, poi l'offerta scade. Se vendi, il giocatore lascia la lega e i soldi entrano nel tuo budget.</li></ul>`],
- ['😀 Ruolo promesso e morale', `<p>Come nella Carriera di FC 27 ogni giocatore ha un <b>ruolo in squadra</b>: ⭐ Fondamentale, Importante, Rotazione, Panchinaro, Giovane promessa. Più è alto, più partite da titolare si aspetta (Fondamentale almeno 8 su 10, Importante 6, Rotazione 4, Giovane 3, Panchinaro 1–2).</p><ul>
-  <li><b>Chi compri dal Mondo</b>: il ruolo lo prometti al procuratore nella trattativa. Un ruolo alto convince di più il giocatore, ma la promessa va mantenuta.</li>
-  <li><b>Chi è già in rosa</b>: il ruolo lo assegna il sito in base al valore del giocatore nella squadra. <b>Il ruolo non si può cambiare.</b></li>
-  <li>Il sito legge le <b>distinte</b>: dopo ogni giornata il morale (da 0 a 100, 😀 🙂 😐 😠) sale se il giocatore gioca quanto si aspetta e scende se gioca meno.</li>
-  <li><b>Sotto 40</b> il giocatore è scontento. <b>Sotto 25</b> protesta: i <b>giovani</b> (Giovane promessa o fino a 21 anni) <b>chiedono di andare a giocare in prestito</b>; un titolare sulla carta chiede la <b>rivalutazione</b> (un aumento); gli altri <b>chiedono di essere ceduti</b>. Per i giovani che vogliono giocare arrivano richieste di prestito dai club CPU: accettare o no lo decidi tu. La richiesta esce nelle notizie, visibile a tutti.</li>
-  <li>Il manager può: <b>mandarlo in prestito</b> (giovani), <b>concedere l'aumento</b> (entro il monte ingaggi), <b>promettere più spazio</b> (morale su subito, ma se nelle 3 giornate dopo non gioca titolare crolla), <b>metterlo sul mercato</b> (i club CPU fanno più offerte, decidi sempre tu) o ignorarlo.</li>
-  <li>Il morale <b>non cambia il rendimento in partita</b>: pesa su contratto e mercato.</li>
-  <li><b>Squadre CPU</b>: il morale dei loro giocatori lo gestisce il sito. Nel Mondo vedi i giocatori <b>😠 scontenti</b> che vogliono giocare: il loro club li cede più volentieri e a prezzo più basso, e loro preferiscono chi gli offre il posto da titolare.</li></ul>`],
- ['🔁 Trattative tra manager', `<p>Sempre e solo a mercato aperto: apri la squadra di un altro manager e premi <b>«Fai un’offerta»</b> sul giocatore. Le trattative le segui nella pagina <b>Mercato</b>. Ci sono tutte le formule reali: acquisto definitivo, scambio, prestito, prestito con diritto o con obbligo di riscatto, pagamento a rate, bonus, percentuale sulla futura rivendita, diritto di recompra, prelazione, clausola rescissoria.</p>
-  <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita di 20 settimane di ingaggio: il giocatore finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
- ['📌 In sintesi', `<ol><li><b>Un solo mercato a stagione</b>, prima che inizi il campionato.</li><li>Mercato aperto = <b>stai online</b>.</li><li>Mondo → giocatore → <b>Tratta</b>.</li>
-  <li>Società (5 min) → Giocatore (circa 1 min e mezzo) → Procuratore (4 min) → Firma.</li><li>Ultimo minuto = +1 minuto per tutti.</li><li>Tutti vedono chi tratta; <b>le cifre si scoprono solo alla firma</b>.</li>
-  <li>La CPU può entrare nelle trattative e chiederti i tuoi giocatori: <b>decidi tu se vendere</b>.</li>  <li>Le partite delle squadre con un manager vero, in qualsiasi campionato, le gioca il commissario alla PlayStation. Il resto lo simula il sito (secondo la modalità che l’admin sceglie per ogni campionato), con infortuni e squalifiche veri; promozioni, retrocessioni e qualificazioni sono quelle reali.</li><li>Distinta non consegnata = formazione di default. <b>Alla 5ª mancata si perde la squadra.</b></li></ol>`]];
-function viewRules(){
+const RULES_LIST = () => [
+ ['🧭 Il sito in breve', `<p>League Manager è una <b>lega carriera allenatore di FC 27</b> tra manager veri, dentro un Mondo con tutte le squadre e i campionati del gioco. Dal menu in alto:</p><ul>
+  <li><b>Centrale</b>: la tua squadra, la prossima partita con la <b>distinta</b> da consegnare, budget, monte ingaggi, bacheca delle trattative, notizie e classifica.</li>
+  <li><b>Squadra</b>: rosa divisa per ruolo (con OVR, età, contratto, morale e link <b>SoFIFA ↗</b> alla scheda esatta del giocatore), stadio, sponsor, staff medico e bilancio.</li>
+  <li><b>Mercato</b>: le tue trattative con i club CPU e con gli altri manager, le aste, le notizie e il registro dei trasferimenti.</li>
+  <li><b>Mondo</b>: tutti i club veri con le rose, i campionati, le coppe, la <b>Sala trattative</b> in diretta e i giocatori <b>Senza squadra</b>.</li>
+  <li><b>Calendario</b> e <b>Classifica</b>: tutti i campionati e le coppe (scegli dal menu), <b>Statistiche</b>: marcatori e assist.</li>
+  <li><b>Posta</b>: le mail dei tuoi giocatori, dei procuratori e delle società (proposte di panchina).</li>
+  <li><b>Regolamento</b>: questa pagina.</li></ul>
+  <p>🔔 Con <b>«Attiva notifiche»</b> ricevi sul telefono offerte, trattative, distinte e proposte. Su iPhone prima aggiungi il sito alla schermata Home (Condividi → Aggiungi a Home).</p>`],
+ ['🧢 Le squadre dei manager', `<ul>
+  <li><b>Tutti i club sono uguali</b>: Serie A, Serie B, Premier League, LaLiga o qualsiasi altro campionato. Un club è <b>libero</b> (lo gestisce la CPU) finché non arriva un manager: da quel momento <b>lo gestisce il manager</b>.</li>
+  <li>Le squadre le <b>assegna il commissario</b>. Alla prima scelta non si possono prendere club da 5 stelle (massimo 4,5★).</li>
+  <li><b>Un solo cambio di squadra a stagione</b>, accettando un’offerta del mercato allenatori o con il commissario.</li>
+  <li>Se un manager lascia la squadra, il club torna alla CPU con un suo allenatore.</li></ul>`],
+ ['📋 Le rose', `<ul>
+  <li>Le rose partono da <b>FC 27</b> e, per i principali campionati (Serie A, Premier League, Championship, LaLiga, Bundesliga, Ligue 1, Eredivisie, Portogallo), sono <b>le rose vere di oggi</b>, aggiornate <b>ogni lunedì</b> in automatico.</li>
+  <li>L’aggiornamento settimanale vale <b>solo per i club CPU</b>. <b>Le rose dei manager sono bloccate</b>: le cambia solo il vostro mercato. Un giocatore comprato nella lega resta vostro anche se nella realtà cambia squadra.</li>
+  <li>I giocatori passati alla CPU con il nostro mercato (venduti, vinti all’asta o in trattativa da un club CPU) restano in quel club anche dopo gli aggiornamenti.</li>
+  <li><b>OVR</b>: quello di FC 27. Quando EA pubblicherà i voti aggiornati di FC 27, il sito li applicherà da solo. Per i dettagli di ogni giocatore c’è il link <b>SoFIFA ↗</b>.</li></ul>`],
+ ['📅 La stagione e il calciomercato', `<p><b>Il calciomercato è una sola sessione, a inizio stagione. Non esiste il mercato di gennaio.</b></p><ol>
+  <li>Il commissario apre il mercato (lo annuncia nel gruppo).</li><li>Si fa mercato.</li><li>Il mercato chiude.</li><li>Si gioca tutta la stagione.</li>
+  <li>Fine stagione: premi, stipendi, crescita dei giocatori e <b>mercato allenatori</b>.</li><li>Si riapre il mercato per la stagione dopo.</li></ol>
+  <p>A mercato chiuso non si compra e non si vende: si possono solo guardare le rose.</p>`],
+ ['⚽ Le partite', `<ul>
+  <li><b>Stesse regole per tutti i campionati.</b> Vittoria 3 punti, pareggio 1.</li>
+  <li><b>Le partite delle squadre con un manager</b> (anche contro un club CPU) le gioca il <b>commissario alla PlayStation</b> con la distinta del manager, e inserisce risultato, marcatori, assist, cartellini e infortuni.</li>
+  <li><b>Le partite tra due club CPU le simula il sito</b> in modo realistico (formazioni, gol, assist, cartellini, infortuni), insieme alle giornate dei manager.</li>
+  <li>Per ogni campionato il commissario può anche scegliere di simulare partita per partita oppure di fare tutto a mano.</li>
+  <li><b>Squalifiche</b>: il rosso vale una giornata; con i gialli si salta una giornata al raggiungimento della soglia (${S.settings?.yellowLimit || 3} gialli nella lega). <b>Infortuni</b>: il giocatore salta le giornate indicate.</li></ul>`],
+ ['📝 Le distinte', `<ul>
+  <li>Per ogni giornata la distinta si consegna nella <b>finestra decisa dal commissario</b> (per esempio da domenica a mezzanotte fino alle 21:00 del giorno della partita). Dopo la chiusura non si può più modificare.</li>
+  <li>La <b>Formazione tipo</b> vale per tutte le partite: se l’hai salvata non prendi penalità anche se dimentichi la distinta.</li>
+  <li>Chi non consegna (e non ha la formazione tipo) gioca con la formazione di default di FC 27 e prende una <b>distinta mancata</b>. <b>Alla 5ª distinta mancata perde la panchina.</b></li>
+  <li>Le notifiche ti avvisano quando la finestra apre e prima che chiuda.</li></ul>`],
+ ['🏆 Campionati, promozioni e coppe', `<ul>
+  <li>Ogni campionato ha le sue regole vere: promozioni, retrocessioni, playoff e zone europee (solo dove nel gioco esiste la serie superiore o inferiore).</li>
+  <li><b>Coppe europee</b> (Champions, Europa e Conference League) con il formato vero, <b>dalla seconda stagione</b>: ci si qualifica con le classifiche della stagione prima. Sorteggi e calendari li fa il sito; le partite dei manager le gioca il commissario, quelle tra club CPU le simula il sito. Tutto in <b>Mondo → Coppe</b>.</li></ul>`],
+ ['💶 Budget, ingaggi, stadio, sponsor e staff medico', `<ul>
+  <li><b>Budget trasferimenti</b>: per cartellini, riscatti e commissioni. Parte in base a forza e prestigio della rosa, cresce con incassi, sponsor, cessioni e premi.</li>
+  <li><b>Monte ingaggi</b>: budget separato. Ogni nuovo ingaggio deve starci dentro. <b>Gli stipendi di tutta la rosa si pagano a fine stagione</b>, insieme a manutenzione dello stadio e staff medico.</li>
+  <li><b>Stadio</b>: incasso a ogni partita in casa, in base a capienza, prezzo e prestigio. <b>Sponsor</b>: importi e obiettivi in base al club. <b>Staff medico</b>: si potenzia e ha un costo annuo.</li>
+  <li>La rosa non può superare il numero massimo di giocatori.</li></ul>`],
+ ['🌍 Il Mondo', `<ul>
+  <li><b>Club e rose</b>: tutti i club veri di FC 27, con allenatore e stelle. I club con un manager sono segnati e <b>non sono mai CPU</b>.</li>
+  <li><b>Campionati</b> e <b>Coppe</b>: classifiche, calendari, marcatori di tutto il Mondo.</li>
+  <li><b>Sala trattative</b>: tutte le trattative in corso, in diretta.</li>
+  <li><b>Senza squadra</b>: i giocatori svincolati dai manager, si trattano subito con giocatore e procuratore.</li></ul>`],
+ ['🤝 Comprare dai club CPU', `<p>Mondo → club → giocatore → <b>Tratta</b>. Quattro fasi, come nella realtà:</p>
+  <p><b>🏢 1. La società (5 minuti)</b> — scegli la formula (definitivo, prestito secco, prestito con diritto o con obbligo di riscatto) e fai l’offerta. In questi 5 minuti <b>chiunque può entrare</b>: altri manager e <b>club CPU</b>. Puoi rilanciare; <b>chi entra o rilancia nell’ultimo minuto allunga il tempo di 1 minuto per tutti</b>. Allo scadere la società valuta tutte le offerte: chi offre abbastanza passa alla fase 2; se qualcuno si avvicina la società chiede di più e ci sono 3 minuti per rilanciare (massimo 3 giri). I titolari costano più delle riserve, i giovani di più, i pilastri dei club forti sono quasi incedibili.</p>
+  <p><b>👤 2. Il giocatore (circa 1 minuto e mezzo)</b> — valuta ogni squadra: posto da titolare, forza della rosa, campionato, età e ambizione.</p>
+  <p><b>🧑‍💼 3. Il procuratore (4 minuti)</b> — chiede ingaggio, anni e commissione; fai la tua proposta e prometti un ruolo. Ogni procuratore ha il suo carattere. Se nessuno arriva alla cifra ma qualcuno ci va vicino, alza la richiesta e dà altri 2 minuti.</p>
+  <p><b>✍️ 4. La firma</b> — paghi cartellino e commissione, il giocatore entra subito in rosa e parte la notizia <b>UFFICIALE</b>.</p>
+  <p>⚠️ Controlli automatici: budget, monte ingaggi e numero massimo di giocatori.</p>`],
+ ['👀 Tutti vedono tutto', `<p>In <b>Sala trattative</b> e nella <b>Bacheca</b> vedi in diretta chi tratta, chi è in corsa (manager e CPU), la fase, il tempo che manca e la cronaca.</p><p>🔒 <b>Le cifre restano segrete fino alla firma.</b> A mercato aperto bisogna stare online: le trattative durano minuti.</p>`],
+ ['🤖 La CPU nel mercato', `<ul>
+  <li><b>Possono partecipare solo i club CPU</b>, mai un club che ha un manager (anche se il manager non è online).</li>
+  <li><b>La CPU può inserirsi nelle trattative</b> per un giocatore che le interessa: se vince lei, il giocatore va in quel club.</li>
+  <li><b>La CPU può chiedere i tuoi giocatori</b>, in acquisto o in prestito: l’offerta arriva in «Le tue trattative» e hai <b>6 minuti</b> per accettare, chiedere di più o rifiutare. <b>Decidi sempre tu.</b></li>
+  <li><b>La CPU partecipa alle tue aste</b>: un club interessato può rilanciare, mai oltre il suo prezzo massimo. Se vince la CPU incassi tu e il giocatore va in quel club.</li>
+  <li>Un giocatore venduto alla CPU entra davvero nel club che l’ha comprato e lo vedi lì nel Mondo.</li></ul>`],
+ ['🔨 Le aste', `<ul><li>Un manager può mettere all’asta un suo giocatore con una base d’asta. L’asta dura <b>${AUC_MIN} minuti</b>.</li>
+  <li>Possono offrire gli altri manager e i club CPU. Un’offerta negli ultimi 30 secondi riporta il tempo a 30 secondi.</li>
+  <li>Vince l’offerta più alta: il venditore incassa, il giocatore cambia squadra.</li></ul>`],
+ ['🔁 Trattative tra manager', `<p>A mercato aperto apri la squadra di un altro manager e premi <b>«Fai un’offerta»</b>. Ci sono tutte le formule: definitivo, scambio, prestito, prestito con diritto o obbligo di riscatto, rate, bonus, percentuale sulla rivendita, diritto di recompra, prelazione e clausola. Le segui nella pagina <b>Mercato</b>.</p>
+  <p>Puoi <b>rescindere</b> il contratto di un tuo giocatore pagando una buonuscita: finisce in <b>Senza squadra</b> e chiunque può prenderlo.</p>`],
+ ['😀 Ruolo promesso e morale', `<p>Ogni giocatore ha un ruolo: ⭐ Fondamentale, Importante, Rotazione, Panchinaro, Giovane promessa. Più è alto, più partite da titolare si aspetta.</p><ul>
+  <li>Chi compri dal Mondo: il ruolo lo prometti al procuratore. Chi è già in rosa: il ruolo lo dà il sito. <b>Il ruolo non si cambia.</b></li>
+  <li>Il sito legge le distinte: il morale (0–100) sale se il giocatore gioca quanto si aspetta e scende se gioca meno.</li>
+  <li><b>Sotto 25</b> il giocatore protesta: i giovani chiedono il <b>prestito</b>, i titolari una <b>rivalutazione</b>, gli altri la <b>cessione</b>. Se gli prometti spazio e nelle 3 giornate dopo non gioca titolare, il morale crolla. Le richieste arrivano in <b>Posta</b>.</li>
+  <li>Il morale <b>non cambia il rendimento in partita</b>: pesa su contratti e mercato. Il morale dei club CPU lo gestisce il sito.</li></ul>`],
+ ['📈 Crescita dei giocatori', `<ul>
+  <li><b>Due volte a stagione</b> (a metà e a fine stagione) il sito calcola chi sale e chi scende nelle squadre dei manager: conta <b>età</b>, <b>presenze</b> dalle distinte e <b>potenziale</b> (non si supera mai il POT). I giovani che giocano crescono di più, i giocatori sopra i 30 anni calano.</li>
+  <li>Le variazioni vanno da −3 a +4 per sessione. Il commissario modifica gli attributi in FC 27 (Modifica giocatore → Fisico → Attributi) e l’OVR si aggiorna anche sul sito.</li></ul>`],
+ ['🎓 Mercato allenatori (fine stagione)', `<p>Quando finisce la stagione ogni manager riceve un <b>voto da 1 a 10</b>: conta dove arriva la squadra rispetto alle attese del club (le sue stelle), più titolo e podio, meno la retrocessione.</p><ul>
+  <li><b>Da 7,5 in su</b>: 1–3 offerte da club CPU <b>più prestigiosi</b>.</li>
+  <li><b>Da 5,5 a 7,4</b>: 1–2 offerte da club CPU dello <b>stesso livello</b> o poco sotto.</li>
+  <li><b>Da 4 a 5,4</b>: nessuna offerta, si resta dove si è.</li>
+  <li><b>Sotto 4</b>: <b>esonero</b>. In <b>Posta → Panchine libere</b> ti candidi ai club che vuoi: la società accetta se il tuo voto basta per il suo prestigio. Se all’inizio del campionato sei ancora senza squadra, te la assegna il commissario.</li>
+  <li>Le offerte arrivano <b>solo da club senza manager</b>. Si accettano o rifiutano dalla Posta fino all’inizio del campionato; chi non è esonerato può rifiutare e restare.</li>
+  <li>Anche gli <b>allenatori CPU</b> cambiano: gli ultimi di ogni campionato vengono esonerati e al loro posto arrivano allenatori che hanno fatto bene in club più piccoli. Tutto nelle <b>Notizie</b>.</li></ul>`],
+ ['📌 In sintesi', `<ol>
+  <li>Tutti i club sono uguali: libero = CPU, con manager = suo.</li>
+  <li>Un solo mercato a stagione: a mercato aperto <b>stai online</b>.</li>
+  <li>Mondo → giocatore → Tratta: società → giocatore → procuratore → firma. Ultimo minuto = +1 minuto per tutti, cifre segrete fino alla firma.</li>
+  <li>La CPU entra nelle trattative, nelle aste e fa offerte, ma <b>decidi sempre tu</b> se vendere; i club dei manager non sono mai CPU.</li>
+  <li>Le partite dei manager le gioca il commissario alla Play con la tua distinta; CPU contro CPU le simula il sito.</li>
+  <li>Consegna la distinta (o salva la formazione tipo): 5 distinte mancate = panchina persa.</li>
+  <li>Rose vere aggiornate ogni settimana per i club CPU; le vostre le cambia solo il vostro mercato.</li>
+  <li>A fine stagione: crescita dei giocatori, voto del manager, offerte o esonero.</li></ol>`]
+];
+function viewRules(){ const RULES_SECTIONS = RULES_LIST();
   const extra = (S.settings?.rules || '').trim();
   return `<div class="panel"><div class="ph"><h2>Regolamento ufficiale</h2><span class="sub">Come funziona League Manager · leggilo tutto</span></div>
     <nav class="rtoc">${RULES_SECTIONS.map(([t], i) => `<a href="#regolamento" data-act="rule-go" data-id="r${i}">${t}</a>`).join('')}</nav></div>
