@@ -6097,13 +6097,14 @@ function alParse(txt){ return String(txt || '').split(/\n+/).map(l => l.trim()).
   const pos = f[1].toUpperCase(); return {name: f[0], pos: AL_POS.has(pos) ? (pos === 'TDA' ? 'TD' : pos === 'TSA' ? 'TS' : pos === 'SP' ? 'ATT' : pos) : 'CC', ovr: +f[2] || 0, age: +f[3] || null}; }); }
 async function alPlan(cid, rows){
   const db27 = await fc27Load(); const R = roster(cid), byName = new Map(), dbName = new Map();
-  S.players.forEach(p => { const k = normKey(p.name); if (!byName.has(k) || p.clubId === cid) byName.set(k, p); });
+  S.players.forEach(p => { const k = normKey(p.name); (byName.get(k) || byName.set(k, []).get(k)).push(p); });
+  const pickName = r => { const arr = (byName.get(normKey(r.name)) || []).filter(p => !r.age || Math.abs((ageOf(p) || r.age) - r.age) <= 1); return arr.find(p => p.clubId === cid) || (arr.length === 1 ? arr[0] : null); };
   (db27?.p || []).forEach(x => { const k = normKey(x[1]); dbName.set(k, dbName.has(k) ? null : x); });
   const lastOf = s => rvTok(s).pop() || '';
   const findDbBySurname = r => { const last = lastOf(r.name); const c = (db27?.p || []).filter(x => lastOf(x[1]) === last && (!r.age || Math.abs(x[3] - r.age) <= 1) && Math.abs(x[4] - r.ovr) <= 4); return c.length === 1 ? c[0] : null; };
   const keep = new Set(), upd = [], move = [], add = [], bad = [];
   for (const r of rows){ if (r.bad){ bad.push(r.bad); continue; } const k = normKey(r.name);
-    let p = byName.get(k) || R.find(x => lastOf(x.name) === lastOf(r.name) && Math.abs((x.ovr || 0) - r.ovr) <= 4);
+    let p = pickName(r) || R.find(x => lastOf(x.name) === lastOf(r.name) && Math.abs((x.ovr || 0) - r.ovr) <= 4);
     if (p){ keep.add(p.id); if (p.clubId !== cid) move.push({p, r}); else if ((p.ovr || 0) !== r.ovr || p.pos !== r.pos) upd.push({p, r}); continue; }
     const x = dbName.get(k) || findDbBySurname(r);
     const ex = x ? S.players.find(q => fcOf(q) === x[0]) : null; if (ex){ keep.add(ex.id); move.push({p: ex, r}); continue; }
