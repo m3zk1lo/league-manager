@@ -29,22 +29,9 @@ jobs:
                   break
               time.sleep(0.3)
           print("Giocatori scaricati:", len(out), "su", tot)
-          if len(out) < 10000:
-              raise SystemExit("Troppo pochi giocatori, non aggiorno")
+          if len(out) < 19000:
+              print("EA ha ancora il database di FC 26: non aggiorno")
+              raise SystemExit(0)
           out.sort(key=lambda x: x[0] or 0)
           try:
               old = json.load(open("ea-ratings.json"))
-          except Exception:
-              old = {}
-          if old.get("p") == out:
-              print("Nessun voto cambiato")
-          else:
-              json.dump({"updated": int(time.time() * 1000), "n": len(out), "p": out}, open("ea-ratings.json", "w"), ensure_ascii=False, separators=(",", ":"))
-              print("File aggiornato")
-          PY
-      - name: Salvo su GitHub
-        run: |
-          git config user.name "voti-ea"
-          git config user.email "voti-ea@users.noreply.github.com"
-          git add ea-ratings.json
-          git diff --cached --quiet && echo "Niente da salvare" || (git commit -m "Voti EA aggiornati" && git push)
