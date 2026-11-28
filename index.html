@@ -3244,9 +3244,10 @@ const RULES_LIST = () => [
   <li><b>Squalifiche</b>: il rosso vale una giornata; con i gialli si salta una giornata al raggiungimento della soglia (${S.settings?.yellowLimit || 3} gialli nella lega). <b>Infortuni</b>: il giocatore salta le giornate indicate.</li></ul>`],
  ['📝 Le distinte', `<ul>
   <li>Per ogni giornata la distinta si consegna nella <b>finestra decisa dal commissario</b> (per esempio da domenica a mezzanotte fino alle 21:00 del giorno della partita). Dopo la chiusura non si può più modificare.</li>
-  <li>La <b>Formazione tipo</b> vale per tutte le partite: se l’hai salvata non prendi penalità anche se dimentichi la distinta.</li>
+  <li>La <b>Formazione tipo</b> vale per tutte le partite: se l’hai salvata non prendi penalità anche se dimentichi la distinta. Si imposta da <b>Squadra</b> (da telefono: <b>Altro → Società e rosa</b>) nel riquadro «Formazione tipo», oppure spuntando «Salva anche come formazione tipo» in fondo alla distinta. Se per una partita vuoi cambiare qualcosa, modifichi solo la distinta di quella gara.</li>
   <li>Chi non consegna (e non ha la formazione tipo) gioca con la formazione di default di FC 27 e prende una <b>distinta mancata</b>. <b>Alla 5ª distinta mancata perde la panchina.</b></li>
-  <li>Le notifiche ti avvisano quando la finestra apre e prima che chiuda.</li></ul>`],
+  <li>Le notifiche ti avvisano quando la finestra apre e prima che chiuda.</li>
+  <li>Quando consegni la distinta (o salvi la formazione tipo) <b>il commissario riceve una notifica</b>, così sa subito che può giocare la tua partita.</li></ul>`],
  ['🏆 Campionati, promozioni e coppe', `<ul>
   <li>Ogni campionato ha le sue regole vere: promozioni, retrocessioni, playoff e zone europee (solo dove nel gioco esiste la serie superiore o inferiore).</li>
   <li><b>Coppe europee</b> (Champions, Europa e Conference League) con il formato vero, <b>dalla seconda stagione</b>: ci si qualifica con le classifiche della stagione prima. Sorteggi e calendari li fa il sito; le partite dei manager le gioca il commissario, quelle tra club CPU le simula il sito. Tutto in <b>Mondo → Coppe</b>.</li></ul>`],
@@ -3372,6 +3373,24 @@ async function pushSend(to, title, body, url, key){
   } catch {}
 }
 const mgrOf = cid => club(cid)?.managerId || null;
+const commIds = () => (S.settings?.commIds || []).filter(id => id && id !== S.me);
+let commRegDone = false;
+function commReg(){
+  if (commRegDone || !S.comm || !S.me || !S.settings) return; commRegDone = true;
+  const ids = S.settings.commIds || [];
+  if (!ids.includes(S.me)) db.doc('league/settings').update({commIds: [...ids, S.me]}).catch(() => { commRegDone = false; });
+}
+function luNotifyComm(m, cid, kind){
+  try {
+    if (S.settings?.luPushOff) return;
+    const to = commIds(); if (!to.length) return;
+    const c = club(cid), oppId = m ? (m.homeId === cid ? m.awayId : m.homeId) : null, opp = oppId ? club(oppId)?.name : '';
+    const who = S.profiles?.[S.me]?.name || S.myName || 'Un manager';
+    const title = kind === 'tpl' ? `📋 Formazione tipo salvata · ${c?.name || ''}` : `📝 Distinta consegnata · ${c?.name || ''}`;
+    const body = kind === 'tpl' ? `${who} ha salvato la formazione tipo: vale per tutte le partite.` : `${who}${m?.round ? ` · giornata ${m.round}` : ''}${opp ? ` contro ${opp}` : ''}.`;
+    pushSend(to, title, body, './#home', kind === 'tpl' ? `lutpl-${cid}-${Math.floor(now() / 6e4)}` : `lusub-${m?.id}-${cid}-${Math.floor(now() / 6e4)}`);
+  } catch {}
+}
 const allMgrs = () => S.clubs.map(c => c.managerId).filter(Boolean);
 function pushBanner(){
   if (S.me && pushState() === 'on') return `<div class="notice" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px"><span>🔔 Notifiche attive su questo telefono.</span><span class="row"><button class="btn sm" data-act="push-test">Manda una prova</button><button class="btn sm ghost" data-act="push-on">Riattiva</button></span></div>`;
@@ -3648,6 +3667,7 @@ function autoClose(){
   try { vacTick(); } catch {}
   try { luTick(); } catch {}
   try { moraleTick(); } catch {}
+  try { commReg(); } catch {}
 }
 
 function resultModal(m){
@@ -3897,9 +3917,10 @@ function lineupModal(m, cid){
         onPitch.delete(s.out); onPitch.add(s.in); used.add(s.in); });
       Object.entries(d.setp).forEach(([k, id]) => { if (id && !d.xi.includes(id)) fail(`${SETP.find(x => x[0] === k)[1]}: scegli un titolare.`); });
       if (only || f.querySelector('#lutpl')?.checked){ const {matchId, clubId, season: _s, round, pre, draft, by, ...T} = doc(d, subs, false); await db.doc('clubs/' + cid).update({tpl: T}); }
-      if (only) return toast('Formazione tipo salvata: vale per tutte le partite');
+      if (only){ luNotifyComm(null, cid, 'tpl'); return toast('Formazione tipo salvata: vale per tutte le partite'); }
       { const lk = luLock(m); if (lk) fail(lk); }
       await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, false));
+      luNotifyComm(m, cid, 'lu');
       toast(f.querySelector('#lutpl')?.checked ? 'Distinta consegnata e salvata come formazione tipo' : 'Distinta consegnata');
     }, only ? 'Salva formazione tipo' : 'Consegna distinta');
   const doc = (d, subs, draft) => { const names = {}; [...d.xi, ...d.bench, ...subs.map(s => s.in), ...subs.map(s => s.out)].filter(Boolean).forEach(id => names[id] = pName(id));
@@ -5121,7 +5142,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['play-ok','play-undo','play-all','play-start','al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['lu-push','play-ok','play-undo','play-all','play-start','al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -5201,6 +5222,7 @@ document.addEventListener('click', async e => {
       case 'al-go': { const cid = document.getElementById('alc')?.value || id, tx = document.getElementById('altx')?.value || ''; if (!cid) return toast('Scegli la squadra'); await alApply(cid, tx); break; }
       case 'gr-all': confirmBox('Applica tutti', 'Segna come fatti tutti i giocatori rimasti e aggiorna il loro OVR sul sito.', 'Applica', () => grDone(id, null, true)); break;
       case 'gr-done': { const [d, pid] = String(id).split('|'); await grDone(d, pid, false); break; }
+      case 'lu-push': { const off = !S.settings?.luPushOff; await db.doc('league/settings').update({luPushOff: off}); toast(off ? 'Notifiche distinte spente' : 'Notifiche distinte accese: ti arriva un avviso a ogni distinta consegnata'); break; }
       case 'rv-mgr': { const on = S.settings?.rvMgr !== true; await db.doc('league/settings').update({rvMgr: on}); toast(on ? 'Rose dei manager: si allineano alla realtà' : 'Rose dei manager bloccate'); if (on) setTimeout(() => fc27SyncRosters(), 600); break; }
       case 'fc27-upload': fc27Upload(); break;
       case 'roster-view': S.rv = id === 'cards' ? 'cards' : 'list'; try { localStorage.setItem('rv', S.rv); } catch {} render(); break;
@@ -6227,7 +6249,7 @@ function admCalTab(){
 function admSeasonTab(){
   return admPanel('Stagione', `<div class="row">${admBtn('settings', null, 'Impostazioni della lega')}${admBtn('start-budgets', null, 'Applica budget iniziali')}${admBtn('close-season', null, 'Chiudi la stagione', 'bad')}${admBtn('reset-league', null, 'Azzera la lega', 'bad')}</div>`)
     + admPanel('Sorteggio panchine', `<p class="sub">${S.draw?.active ? 'Sorteggio in corso.' : 'Nessun sorteggio attivo.'}</p><div class="row">${admBtn('draw-new', null, 'Nuovo sorteggio')}${admBtn('draw-next', null, 'Prossimo turno')}${admBtn('draw-all', null, 'Tutti i turni')}${admBtn('draw-skip', null, 'Salta')}${admBtn('draw-end', null, 'Chiudi sorteggio', 'bad')}</div>`)
-    + admPanel('Dati e distinte', `<div class="row">${admBtn('lu-win', null, 'Finestra distinte')}${admBtn('lu-copy', null, 'Copia distinte mancanti')}</div>`)
+    + admPanel('Dati e distinte', `<div class="row">${admBtn('lu-win', null, 'Finestra distinte')}${admBtn('lu-copy', null, 'Copia distinte mancanti')}</div><p class="sub" style="margin-top:8px">🔔 Notifica al commissario quando un manager consegna la distinta o salva la formazione tipo: <b>${S.settings?.luPushOff ? 'spenta' : 'attiva'}</b> ${admBtn('lu-push', null, S.settings?.luPushOff ? 'Accendi' : 'Spegni', S.settings?.luPushOff ? 'ghost' : 'good')}</p>`)
     + admPanel('Sezioni della società', `<p class="sub">Nascondi a tutti queste sezioni dalla pagina società: i dati restano salvati e le puoi riattivare quando vuoi.</p><div class="list">${Object.entries(SEC_HIDE).map(([k, l]) => `<div class="li"><div class="main"><b>${l}</b> <span class="pill ${secHidden(k) ? 'warn' : 'info'}">${secHidden(k) ? 'nascosta' : 'visibile'}</span></div>${admBtn('sec-toggle', k, secHidden(k) ? 'Mostra' : 'Nascondi', secHidden(k) ? 'primary' : '')}</div>`).join('')}</div>`)
     + admPanel('Pulsanti admin nelle altre pagine', `<label><input type="checkbox" data-act="adm-inline"${admInline() ? ' checked' : ''}> Mostra i pulsanti admin anche nelle altre pagine</label><p class="sub">Di base sono nascosti: si gestisce tutto da qui.</p>`)
     + realismPanel();
