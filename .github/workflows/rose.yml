@@ -36,11 +36,11 @@ jobs:
                   print("Saltato", c["code"], e); continue
               for t in d.get("teams", []):
                   sq = [[p.get("id"), p.get("name"), p.get("position"), p.get("dateOfBirth"), p.get("nationality")] for p in (t.get("squad") or [])]
-                  teams.append({"id": t["id"], "name": t.get("name"), "short": t.get("shortName"), "tla": t.get("tla"), "comp": c["code"], "league": c["name"], "squad": sq})
+                  teams.append({"id": t["id"], "name": t.get("name"), "short": t.get("shortName"), "tla": t.get("tla"), "comp": c["code"], "league": c["name"], "coach": (t.get("coach") or {}).get("name"), "squad": sq})
               print(c["code"], len(d.get("teams", [])), "squadre,", sum(len(t["squad"]) for t in teams if t["comp"] == c["code"]), "giocatori")
           for t in teams:
               if t["tla"] == "INT":
-                  print("INTER:", ", ".join(p[1] for p in t["squad"]))
+                  print("INTER:", t.get("coach"), "-", ", ".join(p[1] for p in t["squad"]))
           if len(teams) < 50:
               raise SystemExit("Troppe poche squadre, non salvo")
           json.dump({"updated": int(time.time() * 1000), "source": "football-data.org", "teams": teams}, open("rose.json", "w"), ensure_ascii=False, separators=(",", ":"))
