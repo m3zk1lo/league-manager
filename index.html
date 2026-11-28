@@ -745,18 +745,137 @@ async function vacTick(){ if (!S.comm || vacBusy || !S.loaded.clubs || !S.loaded
   try { await Promise.all(todo.map(c => db.doc('clubs/' + c.id).update({coach: inventCoach(c.name + season()), vacant: false})));
     if (wv.length){ const names = {...coachMap()}; wv.forEach(n => { names[n] = inventCoach(n + season()); }); await wsave('COACHES', {names}); const d = JSON.parse(JSON.stringify(od)); d.sacked = (d.sacked || []).filter(x => !wv.includes(x)); await ofrSave(d); }
   } finally { vacBusy = false; } }
+/* ===================== MERCATO ALLENATORI DI FINE STAGIONE =====================
+   Voto della stagione per ogni manager → offerte dai club CPU (mai da club con un manager),
+   esonero sotto il 4 con candidature alle panchine libere, mercato degli allenatori CPU, notizie. */
+const CM_TOP = 7.5, CM_MID = 5.5, CM_SACK = 4;
+const cmDoc = (fs = season()) => (S.world || []).find(d => d.id === `CMKT-S${fs}`) || null;
+const cmClubOfKey = k => k[0] === 's' ? club(k.slice(2)) : null;
+const cmWorldOfKey = k => k[0] === 'w' ? (WORLD?.clubs || []).find(c => c.i === +k.slice(2)) : null;
+const cmStars = k => { const c = cmClubOfKey(k); if (c){ if (c.stars != null || roster(c.id).length >= 11) return clubStars(c); const w = (WORLD?.clubs || []).find(x => normKey(x.name) === normKey(c.name)); return w ? wClubStars(w) : clubStars(c); } const w = cmWorldOfKey(k); return w ? wClubStars(w) : 0; };
+const CM_PREF = /^(Serie A|Serie B|Premier League|EFL Championship|LaLiga|LaLiga 2|Bundesliga|Bundesliga 2|Ligue 1|Ligue 2|Eredivisie|Liga Portugal|1A Pro League|Trendyol Süper Lig|Scottish Premiership|Ö\. Bundesliga|Brack Super League|Eliteserien|Allsvenskan|SUPERLIGA|Ekstraklasa|Hellas Liga)$/;
+const cmName = k => cmClubOfKey(k)?.name || cmWorldOfKey(k)?.name || '';
+const cmCoach = k => { const c = cmClubOfKey(k); return c ? (c.coach || wCoachName(c.name) || '') : wCoachName(cmName(k)); };
+/* classifiche di fine stagione: posizione vera e posizione attesa (in base alle stelle) */
+function cmStandings(s){
+  const out = [];
+  ['A', 'B'].forEach(dv => { if (dv === 'B' && !hasB()) return; let rows; try { rows = standings(s, dv); } catch { return; } const n = rows.length; if (!n) return;
+    const exp = rows.slice().sort((a, b) => cmStars('s:' + b.c.id) - cmStars('s:' + a.c.id) || a.c.name.localeCompare(b.c.name)).map(x => x.c.id);
+    rows.forEach((x, i) => out.push({key: 's:' + x.c.id, name: x.c.name, uid: x.c.managerId || null, league: DIVS[dv] || ('Serie ' + dv), pos: i + 1, n, exp: exp.indexOf(x.c.id) + 1, pts: x.pt, g: x.g, stars: cmStars('s:' + x.c.id)})); });
+  if (WORLD && !WORLD.err) for (const L of lgList()){ const doc = lgDoc(L.li, s); if (!doc) continue; const t = lgTable(doc), n = t.length; if (!n) continue;
+    const keyOf = r => S.clubs.some(c => c.id === 'w' + r.i) ? 's:w' + r.i : 'w:' + r.i, st = r => cmStars(keyOf(r)), exp = t.slice().sort((a, b) => st(b) - st(a)).map(r => r.i);
+    t.forEach((r, i) => { const k = keyOf(r), sc = cmClubOfKey(k); out.push({key: k, name: cmName(k) || lgCN(r.i), uid: sc?.managerId || null, league: L.name, pos: i + 1, n, exp: exp.indexOf(r.i) + 1, pts: r.pt, g: r.g, stars: st(r)}); }); }
+  return out;
+}
+function cmVote(x){ if (!x.g) return 6; let v = 6 + (x.exp - x.pos) / Math.max(1, x.n - 1) * 7;
+  if (x.pos === 1) v += 1; else if (x.pos <= 3) v += 0.4;
+  if (x.pos > x.n - Math.min(3, Math.max(1, Math.round(x.n / 6)))) v -= 1.2;
+  v += (x.pts / x.g - 1.4) * 0.8;
+  return Math.max(1, Math.min(10, Math.round(v * 10) / 10)); }
+const cmTier = v => v >= CM_TOP ? 'Ottima stagione' : v >= CM_MID ? 'Stagione discreta' : v >= CM_SACK ? 'Stagione sotto le attese' : 'Stagione negativa';
+/* club CPU che possono offrire una panchina: mai club con un manager */
+function cmPool(){
+  const out = [], ok = n => !LG_SKIP.test(n || '');
+  cpuWorld().forEach(c => { if (ok(c.league) && c.players.length >= 14) out.push({key: 'w:' + c.i, name: c.name, stars: wClubStars(c), league: c.league}); });
+  S.clubs.filter(c => !c.managerId).forEach(c => out.push({key: 's:' + c.id, name: c.name, stars: cmStars('s:' + c.id), league: c.lg != null ? (WORLD?.leagues?.[c.lg] || '') : (DIVS[divOf(c)] || '')}));
+  return out.filter(p => p.stars > 0);
+}
+function cmPlan(s){
+  const all = cmStandings(s), mg = all.filter(x => x.uid && x.g).map(x => ({...x, vote: cmVote(x)})).sort((a, b) => b.vote - a.vote);
+  const pool = cmPool(), used = new Set(), offers = [], sacked = [];
+  const pw = (x, p, seed) => WH(seed + p.key) + (p.league === x.league ? -0.3 : 0) + (CM_PREF.test(p.league || '') ? 0 : 1);
+  const pick = (x, lo, hi, k, seed) => pool.filter(p => !used.has(p.key) && p.stars >= lo - 1e-9 && p.stars <= hi + 1e-9 && p.name !== x.name).sort((a, b) => pw(x, a, seed) - pw(x, b, seed)).slice(0, k);
+  for (const x of mg){ const seed = 'cm' + s + x.uid;
+    let l = [];
+    if (x.vote >= CM_TOP){ const k = x.vote >= 9 ? 3 : x.vote >= 8.2 ? 2 : 1; l = pick(x, x.stars + 0.5, Math.min(5, x.stars + 1.5), k, seed); if (!l.length) l = pick(x, x.stars, x.stars + 0.5, 1, seed); }
+    else if (x.vote >= CM_MID) l = pick(x, Math.max(0.5, x.stars - 1), x.stars, x.vote >= 6.5 ? 2 : 1, seed);
+    else if (x.vote < CM_SACK) sacked.push(x);
+    l.forEach(p => { used.add(p.key); offers.push({uid: x.uid, x, p, up: x.vote >= CM_TOP}); }); }
+  /* allenatori CPU: esonerati gli ultimi due di ogni campionato (solo club senza manager); al loro posto sale un allenatore CPU che ha fatto bene in un club più piccolo */
+  const cpu = all.filter(x => !x.uid && x.g), fired = [], moves = [], moved = new Set();
+  const byLg = {}; cpu.forEach(x => (byLg[x.league] ||= []).push(x));
+  Object.values(byLg).forEach(arr => arr.filter(x => x.pos > x.n - 2).forEach(x => fired.push(x)));
+  const firedKeys = new Set(fired.map(f => f.key));
+  fired.sort((a, b) => b.stars - a.stars).forEach(f => {
+    const cand = cpu.filter(x => !firedKeys.has(x.key) && !moved.has(x.key) && x.pos <= 3 && x.stars < f.stars && x.stars >= f.stars - 1.5).sort((a, b) => WH('cmc' + s + a.key) - WH('cmc' + s + b.key))[0];
+    if (cand){ moved.add(cand.key); moves.push({to: f.key, toName: f.name, from: cand.key, fromName: cand.name, coach: cmCoach(cand.key) || inventCoach(cand.name + 'cur'), prev: cmCoach(f.key), fresh: inventCoach(cand.name + 'cm' + s)}); }
+    else moves.push({to: f.key, toName: f.name, from: null, coach: inventCoach(f.name + 'cm' + s), prev: cmCoach(f.key)}); });
+  /* panchine libere per gli esonerati: club CPU appena cambiati + club lasciati dagli esonerati */
+  const benches = [...fired.map(f => ({key: f.key, name: f.name, stars: f.stars, league: f.league})), ...sacked.map(x => ({key: x.key, name: x.name, stars: x.stars, league: x.league}))];
+  return {mg, offers, sacked, fired, moves, benches};
+}
+function cmMail(o, s, fs){ const {x, p} = o, nm = S.profiles[o.uid]?.name || 'mister', prev = cmCoach(p.key);
+  const body = `Gentile ${nm},\n\nabbiamo seguito con attenzione la sua stagione ${s} alla guida del ${x.name}: ${x.pos}° posto in ${x.league}, ${x.pts} punti in ${x.g} partite. Voto della stagione: ${x.vote}.\n\n${o.up ? `Il ${p.name} vuole fare il salto di qualità e crediamo che lei sia l’allenatore giusto.` : `Il ${p.name} cerca un allenatore affidabile per la prossima stagione e il suo profilo ci convince.`}${prev ? ` Se accetterà, ${prev} lascerà la panchina.` : ''}\n\nLe offriamo la panchina per la stagione ${fs}. Può rispondere da questa pagina fino all’inizio del campionato. Se accetterà lascerà il ${x.name}, che sarà affidato a un allenatore scelto dalla società.\n\nCordiali saluti,\nLa dirigenza del ${p.name}`;
+  return {id: 'm' + now().toString(36) + Math.random().toString(36).slice(2, 6), cm: 1, key: p.key, club: p.name, from: 'Dirigenza ' + p.name, prev, forSeason: fs, ts: now(), read: false, st: 'open', subject: `${p.name} (${String(p.stars).replace('.', ',')}★): proposta di incarico per la stagione ${fs}`, body}; }
+function cmSackMail(x, s, fs){ const nm = S.profiles[x.uid]?.name || 'mister';
+  return {id: 'm' + now().toString(36) + Math.random().toString(36).slice(2, 6), cm: 1, info: 1, key: x.key, club: x.name, from: 'Dirigenza ' + x.name, forSeason: fs, ts: now(), read: false, st: 'info', subject: `${x.name}: risoluzione del contratto`,
+    body: `Gentile ${nm},\n\nla stagione ${s} si è chiusa al ${x.pos}° posto in ${x.league} (${x.pts} punti in ${x.g} partite), lontano dalle aspettative della società. Voto della stagione: ${x.vote}.\n\nLa società ha deciso di sollevarla dall’incarico.\n\nPuò cercare una nuova squadra nella sezione «Panchine libere» qui sotto: si candida e la società le risponde. Se all’inizio del campionato sarà ancora senza panchina, la squadra gliela assegnerà il commissario.\n\nLa dirigenza del ${x.name}`}; }
+async function cmSetCoach(k, coach, names){ if (k[0] === 's'){ const c = club(k.slice(2)); if (c && !c.managerId) await db.doc('clubs/' + c.id).update({coach, prevCoach: c.coach || null, vacant: false}); } else { const n = cmName(k); if (n) names[n] = coach; } }
+async function cmApply(plan, s, fs){
+  const t = now(), news = [], by = {}, names = {...coachMap()};
+  /* esoneri dei manager */
+  for (const x of plan.sacked){ const c = cmClubOfKey(x.key); if (!c || c.managerId !== x.uid) continue;
+    await db.doc('clubs/' + c.id).update({managerId: null, coach: inventCoach(c.name + 'cm' + fs), prevCoach: null, vacant: false, sackedSeason: s});
+    (by[x.uid] ||= []).push(cmSackMail(x, s, fs)); news.push({ts: t, ic: '🧢', html: `<b>${esc(x.name)}</b> esonera <b>${esc(S.profiles[x.uid]?.name || 'il suo allenatore')}</b> (voto ${x.vote})`});
+    try { pushSend([x.uid], `🧢 ${x.name}: sei stato esonerato`, 'Cerca una nuova squadra in Posta → Panchine libere.', './#posta', 'cms-' + x.uid + fs); } catch {} }
+  /* offerte ai manager */
+  plan.offers.forEach(o => (by[o.uid] ||= []).push(cmMail(o, s, fs)));
+  for (const [uid, arr] of Object.entries(by)){ const d = JSON.parse(JSON.stringify(mailDoc(uid))); d.list ||= []; d.list.push(...arr); await mailSave(uid, d);
+    const of = arr.filter(m => !m.info).length; if (of) try { pushSend([uid], `✉️ ${of} ${of > 1 ? 'proposte' : 'proposta'} di panchina`, arr.filter(m => !m.info).map(m => m.club).join(', '), './#posta', 'cmo-' + uid + fs); } catch {} }
+  /* mercato allenatori CPU */
+  for (const m of plan.moves){
+    await cmSetCoach(m.to, m.coach, names);
+    if (m.from){ await cmSetCoach(m.from, m.fresh, names); news.push({ts: t, ic: '🔄', html: `<b>UFFICIALE</b> · ${esc(m.coach)} lascia il <b>${esc(m.fromName)}</b> e firma con il <b>${esc(m.toName)}</b>${m.prev ? ` al posto di ${esc(m.prev)}` : ''}`}); }
+    else news.push({ts: t, ic: '🔄', html: `<b>${esc(m.toName)}</b> esonera ${esc(m.prev || 'l’allenatore')}: arriva <b>${esc(m.coach)}</b>`}); }
+  await wsave('COACHES', {names});
+  await wsave(`CMKT-S${fs}`, {season: fs, from: s, votes: plan.mg.map(x => ({uid: x.uid, club: x.name, key: x.key, vote: x.vote, pos: x.pos, n: x.n, league: x.league})), jobless: plan.sacked.map(x => ({uid: x.uid, vote: x.vote, club: x.name})), benches: plan.benches, news});
+}
+/* panchine libere: il club accetta se il voto è abbastanza alto per il suo prestigio */
+const cmMaxStars = v => Math.min(5, 1.5 + v * 0.3);
+function cmBenchesFor(uid){ const d = cmDoc(); if (!d) return null; const j = (d.jobless || []).find(x => x.uid === uid); if (!j || S.clubs.some(c => c.managerId === uid)) return null;
+  const tried = new Set((mailDoc(uid).list || []).filter(m => m.kind === 'apply').map(m => m.key));
+  return {j, list: (d.benches || []).filter(b => !(cmClubOfKey(b.key)?.managerId)).map(b => ({...b, tried: tried.has(b.key)}))}; }
+/* le scelte dei manager (accetta / candidati) le esegue il client del commissario */
+let cmBusy = false;
+async function cmTick(){
+  if (!S.comm || cmBusy || !S.loaded.clubs || !S.loaded.world) return;
+  const docs = (S.world || []).filter(w => String(w.id).startsWith('MAIL-') && (w.list || []).some(m => m.st === 'want')); if (!docs.length) return; cmBusy = true;
+  try { for (const w of docs){ const uid = String(w.id).slice(5), d = JSON.parse(JSON.stringify(w));
+      for (const m of d.list.filter(m => m.st === 'want')){
+        const tid = m.key[0] === 'w' ? 'w' + m.key.slice(2) : m.key.slice(2), tc = club(tid), old = S.clubs.find(c => c.managerId === uid);
+        if (tc && tc.managerId && tc.managerId !== uid){ m.st = m.kind === 'apply' ? 'no' : 'void'; m.why = 'La società ha già scelto un altro allenatore.'; continue; }
+        if (m.kind === 'apply'){ const j = (cmDoc()?.jobless || []).find(x => x.uid === uid), st = cmStars(m.key);
+          if (!j || st > cmMaxStars(j.vote)){ m.st = 'no'; m.why = `${m.club} ha scelto un profilo con più esperienza.`; try { pushSend([uid], `❌ ${m.club} non ti ha scelto`, 'Prova con un’altra panchina.', './#posta', 'cma-' + m.id); } catch {} continue; } }
+        else if (mvBy()[uid]){ m.st = 'void'; m.why = 'Hai già cambiato squadra in questa stagione.'; continue; }
+        try { await takeClub(m.key, uid, false);
+          if (old && old.id !== tid) await db.doc('clubs/' + old.id).update({coach: inventCoach(old.name + season()), prevCoach: null, vacant: false});
+          m.st = 'yes'; d.list.forEach(x => { if (x !== m && (x.st === 'open' || x.st === 'want')) x.st = 'void'; });
+          const cd = cmDoc(); if (cd){ const nd = JSON.parse(JSON.stringify(cd)); nd.news = [...(nd.news || []), {ts: now(), ic: '🧢', html: `<b>UFFICIALE</b> · <b>${esc(S.profiles[uid]?.name || 'Un manager')}</b> è il nuovo allenatore del <b>${esc(m.club)}</b>`}]; const {id: _i, ...rest} = nd; void _i; await wsave(`CMKT-S${season()}`, rest); }
+          try { pushSend([uid], `✅ Sei il nuovo allenatore del ${m.club}`, 'Benvenuto nella nuova squadra.', './#home', 'cmy-' + m.id); } catch {}
+          for (const o of (S.world || []).filter(o => String(o.id).startsWith('MAIL-') && o.id !== w.id)){ const dd = JSON.parse(JSON.stringify(o)); let ch = false; (dd.list || []).forEach(x => { if (x.key === m.key && (x.st === 'open' || x.st === 'want')){ x.st = 'void'; ch = true; } }); if (ch) await mailSave(String(o.id).slice(5), dd); }
+        } catch (e) { m.st = 'void'; m.why = e.message || 'Errore'; } }
+      await mailSave(uid, d); }
+  } finally { cmBusy = false; } }
+const cmNews = () => (cmDoc()?.news || []);
+function cmBenchPanel(){ const b = S.me && cmBenchesFor(S.me); if (!b) return '';
+  return `<div class="panel"><div class="ph"><h2>Panchine libere</h2><span class="sub">Voto della tua stagione: <b>${b.j.vote}</b></span></div>
+    <p class="sub">Candidati alle squadre che vuoi: la società risponde in base al tuo voto e al suo prestigio. Le risposte arrivano appena il commissario apre il sito.</p>
+    <div class="list">${b.list.sort((x, y) => y.stars - x.stars).map(x => `<div class="li"><div class="main"><b>${esc(x.name)}</b> ${starHtml(x.stars)}<br><span class="sub">${esc(x.league || '')}</span></div>${x.tried ? '<span class="pill neutral">Candidatura inviata</span>' : `<button class="btn sm good" data-act="cm-apply" data-id="${esc(x.key)}">Candidati</button>`}</div>`).join('') || '<p class="muted">Nessuna panchina libera.</p>'}</div></div>`; }
+function cmVotesPanel(){ const d = cmDoc(); if (!d || !(d.votes || []).length) return '';
+  return admPanel(`Voti dei manager · stagione ${d.from}`, `<div class="list">${d.votes.slice().sort((a, b) => b.vote - a.vote).map(v => `<div class="li"><div class="main"><b>${esc(S.profiles[v.uid]?.name || 'Manager')}</b> · ${esc(v.club)}<br><span class="sub">${v.pos}° su ${v.n} · ${esc(v.league)} · ${cmTier(v.vote)}</span></div><span class="pts num">${v.vote}</span></div>`).join('')}</div>`); }
+
 function viewPosta(){
   if (!S.me) return panelEmpty('Posta', 'Accedi per leggere le tue mail.');
-  const list = (mailDoc(S.me).list || []).slice().sort((a, b) => b.ts - a.ts), un = list.filter(m => !m.read).length;
-  const stl = m => m.kind === 'player' ? plState(m) : m.kind === 'agent' ? agState(m) : m.st === 'yes' ? ['Accettata', 'good', false] : m.st === 'no' ? ['Rifiutata', 'neutral', false] : m.st === 'void' ? ['Decaduta', 'neutral', false] : mailDead(m) ? ['Scaduta', 'neutral', false] : ['Da rispondere', 'warn', true];
-  return `<div class="panel"><div class="ph"><h2>Posta</h2><span class="sub">${un ? un + ' da leggere' : list.length ? 'Tutto letto' : ''}</span></div>
+  const list = (mailDoc(S.me).list || []).filter(m => m.kind !== 'apply').slice().sort((a, b) => b.ts - a.ts), un = list.filter(m => !m.read).length;
+  const stl = m => m.kind === 'player' ? plState(m) : m.kind === 'agent' ? agState(m) : m.st === 'info' ? ['Comunicazione', 'neutral', false] : m.st === 'want' ? ['Scelta inviata', 'info', false] : m.st === 'yes' ? ['Accettata', 'good', false] : m.st === 'no' ? ['Rifiutata', 'neutral', false] : m.st === 'void' ? ['Decaduta', 'neutral', false] : mailDead(m) ? ['Scaduta', 'neutral', false] : ['Da rispondere', 'warn', true];
+  return cmBenchPanel() + `<div class="panel"><div class="ph"><h2>Posta</h2><span class="sub">${un ? un + ' da leggere' : list.length ? 'Tutto letto' : ''}</span></div>
     <p class="sub">Qui ti scrivono i tuoi giocatori (scontenti, che vogliono giocare o chiedono un aumento) e i procuratori di chi cerca squadra, quando capita durante la stagione. A fine stagione arrivano anche le proposte delle società CPU che esonerano l’allenatore: valgono fino all’inizio del campionato.</p>
     ${list.length ? `<div class="list">${list.map(m => { const [t, c, live] = stl(m), op = S.mailOpen === m.id;
       return `<div><button type="button" class="li" data-act="mail-open" data-id="${m.id}" style="width:100%;text-align:left;cursor:pointer"><div class="main"><b>${m.read ? '' : '● '}${esc(m.subject)}</b><br><span class="sub">${esc(m.from)} · ${day(m.ts)}</span></div><span class="pill ${c}">${t}</span></button>
-        ${op ? `<div style="padding:4px 4px 12px;white-space:pre-line">${esc(m.body)}</div>${live ? (m.kind === 'player' ? `<div class="row" style="padding-bottom:12px"><button class="btn sm good" data-act="mail-pl" data-id="${m.pid}">Rispondi al giocatore</button></div>` : m.kind === 'agent' ? `<div class="row" style="padding-bottom:12px">${window_() ? `<button class="btn sm good" data-act="mail-ag" data-id="${m.id}">Avvia la trattativa</button>` : '<span class="sub">Mercato chiuso: potrai trattare quando riapre.</span>'}<button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Non mi interessa</button></div>` : `<div class="row" style="padding-bottom:12px">${S.comm ? `<button class="btn sm good" data-act="mail-ok" data-id="${m.id}">Accetta l’incarico</button>` : '<span class="sub">La panchina la assegna l’admin.</span>'}<button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Rifiuta</button></div>`) : ''}` : ''}</div>`; }).join('')}</div>`
+        ${op ? `<div style="padding:4px 4px 12px;white-space:pre-line">${esc(m.body)}</div>${live ? (m.kind === 'player' ? `<div class="row" style="padding-bottom:12px"><button class="btn sm good" data-act="mail-pl" data-id="${m.pid}">Rispondi al giocatore</button></div>` : m.kind === 'agent' ? `<div class="row" style="padding-bottom:12px">${window_() ? `<button class="btn sm good" data-act="mail-ag" data-id="${m.id}">Avvia la trattativa</button>` : '<span class="sub">Mercato chiuso: potrai trattare quando riapre.</span>'}<button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Non mi interessa</button></div>` : `<div class="row" style="padding-bottom:12px">${S.comm || m.cm ? `<button class="btn sm good" data-act="mail-ok" data-id="${m.id}">Accetta l’incarico</button>` : '<span class="sub">La panchina la assegna l’admin.</span>'}<button class="btn sm ghost" data-act="mail-no" data-id="${m.id}">Rifiuta</button></div>`) : ''}` : ''}</div>`; }).join('')}</div>`
       : '<div class="empty"><strong>Nessuna mail</strong><span>Per ora nessuno ti ha scritto.</span></div>'}</div>`;
 }
-const admMailPanel = () => admPanel('Posta di fine stagione', `<p class="sub">Quando chiudi la stagione le ultime classificate CPU esonerano l’allenatore e scrivono ai manager che hanno fatto meglio. Qui vedi l’anteprima sulla classifica di adesso, senza inviare nulla.</p><div class="row">${admBtn('mail-prev', null, 'Anteprima proposte')}</div>`);
+const admMailPanel = () => admPanel('Mercato allenatori di fine stagione', `<p class="sub">Quando chiudi la stagione ogni manager riceve un voto (posizione rispetto alle attese del club). Sopra ${String(CM_TOP).replace('.', ',')}: offerte da club CPU più prestigiosi · da ${String(CM_MID).replace('.', ',')}: offerte dallo stesso livello · sotto ${CM_SACK}: esonero e candidature alle panchine libere. Anche gli allenatori CPU cambiano squadra. Qui vedi l’anteprima sulla classifica di adesso, senza inviare nulla.</p><div class="row">${admBtn('mail-prev', null, 'Anteprima mercato allenatori')}</div>`) + cmVotesPanel();
 function bestManager(skipId){ const sc = new Map(), put = (c, v) => { if (c.managerId && c.id !== skipId) sc.set(c.managerId, {id: c.managerId, cid: c.id, v}); };
   ['A', 'B'].forEach(dv => { if (dv === 'B' && !hasB()) return; try { standings(season(), dv).forEach(x => { if (x.g) put(x.c, x.pt / x.g + (dv === 'A' ? 0.4 : 0)); }); } catch {} });
   S.clubs.filter(c => c.managerId && c.lg != null).forEach(c => { const doc = lgDoc(c.lg), x = doc && lgTable(doc).find(r => 'w' + r.i === c.id); if (x && x.g) put(c, x.pt / x.g + (LG_TOP.test(WORLD?.leagues?.[c.lg] || '') ? 0.4 : 0)); });
@@ -1556,6 +1675,7 @@ function newsItems(){
   try { out.push(...moraleNews()); } catch {}
   try { out.push(...lgNews()); } catch {}
   try { out.push(...cupNews()); } catch {}
+  cmNews().forEach(x => out.push(x));
   return out.sort((a, b) => b.ts - a.ts);
 }
 const newsWhen = ts => { const d = now() - ts; if (d < 6e4) return 'ora'; if (d < 36e5) return Math.floor(d / 6e4) + ' min fa'; if (d < 864e5) return Math.floor(d / 36e5) + ' h fa';
@@ -3481,6 +3601,7 @@ function autoClose(){
   try { lgTick(); } catch {}
   try { eaTick(); } catch {}
   try { rvTick(); } catch {}
+  try { cmTick(); } catch {}
   try { cpuMatchTick(); } catch {}
   try { coachTick(); } catch {}
   try { vacTick(); } catch {}
@@ -3865,11 +3986,11 @@ function closeSeason(){
   const upIds = hasB() ? [...rowsB.slice(0, PROMO).map(x => x.c.id), playoffWinner()].filter(Boolean) : [], up = upIds.map(club).filter(Boolean);
   confirmBox(`Chiudi la stagione ${season()}`, `Classifica finale: ${rows.slice(0, 3).map((x, i) => `${i+1}° ${esc(x.c.name)}`).join(', ')}.<br>
     ${hasB() ? `<b>Retrocedono in Serie B:</b> ${down.map(c => esc(c.name)).join(', ')}.<br><b>Salgono in Serie A:</b> ${up.map(c => esc(c.name)).join(', ')}${promoBonus() ? ` (bonus promozione ${fmtM(promoBonus())} ciascuna)` : ''}.<br>` : ''}
-    Le ultime classificate CPU esonerano l’allenatore e scrivono ai manager che hanno fatto meglio (Posta).<br>
+    Parte il mercato allenatori: voto a ogni manager, offerte dai club CPU, esoneri e cambi di panchina della CPU (Posta e Notizie).<br>
     Si pagano anche gli stipendi di tutta la rosa (budget stipendi), i bonus sponsor raggiunti, la manutenzione stadi e il costo annuo dello staff medico.<br>
     Verranno accreditati i premi di piazzamento in Serie A (${rows.map((x, i) => pr[i] ? `${esc(x.c.short)} ${fmtM(pr[i])}` : '').filter(Boolean).join(', ') || 'nessuno'}), ${(() => { const d = S.players.filter(p => p.loan && (p.loan.untilSeason || 0) <= season()).length; return d ? `${d} prestiti scadono (rientro al club proprietario, o riscatto automatico se c’è l’obbligo), ` : ''; })()}tutti i giocatori invecchiano di un anno e si genera il calendario della stagione ${season() + 1}. Gli obiettivi ancora aperti restano in archivio. L’operazione non si può annullare.`,
     'Chiudi stagione', async () => {
-      const s = season(), mailPlan = (() => { try { return planSeasonEnd(s); } catch { return null; } })();
+      const s = season(), mailPlan = (() => { try { return cmPlan(s); } catch { return null; } })();
       await Promise.all(rows.map((x, i) => pr[i] ? ledger(x.c.id, pr[i], `Premio ${i+1}° posto Serie A stagione ${s}`) : null));
       if (hasB()){ const pb = prizesB(); await Promise.all(rowsB.map((x, i) => pb[i] ? ledger(x.c.id, pb[i], `Premio ${i+1}° posto Serie B stagione ${s}`) : null)); }
       await settleLoans(s);
@@ -3881,7 +4002,7 @@ function closeSeason(){
       S.settings = {...S.settings, season: s + 1};
       await generateFixtures(s + 1);
       try { await recalcAll(); } catch {}
-      if (mailPlan){ try { await applySeasonEndMail(mailPlan, s, s + 1); } catch (e) { toast('Posta non inviata: ' + (e.message || 'errore'), 5000); } }
+      if (mailPlan){ try { await cmApply(mailPlan, s, s + 1); } catch (e) { toast('Mercato allenatori non completato: ' + (e.message || 'errore'), 5000); } }
       toast(`Benvenuti nella stagione ${s + 1}`);
     });
 }
@@ -5045,6 +5166,8 @@ document.addEventListener('click', async e => {
       case 'mail-open': { S.mailOpen = S.mailOpen === id ? null : id; const d = JSON.parse(JSON.stringify(mailDoc(S.me))), m = (d.list || []).find(x => x.id === id); if (m && !m.read){ m.read = true; try { await mailSave(S.me, d); } catch {} } schedule(); break; }
       case 'mail-no': case 'mail-ok': { const d = JSON.parse(JSON.stringify(mailDoc(S.me))), m = (d.list || []).find(x => x.id === id); if (!m || m.st !== 'open') return;
         if (act === 'mail-no'){ m.st = 'no'; await mailSave(S.me, d); return toast('Proposta rifiutata'); }
+        if (m.cm){ if (mailDead(m)) return toast('La proposta è scaduta: il campionato è già iniziato.'); if (mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
+          m.st = 'want'; await mailSave(S.me, d); toast(S.comm ? 'Accettata' : 'Scelta inviata: la firma arriva appena il commissario apre il sito', 5000); if (S.comm) setTimeout(() => cmTick(), 800); break; }
         if (!S.comm) return toast(ADMIN_ONLY_MSG, 5000);
         if (mailDead(m)) return toast('La proposta è scaduta: il campionato è già iniziato.');
         if (!S.comm && mvBy()[S.me]) return toast('Hai già cambiato squadra in questa stagione.');
@@ -5056,7 +5179,15 @@ document.addEventListener('click', async e => {
           m.st = 'yes'; d.list.forEach(x => { if (x !== m && x.st === 'open') x.st = 'void'; }); await mailSave(S.me, d);
           try { for (const w of (S.world || []).filter(w => String(w.id).startsWith('MAIL-') && w.id !== 'MAIL-' + S.me)){ const dd = JSON.parse(JSON.stringify(w)); let ch = false; (dd.list || []).forEach(x => { if (x.key === m.key && x.st === 'open'){ x.st = 'void'; ch = true; } }); if (ch) await mailSave(String(w.id).slice(5), dd); } } catch {}
           S.mailOpen = null; toast(`Benvenuto al ${m.club}: sei il nuovo allenatore`, 5000); } catch (e) { toast(e.message || 'Errore'); } break; }
-      case 'mail-prev': { let pl; try { pl = planSeasonEnd(season()); } catch { return toast('Anteprima non disponibile'); }
+      case 'cm-apply': { const b = cmBenchesFor(S.me), x = b?.list.find(y => y.key === id); if (!x || x.tried) return;
+        const d = JSON.parse(JSON.stringify(mailDoc(S.me))); d.list ||= []; d.list.push({id: 'a' + now().toString(36), kind: 'apply', key: x.key, club: x.name, ts: now(), read: true, st: 'want'}); await mailSave(S.me, d);
+        toast(`Candidatura inviata al ${x.name}`); if (S.comm) setTimeout(() => cmTick(), 800); break; }
+      case 'mail-prev': { let pl; try { pl = cmPlan(season()); } catch (e) { return toast('Anteprima non disponibile'); }
+        { const nm = uid => S.profiles[uid]?.name || 'Manager';
+          openModal('Anteprima mercato allenatori', `<h3 style="margin:0 0 6px">Manager</h3><div class="list">${pl.mg.map(x => { const of = pl.offers.filter(o => o.uid === x.uid); return `<div class="li"><div class="main"><b>${esc(nm(x.uid))}</b> · ${esc(x.name)} <span class="sub">${x.pos}° su ${x.n} (atteso ${x.exp}°)</span><br><span class="sub">${cmTier(x.vote)}${x.vote < CM_SACK ? ' · <b>esonerato</b>' : of.length ? ' · offerte: ' + of.map(o => esc(o.p.name) + ' ' + String(o.p.stars).replace('.', ',') + '★').join(', ') : ' · nessuna offerta'}</span></div><span class="pts num">${x.vote}</span></div>`; }).join('') || '<p class="muted">Nessun manager con partite giocate.</p>'}</div>
+            <h3 style="margin:14px 0 6px">Allenatori CPU</h3><div class="list">${pl.moves.slice(0, 40).map(m => `<div class="li"><div class="main"><b>${esc(m.toName)}</b><br><span class="sub">${m.prev ? 'esonera ' + esc(m.prev) + ' · ' : ''}${m.from ? `arriva ${esc(m.coach)} dal ${esc(m.fromName)}` : 'arriva ' + esc(m.coach)}</span></div></div>`).join('') || '<p class="muted">Nessun cambio.</p>'}</div>`, null, 'Chiudi'); }
+        break; }
+      case 'mail-prev-old': { let pl; try { pl = planSeasonEnd(season()); } catch { return toast('Anteprima non disponibile'); }
         const nm = uid => S.profiles[uid]?.name || 'Manager';
         openModal('Anteprima posta di fine stagione', pl.fired.length ? `<div class="list">${pl.fired.map(f => { const x = pl.mails.find(y => y.b.key === f.key); return `<div class="li"><div class="main"><b>${esc(f.name)}</b> <span class="sub">${f.pos}° su ${f.n} · ${esc(f.league)}</span><br><span class="sub">${f.coach ? 'Esonera ' + esc(f.coach) + ' · ' : ''}${x ? 'scrive a ' + esc(nm(x.uid)) + ' (' + esc(x.m.club) + ', ' + x.m.pos + '°)' : 'sceglie un nuovo allenatore CPU'}</span></div></div>`; }).join('')}</div>` : '<p class="muted">Con la classifica di adesso nessuna società esonererebbe.</p>', null, 'Chiudi'); break; }
       case 'coach-set': { const c = club(id); openModal('Nuovo allenatore · ' + c.name, fld('cn', 'Nome allenatore', 'maxlength="40" required placeholder="Es. Daniele De Rossi"'), async fd => { const nm = String(fd.get('cn') || '').trim(); if (!nm) fail('Scrivi il nome.'); await db.doc('clubs/' + id).update({coach: nm, vacant: false}); toast('Panchina assegnata'); }, 'Salva'); break; }
