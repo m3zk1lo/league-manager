@@ -2827,7 +2827,7 @@ function lgView0(){
     ${tab.map((x, k) => `<tr class="${lzone(L.name, k, tab.length)[0]}"><td class="pos">${k + 1}</td><td>${clubBtn(x.i)}</td><td class="r">${x.g}</td><td class="r">${x.v}</td><td class="r">${x.n}</td><td class="r">${x.p}</td><td class="r">${x.gf - x.gs > 0 ? '+' : ''}${x.gf - x.gs}</td><td class="r pts">${x.pt}</td></tr>`).join('')}</tbody></table></div>${lzoneLegend(L.name, tab.length)}
     ${doc?.moves ? (() => { const mv = doc.moves, L_ = (a, t) => a?.length ? `${t}: <b>${a.map(lgCN).map(esc).join(', ')}</b>` : ''; const parts = [L_(mv.up, '⬆️ Neopromosse'), L_(mv.rin, '⬇️ Retrocesse dalla serie superiore')].filter(Boolean); return parts.length ? `<p class="sub">Novità della stagione · ${parts.join(' · ')}${mv.note?.length ? '<br>' + mv.note.map(esc).join(' · ') : ''}</p>` : ''; })() : ''}</div>
     ${rd ? `<div class="panel"><div class="ph"><h3>Giornata ${r}</h3><span class="row">${S.comm && lgMode(li) === 'sim' && rd.m.some(x => !lgPlayed(x)) ? `<button class="btn sm primary" data-act="lg-simr" data-id="${li}|${r - 1}">Simula giornata</button>` : ''}${r > 1 ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r - 1}">‹</button>` : ''}${r < nR ? `<button class="btn sm ghost" data-act="lg-r" data-id="${r + 1}">›</button>` : ''}</span></div><div class="list">
-      ${rd.m.map((x, j) => { const lvn = !lgPlayed(x) && lvHas(x) ? lvNow(x) : null; return `<div class="li"><div class="main"${lvHas(x) ? ` style="cursor:pointer" data-act="lv-open" data-id="${li}|${r - 1}|${j}"` : ''}><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : lvn && !lvn.ck.pre ? lvTag({li, r: r - 1, j}, lvn) : lvn ? `<span class="pill info">🔴 diretta ${new Date(x[7].st).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}</span>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) + lgEvLine(x) : ''}</div>${(() => { const pm = wMatches().find(q => q.li === li && q.r === r - 1 && q.j === j); return pm ? `<button class="btn sm" data-act="w-lu" data-id="${pm.id}">Distinte</button>` : ''; })()}${S.comm && !lgPlayed(x) && lgMode(li) === 'sim' ? `<button class="btn sm primary" data-act="lg-sim" data-id="${li}|${r - 1}|${j}">Simula</button>` : ''}${S.comm && x[2] == null ? `<button class="btn sm${lvHas(x) ? '' : ' primary'}" data-act="lv-new" data-id="${li}|${r - 1}|${j}">🔴 ${lvHas(x) ? 'Diretta' : 'Diretta'}</button>` : ''}${S.comm && !(lvHas(x) && x[2] == null) ? `<button class="btn sm ghost" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Correggi' : 'Risultato'}</button>` : ''}</div>`; }).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
+      ${rd.m.map((x, j) => { const lvn = !lgPlayed(x) && lvHas(x) ? lvNow(x) : null; return `<div class="li"><div class="main"${lvHas(x) ? ` style="cursor:pointer" data-act="lv-open" data-id="${li}|${r - 1}|${j}"` : ''}><b>${esc(lgCN(x[0]))}</b> ${lgPlayed(x) ? `<b>${x[2]}-${x[3]}</b>` : lvn && !lvn.ck.pre ? lvTag({li, r: r - 1, j}, lvn) : lvn ? `<span class="pill info">🔴 diretta ${new Date(x[7].st).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}</span>` : '<span class="sub">vs</span>'} <b>${esc(lgCN(x[1]))}</b>${lgPlayed(x) ? '<br>' + lgScoreLine(x) + lgEvLine(x) : ''}${ytGet(wIdOf(li, r - 1, j)) ? '<br>' + ytBtn(wIdOf(li, r - 1, j)) : ''}</div>${(() => { const pm = wMatches().find(q => q.li === li && q.r === r - 1 && q.j === j); return pm ? `<button class="btn sm" data-act="w-lu" data-id="${pm.id}">Distinte</button>` : ''; })()}${S.comm && !lgPlayed(x) && lgMode(li) === 'sim' ? `<button class="btn sm primary" data-act="lg-sim" data-id="${li}|${r - 1}|${j}">Simula</button>` : ''}${S.comm && x[2] == null ? `<button class="btn sm${lvHas(x) ? '' : ' primary'}" data-act="lv-new" data-id="${li}|${r - 1}|${j}">🔴 ${lvHas(x) ? 'Diretta' : 'Diretta'}</button>` : ''}${S.comm && !(lvHas(x) && x[2] == null) ? `<button class="btn sm ghost" data-act="lg-res" data-id="${li}|${r - 1}|${j}">${lgPlayed(x) ? 'Correggi' : 'Risultato'}</button>` : ''}</div>`; }).join('') || '<p class="muted">Nessuna partita in questa giornata.</p>'}</div></div>` : ''}
     ${S.comm && doc && (ruleOf(L.name).po || ruleOf(L.name).relpo || ruleOf(L.name).relpo3) ? (() => { const r_ = ruleOf(L.name), t = tab.map(x => x.i), out = [];
       if (r_.po){ const pool = t.slice(r_.po[0] - 1, r_.po[1]), cur = (S.world || []).find(d => d.id === `PO-${L.name}-S${season()}`)?.winner; out.push(`<div class="f full"><label>Vincitore dei playoff promozione (dalla ${r_.po[0]}ª alla ${r_.po[1]}ª)</label><select data-act-change="po" data-id="PO-${L.name}">${['', ...pool].map(i => `<option value="${i}"${String(cur ?? '') === String(i) ? ' selected' : ''}>${i === '' ? '— decidi a fine stagione —' : esc(lgCN(i))}</option>`).join('')}</select></div>`); }
       const upper = Object.entries(LG_RULES).find(([, x]) => x.lower === L.name && x.relpo);
@@ -3269,6 +3269,13 @@ const RULES_LIST = () => [
   <li>Le partite le gioca il commissario alla Play; poi inserisce sul sito tutto quello che è successo e il sito le «trasmette» in diretta per qualche minuto. <b>Finiscono sempre esattamente come sono finite alla Play.</b></li>
   <li>Quando parte una diretta arriva una notifica a tutti. Durante la diretta il risultato non compare ancora in classifica: entra in classifica, statistiche e incassi al fischio finale.</li>
   <li>Le partite finite restano nella sezione per qualche giorno, con la cronaca completa.</li></ul>`],
+ ['🎬 Live e Premiere su YouTube', `<ul>
+  <li>Le partite dei manager (contro un altro manager o contro la CPU) le gioca il commissario in <b>live su YouTube</b>. Nella distinta scegli <b>come vuoi vederla</b>:</li>
+  <li><b>🔴 Live</b>: la partita parte <b>in un momento qualsiasi della giornata</b>, anche di sera tardi, e durante la live puoi intervenire in chat.</li>
+  <li><b>🎬 Premiere</b>: la partita viene registrata (le registrazioni si fanno di sera) e pubblicata su YouTube in una fascia oraria che scegli tu. Indichi da 1 a 3 fasce, <b>entro 48 ore dalla chiusura delle distinte</b> e a partire dal giorno dopo la chiusura. La guardi, ma non puoi intervenire.</li>
+  <li><b>Chi decide</b>: manager contro manager decide chi gioca <b>in casa</b>; contro la CPU decide il manager. Se non scegli niente è Live.</li>
+  <li>Il <b>link della partita</b> lo trovi sul sito («▶️ Guarda su YouTube») in Centrale, nel Calendario e nella Diretta. Quando il commissario lo pubblica ricevi una notifica, e per le Premiere anche un promemoria 15 minuti prima.</li>
+  <li>Durante la Premiere il sito <b>non mostra il risultato</b>: risultato, cronaca, classifica e statistiche si aggiornano al fischio finale del video.</li></ul>`],
  ['📊 Statistiche', `<ul><li>In <b>Statistiche</b> trovi marcatori, assist e cartellini di tutti i campionati in cui giocano i manager, aggiornati a ogni risultato (le dirette contano al fischio finale). Puoi filtrare per stagione e per campionato.</li></ul>`],
  ['🏆 Campionati, promozioni e coppe', `<ul>
   <li>Ogni campionato ha le sue regole vere: promozioni, retrocessioni, playoff e zone europee (solo dove nel gioco esiste la serie superiore o inferiore).</li>
@@ -3402,14 +3409,14 @@ function commReg(){
   const ids = S.settings.commIds || [];
   if (!ids.includes(S.me)) db.doc('league/settings').update({commIds: [...ids, S.me]}).catch(() => { commRegDone = false; });
 }
-function luNotifyComm(m, cid, kind){
+function luNotifyComm(m, cid, kind, WT){
   try {
     if (S.settings?.luPushOff) return;
     const to = commIds(); if (!to.length) return;
     const c = club(cid), oppId = m ? (m.homeId === cid ? m.awayId : m.homeId) : null, opp = oppId ? club(oppId)?.name : '';
     const who = S.profiles?.[S.me]?.name || S.myName || 'Un manager';
     const title = kind === 'tpl' ? `📋 Formazione tipo salvata · ${c?.name || ''}` : `📝 Distinta consegnata · ${c?.name || ''}`;
-    const body = kind === 'tpl' ? `${who} ha salvato la formazione tipo: vale per tutte le partite.` : `${who}${m?.round ? ` · giornata ${m.round}` : ''}${opp ? ` contro ${opp}` : ''}.`;
+    const body = kind === 'tpl' ? `${who} ha salvato la formazione tipo: vale per tutte le partite.` : `${who}${m?.round ? ` · giornata ${m.round}` : ''}${opp ? ` contro ${opp}` : ''}.${WT ? ' ' + watchTxt(WT) : ''}`;
     pushSend(to, title, body, './#home', kind === 'tpl' ? `lutpl-${cid}-${Math.floor(now() / 6e4)}` : `lusub-${m?.id}-${cid}-${Math.floor(now() / 6e4)}`);
   } catch {}
 }
@@ -3691,6 +3698,7 @@ function autoClose(){
   try { moraleTick(); } catch {}
   try { commReg(); } catch {}
   try { lvTick(); } catch {}
+  try { ytTick(); } catch {}
 }
 
 function resultModal(m){
@@ -3921,7 +3929,7 @@ function lineupModal(m, cid){
     <p class="sub">Esce: un giocatore in campo in quel momento (anche uno entrato prima). Entra: solo un giocatore della panchina non ancora usato. Minuto da 1 a 120.</p>
     <div class="ph" style="margin-top:14px"><h3>Calci piazzati</h3></div>
     <div class="fgrid" id="lusetp"></div>
-    ${only ? '' : `<label class="lubp" style="margin-top:14px;white-space:normal"><input type="checkbox" id="lutpl"${club(cid)?.tpl ? '' : ' checked'}> Salva anche come <b>formazione tipo</b> (vale in automatico per tutte le partite)</label>`}`,
+    ${only ? '' : watchForm(m, cid)}${only ? '' : `<label class="lubp" style="margin-top:14px;white-space:normal"><input type="checkbox" id="lutpl"${club(cid)?.tpl ? '' : ' checked'}> Salva anche come <b>formazione tipo</b> (vale in automatico per tutte le partite)</label>`}`,
     async () => {
       const d = collect();
       if (d.xi.some(v => !v)) fail('Scegli tutti gli 11 titolari.');
@@ -3942,8 +3950,9 @@ function lineupModal(m, cid){
       if (only || f.querySelector('#lutpl')?.checked){ const {matchId, clubId, season: _s, round, pre, draft, by, ...T} = doc(d, subs, false); await db.doc('clubs/' + cid).update({tpl: T}); }
       if (only){ luNotifyComm(null, cid, 'tpl'); return toast('Formazione tipo salvata: vale per tutte le partite'); }
       { const lk = luLock(m); if (lk) fail(lk); }
-      await db.doc('lineups/' + luId(m.id, cid)).set(doc(d, subs, false));
-      luNotifyComm(m, cid, 'lu');
+      const WT = watchRead(f, m, cid);
+      await db.doc('lineups/' + luId(m.id, cid)).set({...doc(d, subs, false), ...(WT ? {watch: WT} : {})});
+      luNotifyComm(m, cid, 'lu', WT);
       toast(f.querySelector('#lutpl')?.checked ? 'Distinta consegnata e salvata come formazione tipo' : 'Distinta consegnata');
     }, only ? 'Salva formazione tipo' : 'Consegna distinta');
   const doc = (d, subs, draft) => { const names = {}; [...d.xi, ...d.bench, ...subs.map(s => s.in), ...subs.map(s => s.out)].filter(Boolean).forEach(id => names[id] = pName(id));
@@ -4369,6 +4378,85 @@ function recalcModal(){
     <table class="tbl" style="margin-top:8px"><thead><tr><th>OVR</th><th>Età</th><th class="r">Valore</th><th class="r">Ingaggio</th></tr></thead><tbody>${ex.map(([o, a]) => `<tr><td class="num">${o}</td><td class="num">${a}</td><td class="r num">${fmtM(autoValue(o, a))}</td><td class="r num">${fmtW(autoWage(o, a))}</td></tr>`).join('')}</tbody></table>`,
     async () => { const n = await recalcAll(); toast(`${n} giocatori aggiornati`, 4000); }, 'Ricalcola tutti');
 }
+/* ================= LIVE / PREMIERE e link YouTube ================= */
+const isHumC = id => !!club(id)?.managerId;
+const wDecider = m => !m ? null : isHumC(m.homeId) ? m.homeId : isHumC(m.awayId) ? m.awayId : null;   /* decide chi gioca in casa; contro la CPU decide il manager */
+function prRange(m){
+  const w = luWin(m), close = w?.close || now(), d = new Date(close); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0);
+  return {from: d.getTime(), to: close + 48 * 36e5};
+}
+function watchOf(m){ const c = wDecider(m); if (!c) return null; const L = S.lineups.find(l => l.id === luId(m.id, c)); return L?.watch || {mode: 'live'}; }
+const fmtSlot = sl => { const a = new Date(sl[0]), b = new Date(sl[1]); return `${a.toLocaleDateString('it-IT', {weekday: 'short', day: 'numeric', month: 'short'})} ${a.toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}–${b.toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}`; };
+function watchTxt(W){ return !W ? '' : W.mode === 'prem' ? `🎬 Premiere · ${(W.slots || []).map(fmtSlot).join(' / ')}` : '🔴 Live'; }
+/* parte della distinta: scelta Live/Premiere */
+function watchForm(m, cid){
+  if (!m || m.pre || m.tplOnly || !wDecider(m)) return '';
+  if (wDecider(m) !== cid) return `<p class="sub" style="margin-top:14px">🎥 Live o Premiere la sceglie chi gioca in casa: <b>${esc(watchTxt(watchOf(m)))}</b>.</p>`;
+  const W = (S.lineups.find(l => l.id === luId(m.id, cid)) || {}).watch || {mode: 'live'}, R = prRange(m), sl = W.slots || [];
+  const dIn = t => { const d = new Date(t - new Date(t).getTimezoneOffset() * 6e4).toISOString(); return [d.slice(0, 10), d.slice(11, 16)]; };
+  const row = i => { const x = sl[i], a = x ? dIn(x[0]) : ['', ''], b = x ? dIn(x[1]) : ['', '']; return `<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><span class="sub">Fascia ${i + 1}</span><input type="date" class="inl" id="pw-d${i}" value="${a[0]}"><input type="time" class="inl" id="pw-a${i}" value="${a[1]}"><span class="sub">→</span><input type="time" class="inl" id="pw-b${i}" value="${b[1]}"></div>`; };
+  return `<div class="ph" style="margin-top:14px"><h3>Come vuoi vedere la partita?</h3></div>
+    <label class="lubp" style="white-space:normal"><input type="radio" name="luw" value="live"${W.mode !== 'prem' ? ' checked' : ''} onchange="document.getElementById('pwbox').hidden=true"> <span><b>🔴 Live su YouTube</b>: la partita parte in un momento qualsiasi della giornata (anche di sera tardi) e puoi intervenire in chat.</span></label>
+    <label class="lubp" style="white-space:normal;margin-top:6px"><input type="radio" name="luw" value="prem"${W.mode === 'prem' ? ' checked' : ''} onchange="document.getElementById('pwbox').hidden=false"> <span><b>🎬 Premiere</b>: il commissario la registra e la pubblica su YouTube in una fascia oraria scelta da te. La guardi, ma non puoi intervenire.</span></label>
+    <div id="pwbox" style="margin-top:6px"${W.mode === 'prem' ? '' : ' hidden'}><p class="sub">Indica da 1 a 3 fasce tra <b>${fmtDT(R.from)}</b> e <b>${fmtDT(R.to)}</b> (entro 48 ore dalla chiusura delle distinte; le registrazioni si fanno di sera, quindi le Premiere partono dal giorno dopo).</p>${[0, 1, 2].map(row).join('')}</div>`;
+}
+function watchRead(f, m, cid){
+  if (!f.querySelector('input[name=luw]') || wDecider(m) !== cid) return null;
+  const mode = f.querySelector('input[name=luw]:checked')?.value || 'live'; if (mode !== 'prem') return {mode: 'live'};
+  const R = prRange(m), slots = [];
+  [0, 1, 2].forEach(i => { const d = f.querySelector('#pw-d' + i)?.value, a = f.querySelector('#pw-a' + i)?.value, b = f.querySelector('#pw-b' + i)?.value; if (!d && !a && !b) return;
+    if (!d || !a || !b) fail(`Fascia ${i + 1}: scegli giorno, ora di inizio e ora di fine.`);
+    const st = new Date(`${d}T${a}`).getTime(); let en = new Date(`${d}T${b}`).getTime(); if (en <= st) en += 864e5;
+    if (en - st < 30 * 6e4) fail(`Fascia ${i + 1}: deve durare almeno 30 minuti.`);
+    if (st < R.from || en > R.to) fail(`Fascia ${i + 1}: deve stare tra ${fmtDT(R.from)} e ${fmtDT(R.to)}.`);
+    slots.push([st, en]); });
+  if (!slots.length) fail('Per la Premiere indica almeno una fascia oraria.');
+  return {mode: 'prem', slots: slots.sort((x, y) => x[0] - y[0])};
+}
+/* link YouTube per partita (doc world YT-S{stagione}) */
+const ytDoc = () => (S.world || []).find(d => d.id === `YT-S${season()}`) || null;
+const ytGet = wid => ytDoc()?.links?.[wid] || null;
+const wIdOf = (li, r, j) => `W${li}-${season()}-${r + 1}-${j}`;
+function ytBtn(wid, big){
+  const y = ytGet(wid); if (!y?.url) return '';
+  const when = y.kind === 'prem' && y.at ? (y.at > now() ? ` · Premiere ${fmtDT(y.at)}` : ' · Premiere') : y.kind === 'live' ? ' · Live' : '';
+  return `<a class="btn sm${big ? ' primary' : ''}" href="${esc(y.url)}" target="_blank" rel="noopener" style="margin-top:6px">▶️ Guarda su YouTube${when}</a>`;
+}
+function ytModal(li, r, j){
+  const wid = wIdOf(li, r, j), m = wMatches().find(x => x.id === wid); if (!m) return toast('Partita non trovata.');
+  const y = ytGet(wid) || {}, W = watchOf(m), H = club(m.homeId)?.name || lgCN(+m.homeId.slice(1)), A = club(m.awayId)?.name || lgCN(+m.awayId.slice(1));
+  const at0 = y.at || (W?.mode === 'prem' ? W.slots?.[0]?.[0] : null);
+  openModal(`▶️ YouTube · ${H} – ${A}`, `<p class="sub">Scelta del manager: <b>${esc(watchTxt(W) || '🔴 Live')}</b></p>
+    <div class="fgrid">${fld('yturl', 'Link YouTube', `type="url" placeholder="https://youtube.com/live/..." value="${esc(y.url || '')}"`)}
+    ${sel('ytk', 'Tipo', [['live', '🔴 Live'], ['prem', '🎬 Premiere']], y.kind || (W?.mode === 'prem' ? 'prem' : 'live'))}
+    ${fld('ytat', 'Inizio Premiere', `type="datetime-local" value="${at0 ? dtLocal(at0) : ''}"`)}</div>
+    <label class="lubp" style="white-space:normal;margin-top:8px"><input type="checkbox" id="ytpush" name="ytpush" checked> Manda la notifica ai manager della partita</label>
+    <p class="sub">Lascia il link vuoto per toglierlo.</p>`, async fd => {
+      const url = String(fd.get('yturl') || '').trim(), kind = fd.get('ytk'), at = fd.get('ytat') ? new Date(fd.get('ytat')).getTime() : null;
+      if (url && !/^https?:\/\//i.test(url)) fail('Il link deve iniziare con https://');
+      if (url && kind === 'prem' && !at) fail('Scrivi quando inizia la Premiere.');
+      const d0 = ytDoc(), links = {...(d0?.links || {})};
+      if (url) links[wid] = {url, kind, ...(kind === 'prem' ? {at} : {}), ts: now()}; else delete links[wid];
+      await wsave(`YT-S${season()}`, {season: season(), links});
+      if (url && fd.get('ytpush')){ const to = [club(m.homeId)?.managerId, club(m.awayId)?.managerId].filter(Boolean);
+        try { pushSend(to, kind === 'prem' ? `🎬 Premiere: ${H} – ${A}` : `🔴 In live: ${H} – ${A}`, kind === 'prem' ? `La tua partita va in Premiere su YouTube ${fmtDT(at)}.` : 'La tua partita è in live adesso su YouTube: entra e intervieni!', './#home', `yt-${wid}-${kind}`); } catch {} }
+      toast(url ? 'Link YouTube salvato' : 'Link tolto');
+    }, 'Salva');
+}
+/* promemoria 15 minuti prima della Premiere */
+let ytBusy = false;
+async function ytTick(){
+  if (!S.comm || ytBusy) return; const d0 = ytDoc(); if (!d0?.links) return; const t = now();
+  const due = Object.entries(d0.links).filter(([, y]) => y.kind === 'prem' && y.at && !y.rem && t >= y.at - 15 * 6e4 && t < y.at); if (!due.length) return;
+  ytBusy = true;
+  try { const links = {...d0.links};
+    due.forEach(([wid, y]) => { const m = wMatches().find(x => x.id === wid); links[wid] = {...y, rem: 1}; if (!m) return;
+      const H = club(m.homeId)?.name || '', A = club(m.awayId)?.name || '', to = [club(m.homeId)?.managerId, club(m.awayId)?.managerId].filter(Boolean);
+      try { pushSend(to, `🎬 Tra poco: ${H} – ${A}`, `La Premiere parte alle ${new Date(y.at).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})} su YouTube.`, './#home', `ytr-${wid}`); } catch {} });
+    await wsave(`YT-S${season()}`, {season: season(), links});
+  } finally { ytBusy = false; }
+}
+
 /* ================= DIRETTA: partite simulate sul sito con il risultato e gli eventi giocati alla Play ================= */
 const LV_ICON = {g: '⚽', og: '⚽', y: '🟨', r: '🟥', s: '🔁', i: '🚑'};
 const lvHas = m => !!(m && m[7] && Array.isArray(m[7].tl));
@@ -4385,6 +4473,7 @@ function lvClock(L, t = now()){
 const lvMinTxt = ck => ck.pre ? 'Non iniziata' : ck.done ? 'Finale' : ck.ht ? 'Intervallo' : ck.c < 45 ? `${Math.max(1, Math.ceil(ck.c))}'` : ck.c < 46 ? "45+'" : ck.c <= 90 ? `${Math.max(46, Math.ceil(ck.c))}'` : "90+'";
 function lvNow(m, t = now()){
   if (!lvHas(m)) return null; const L = m[7], ck = L.ok ? {done: true, c: 999, f: 1} : lvClock(L, t);
+  if (L.pr && !ck.done) return {ck, seen: [], sc: [0, 0], live: !ck.pre, pr: true, txt: ck.pre ? 'Non iniziata' : '🎬 Premiere'};
   const seen = L.tl.filter(e => (e.k || 0) <= ck.c), sc = [0, 0];
   seen.forEach(e => { if (e.t === 'g') sc[e.sd]++; else if (e.t === 'og') sc[1 - e.sd]++; });
   return {ck, seen, sc, live: !ck.pre && !ck.done, txt: lvMinTxt(ck)};
@@ -4450,21 +4539,23 @@ function lvModal(li, r, j){
   openModal(`🔴 Diretta · ${lgCN(H)} – ${lgCN(A)}`, `<p class="sub">Scrivi quello che è successo alla Play, <b>una riga per evento con il minuto</b>. Il sito fa vedere la partita «in diretta» a tutti i manager e la fa finire esattamente così. Il risultato lo calcola dai gol.</p>
     <div class="f full"><label for="lvtx">Eventi della partita</label><textarea id="lvtx" name="lvtx" style="min-height:200px" placeholder="${esc(ex)}">${esc(L0?.src || '')}</textarea>
     <span class="hint">Eventi: <b>gol</b> (assist tra parentesi), <b>autogol</b> (scrivi chi l’ha fatto), <b>giallo</b>, <b>rosso</b>, <b>cambio Esce &gt; Entra</b>, <b>infortunio Nome giornate</b>. Recupero: 45+2' o 90+3'. Puoi aggiungere una riga col risultato (es. «2-1») come controllo.</span></div>
-    <div class="fgrid">${sel('lvst', 'Inizio', [['now', 'Adesso'], ...[5, 10, 15, 30, 60].map(x => [String(x), `Tra ${x} minuti`]), ['at', 'Alle ore…']], 'now')}${fld('lvat', 'Ore (se «Alle ore…»)', 'type="time"')}
-      ${sel('lvdu', 'Durata della diretta', [['5', '5 minuti'], ['10', '10 minuti'], ['15', '15 minuti'], ['20', '20 minuti'], ['30', '30 minuti'], ['45', '45 minuti'], ['90', '90 minuti (tempo reale)']], String(L0 ? Math.round(L0.du / 6e4) : 15))}</div>
+    <div class="fgrid">${sel('lvst', 'Inizio', [['now', 'Adesso'], ...[5, 10, 15, 30, 60].map(x => [String(x), `Tra ${x} minuti`]), ['at', 'Alle ore…'], ['dt', 'Giorno e ora…']], L0?.pr ? 'dt' : 'now')}${fld('lvat', 'Ore (se «Alle ore…»)', 'type="time"')}${fld('lvdt', 'Giorno e ora (se «Giorno e ora…»)', `type="datetime-local" value="${L0 ? dtLocal(L0.st) : (() => { const y = ytGet(wIdOf(li, r, j)); return y?.at ? dtLocal(y.at) : ''; })()}"`)}
+      ${sel('lvdu', 'Durata della diretta', [['5', '5 minuti'], ['10', '10 minuti'], ['15', '15 minuti'], ['20', '20 minuti'], ['25', '25 minuti'], ['30', '30 minuti'], ['35', '35 minuti'], ['40', '40 minuti'], ['45', '45 minuti'], ['60', '60 minuti'], ['90', '90 minuti (tempo reale)']], String(L0 ? Math.round(L0.du / 6e4) : 15))}</div>
+    <label class="lubp" style="white-space:normal;margin-top:8px"><input type="checkbox" id="lvpr" name="lvpr"${L0?.pr ? ' checked' : ''}> 🎬 <b>È una Premiere</b>: punteggio e cronaca restano nascosti fino alla fine (metti come inizio l’orario della Premiere e come durata quella del video)</label>
     <label class="lubp" style="white-space:normal;margin-top:8px"><input type="checkbox" id="lvpush" name="lvpush" checked> Manda la notifica a tutti i manager</label>
     <div class="row" style="margin-top:8px"><button type="button" class="btn sm" id="lvchk">Controlla</button></div><div id="lvprev" style="margin-top:8px"></div>`,
     async fd => {
       const P = lvParse(H, A, fd.get('lvtx')); if (P.errs.length) fail(P.errs.slice(0, 4).join(' · '));
       const sv = fd.get('lvst'); let st = now();
       if (sv === 'at'){ const [hh, mi] = String(fd.get('lvat') || '').split(':').map(Number); if (!(hh >= 0)) fail('Scrivi l’ora di inizio.'); const d = new Date(); d.setHours(hh, mi || 0, 0, 0); if (d.getTime() < now() - 6e4) d.setDate(d.getDate() + 1); st = d.getTime(); }
+      else if (sv === 'dt'){ const v = fd.get('lvdt'); if (!v) fail('Scegli giorno e ora di inizio.'); st = new Date(v).getTime(); }
       else if (sv !== 'now') st = now() + (+sv) * 6e4;
       const du = Math.max(1, +fd.get('lvdu') || 15) * 6e4;
       const d2 = JSON.parse(JSON.stringify(lgDoc(li, s))), mm = d2.rounds[r].m[j]; if (mm[2] != null) fail('Questa partita ha già il risultato.');
-      d2.rounds[r].m[j] = [mm[0], mm[1], null, null, mm[4] || [], mm[5] || [], mm[6] || null, {st, du, tl: P.tl, res: P.res, src: String(fd.get('lvtx') || ''), by: S.me}];
+      d2.rounds[r].m[j] = [mm[0], mm[1], null, null, mm[4] || [], mm[5] || [], mm[6] || null, {st, du, tl: P.tl, res: P.res, src: String(fd.get('lvtx') || ''), by: S.me, ...(fd.get('lvpr') ? {pr: 1} : {})}];
       await wsave(d2.id, d2);
       const hh = new Date(st).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'});
-      if (fd.get('lvpush')) try { pushSend('all', `🔴 ${lgCN(H)} – ${lgCN(A)}`, st <= now() + 6e4 ? 'La partita è in diretta adesso: seguila sul sito.' : `In diretta alle ${hh}: seguila sul sito.`, './#diretta', `lv-${li}-${r}-${j}-${st}`); } catch {}
+      if (fd.get('lvpush')) try { pushSend('all', `${fd.get('lvpr') ? '🎬' : '🔴'} ${lgCN(H)} – ${lgCN(A)}`, st <= now() + 6e4 ? 'La partita è in diretta adesso: seguila sul sito.' : `In diretta alle ${hh}: seguila sul sito.`, './#diretta', `lv-${li}-${r}-${j}-${st}`); } catch {}
       toast(`Diretta programmata: ${lgCN(H)} ${P.res[2]}-${P.res[3]} ${lgCN(A)} · inizio ${hh} · ${Math.round(du / 6e4)} minuti`, 6000);
     }, L0 ? 'Aggiorna la diretta' : 'Avvia la diretta');
   $('#lvchk').onclick = () => { const P = lvParse(H, A, $('#lvtx').value);
@@ -4499,11 +4590,11 @@ async function lvTick(){
 /* aggiornamento dei minuti senza ridisegnare la pagina */
 function lvRefresh(){
   document.querySelectorAll('[data-lv]').forEach(el => { const [li, r, j] = el.dataset.lv.split('|').map(Number); const m = lgDoc(li)?.rounds?.[r]?.m?.[j]; const n = lvNow(m); if (!n) return;
-    const t = `${n.sc[0]}-${n.sc[1]}`, mn = el.querySelector('.lvmin'), sc = el.querySelector('.lvsc'); if (sc && sc.textContent !== t) sc.textContent = t; if (mn && mn.textContent !== n.txt) mn.textContent = n.txt; });
+    const t = n.pr ? '–' : `${n.sc[0]}-${n.sc[1]}`, mn = el.querySelector('.lvmin'), sc = el.querySelector('.lvsc'); if (sc && sc.textContent !== t) sc.textContent = t; if (mn && mn.textContent !== n.txt) mn.textContent = n.txt; });
   if (S.route === 'diretta' && !document.getElementById('dlg')?.open){ const ae = document.activeElement; if (!ae || !/INPUT|TEXTAREA|SELECT/.test(ae.tagName)) schedule(); }
 }
 setInterval(() => { try { if (S.world && lvAll().some(x => !x.m[7].ok && x.m[2] == null)) lvRefresh(); } catch {} }, 4000);
-const lvTag = (x, n) => `<span data-lv="${x.li}|${x.r}|${x.j}"><b class="lvsc">${n.sc[0]}-${n.sc[1]}</b> <span class="pill ${n.live ? 'bad' : n.ck.done ? '' : 'info'} lvmin">${n.txt}</span></span>`;
+const lvTag = (x, n) => `<span data-lv="${x.li}|${x.r}|${x.j}"><b class="lvsc">${n.pr ? '–' : `${n.sc[0]}-${n.sc[1]}`}</b> <span class="pill ${n.live ? 'bad' : n.ck.done ? '' : 'info'} lvmin">${n.txt}</span></span>`;
 function lvBanner(){
   if (S.route === 'diretta' || !S.world) return ''; const n = lvLive().length; if (!n) return '';
   return `<div class="notice" style="margin-bottom:12px">🔴 <b>${n} ${n > 1 ? 'partite' : 'partita'} in diretta</b> · <a href="#diretta">Guarda la diretta</a></div>`;
@@ -4528,10 +4619,12 @@ function viewDiretta(){
     const stats = sd => { const c = tp => n.seen.filter(e => e.sd === sd && e.t === tp).length; return {y: c('y'), r: c('r'), s: c('s')}; }, s0 = stats(0), s1 = stats(1);
     det = `<div class="panel"><div class="ph"><h3>${esc(x.doc.name || '')} · giornata ${x.r + 1}</h3>${S.comm && x.m[2] == null ? `<span class="row">${admBtn('lv-new', ix(x), 'Modifica')}${admBtn('lv-del', ix(x), 'Annulla', 'bad')}</span>` : ''}</div>
       <div data-lv="${ix(x)}" style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;text-align:center;padding:10px 0">
-        <div><b style="font-size:1.05em">${esc(lgCN(H))}</b></div><div><div class="lvsc" style="font-size:2.2em;font-weight:800;letter-spacing:2px">${n.sc[0]}-${n.sc[1]}</div><span class="pill ${n.live ? 'bad' : ''} lvmin">${n.ck.pre ? 'Inizio ' + new Date(x.m[7].st).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'}) : n.txt}</span></div><div><b style="font-size:1.05em">${esc(lgCN(A))}</b></div></div>
+        <div><b style="font-size:1.05em">${esc(lgCN(H))}</b></div><div><div class="lvsc" style="font-size:2.2em;font-weight:800;letter-spacing:2px">${n.pr ? '–' : `${n.sc[0]}-${n.sc[1]}`}</div><span class="pill ${n.live ? 'bad' : ''} lvmin">${n.ck.pre ? 'Inizio ' + new Date(x.m[7].st).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'}) : n.txt}</span></div><div><b style="font-size:1.05em">${esc(lgCN(A))}</b></div></div>
       <div style="height:6px;border-radius:3px;background:rgba(127,127,127,.2);overflow:hidden"><div style="height:100%;width:${pct}%;background:${n.live ? '#d33' : '#22a35a'}"></div></div>
-      ${n.ck.pre ? '' : `<p class="sub" style="text-align:center;margin-top:6px">🟨 ${s0.y} · 🟥 ${s0.r} · 🔁 ${s0.s} &nbsp;|&nbsp; 🟨 ${s1.y} · 🟥 ${s1.r} · 🔁 ${s1.s}</p>`}
-      <div class="list" style="margin-top:8px">${n.ck.pre ? '<p class="muted">La partita non è ancora iniziata.</p>' : stamps.join('') + list + hl + (n.seen.length ? '' : '<p class="muted">Ancora nessun evento.</p>') + '<div class="li"><div class="main"><span class="sub">▶️ Calcio d’inizio</span></div></div>'}</div></div>`;
+      ${n.ck.pre || n.pr ? '' : `<p class="sub" style="text-align:center;margin-top:6px">🟨 ${s0.y} · 🟥 ${s0.r} · 🔁 ${s0.s} &nbsp;|&nbsp; 🟨 ${s1.y} · 🟥 ${s1.r} · 🔁 ${s1.s}</p>`}
+      ${ytBtn(wIdOf(x.li, x.r, x.j), true) ? `<div style="text-align:center">${ytBtn(wIdOf(x.li, x.r, x.j), true)}</div>` : ''}
+      ${n.pr ? '<p class="notice" style="margin-top:8px">🎬 Partita in Premiere su YouTube: risultato e cronaca compaiono qui al fischio finale. Niente spoiler!</p>' : ''}
+      <div class="list" style="margin-top:8px">${n.pr ? '' : n.ck.pre ? '<p class="muted">La partita non è ancora iniziata.</p>' : stamps.join('') + list + hl + (n.seen.length ? '' : '<p class="muted">Ancora nessun evento.</p>') + '<div class="li"><div class="main"><span class="sub">▶️ Calcio d’inizio</span></div></div>'}</div></div>`;
   }
   return `<section class="grid2"><div id="lvdet">${det || `<div class="panel"><div class="empty"><strong>Diretta</strong><span>Qui vedi le partite giocate dal commissario alla Play, minuto per minuto: gol, assist, cartellini, cambi e infortuni. Tocca una partita per aprirla.</span></div></div>`}</div><div>${block('🔴 In diretta', live, 'Nessuna partita in diretta adesso.')}${block('🕒 In programma', next, 'Nessuna diretta in programma.')}${block('🏁 Finite', end, 'Nessuna diretta finita negli ultimi giorni.')}</div></section>`;
 }
@@ -5133,6 +5226,7 @@ function viewHome(){
           <a class="btn primary hbtn" href="#posta">${S.me ? 'Controlla la posta' : 'Accedi'}</a>`}
       ${myNext ? `<div class="hnext"><div class="hnl"><span>Prossima · ${myNext.stage ? 'Playoff' : 'Giornata ' + myNext.round}</span><span class="${lu ? 'ok' : 'todo'}">${lu ? 'Distinta consegnata' : 'Distinta da consegnare'}</span></div>${luWinLine(myNext) ? `<div class="hsub">${luWinLine(myNext)}</div>` : ''}
           <div class="hvs"><span>${crest(H)}<b>${esc(H?.name || '—')}</b></span><i>vs</i><span class="r"><b>${esc(A?.name || '—')}</b>${crest(A)}</span></div>
+          ${myNext.w ? `<div class="hsub" style="text-align:center">${esc(watchTxt(watchOf(myNext)))}${ytBtn(myNext.id, true) ? '<br>' + ytBtn(myNext.id, true) : ''}</div>` : ''}
           <button class="btn primary hbtn" data-act="lineup" data-id="${myNext.id}">${lu ? 'Modifica la distinta' : 'Consegna la distinta'}</button></div>` : ''}
     </section>
     ${homeKpis(mc, open, nA)}
@@ -5332,7 +5426,7 @@ function viewPre(){
 const preBanner = () => ''; const preBannerOld = () => { const mc = myClub(); return preOn() && !S.pre.done && S.route !== 'precampionato' && mc && preCanPick(mc.id) ? `<div class="notice" style="margin-bottom:14px">🏟️ Precampionato: <b>tocca a te scegliere il girone!</b> · <a href="#precampionato">Vai al precampionato</a></div>` : ''; };
 
 /* ---------- permessi ---------- */
-const COMM_ONLY = new Set(['lv-new','lv-del','lu-push','play-ok','play-undo','play-all','play-start','al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
+const COMM_ONLY = new Set(['yt-set','lv-new','lv-del','lu-push','play-ok','play-undo','play-all','play-start','al-go','gr-make','gr-all','gr-done','rv-mgr','fc27-fill','fc27-wipe','fc27-upload','sofifa-paste','sofifa-multi','mkt-fc27-sync','mkt-fc27','mkt-fc27-rt','mkt-undo-all','ratings','logos-bulk','lu-win','lu-copy','lg-gen','lg-round','lg-cal','coach-edit','lg-bulk','lg-res','lg-sim','lg-simr','lg-mode-all','serie-sim','serie-simr','clubs-wipe','cup-res','cpu-clubs','fx-round','mkt-edit','mkt-start','fx-add','fx-edit','fx-del','fx-clear','fa-file','draw-skip','draw-new','draw-next','draw-all','draw-end','start-budgets','live','assign','recalc','reset-league','settings','club-new','club-edit','club-leave','club-del','result','add-player','import','edit-player','auc-cancel','auc-time','fa-add','fa-import','fa-del','obj-add','obj-done','obj-fail','obj-del','adjust','window','adm-o-force','adm-o-edit','adm-o-alt','adm-o-del','adm-c-del','adm-t-undo','adm-t-del','adm-l-back','adm-l-keep','adm-club-fix','adm-pl-move','adm-tab','adm-inline','sec-toggle','adm-u-free','adm-u-assign','adm-u-pass','adm-u-mail','adm-u-del','adm-p-free','adm-p-move','adm-p-del','gen','close-season']);
 const MKT_ACTS = new Set(['w-offer','cpu-reply','clause-set','clause-pay','buyback','rescind','prel-match','sell','offer','redeem','auc-start','bid','cpu-buy','offer-accept','offer-counter','offer-accept-alt','offer-counter-alt']);
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
@@ -5564,6 +5658,7 @@ document.addEventListener('click', async e => {
       case 'coach-edit': coachModal(id); break;
       case 'lg-bulk': lgBulk(+id); break;
       case 'lg-r': S.lgr = +id; schedule(); break;
+      case 'yt-set': { const [a, b, c] = id.split('|').map(Number); ytModal(a, b, c); break; }
       case 'lv-open': S.lvSel = id; if (location.hash !== '#diretta') location.hash = 'diretta'; else render(); setTimeout(() => document.getElementById('lvdet')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 120); break;
       case 'lv-new': { const [a, b, c] = id.split('|').map(Number); lvModal(a, b, c); break; }
       case 'lv-del': { const [a, b, c] = id.split('|').map(Number); await lvDel(a, b, c); break; }
@@ -6433,7 +6528,7 @@ function admCalTab(){
   let world = '<p class="muted">Campionati in caricamento…</p>';
   if (WORLD && !WORLD.err){ const ls = lgList(), hs = lgHumanSet(), li = ls.some(l => l.li === +S.admLg) ? +S.admLg : (ls.find(l => hs.has(l.li)) || ls[0])?.li, doc = li != null ? lgDoc(li, season()) : null;
     const lr = doc ? (doc.rounds[+S.admLr - 1] ? +S.admLr : (doc.rounds.findIndex(r => r.m.some(m => !lgPlayed(m))) + 1 || doc.rounds.length)) : 0;
-    const rows2 = doc ? (doc.rounds[lr - 1]?.m || []).map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))} – ${esc(lgCN(x[1]))}</b><br><span class="sub">${lgPlayed(x) ? `${x[2]}–${x[3]}` : lvHas(x) ? `🔴 diretta: ${lvNow(x).txt} · finirà ${x[7].res[2]}–${x[7].res[3]}` : 'da giocare'}</span></div>${!lgPlayed(x) && lgMode(li) === 'sim' ? admBtn('lg-sim', `${li}|${lr - 1}|${j}`, 'Simula', 'primary') : ''}${x[2] == null ? admBtn('lv-new', `${li}|${lr - 1}|${j}`, lvHas(x) ? '🔴 Modifica diretta' : '🔴 Diretta', 'primary') : ''}${lvHas(x) && x[2] == null ? admBtn('lv-del', `${li}|${lr - 1}|${j}`, 'Annulla diretta', 'bad') : admBtn('lg-res', `${li}|${lr - 1}|${j}`, lgPlayed(x) ? 'Correggi' : 'Risultato', '')}${!lgPlayed(x) ? admBtn('lg-medit', `${li}|${lr - 1}|${j}`, 'Cambia') : ''}${admBtn('lg-mdel', `${li}|${lr - 1}|${j}`, 'Elimina', 'bad')}</div>`).join('') : '';
+    const rows2 = doc ? (doc.rounds[lr - 1]?.m || []).map((x, j) => `<div class="li"><div class="main"><b>${esc(lgCN(x[0]))} – ${esc(lgCN(x[1]))}</b><br><span class="sub">${lgPlayed(x) ? `${x[2]}–${x[3]}` : lvHas(x) ? `🔴 diretta: ${lvNow(x).txt} · finirà ${x[7].res[2]}–${x[7].res[3]}` : 'da giocare'}</span></div>${!lgPlayed(x) && lgMode(li) === 'sim' ? admBtn('lg-sim', `${li}|${lr - 1}|${j}`, 'Simula', 'primary') : ''}${(() => { const wm = wMatches().find(q => q.id === wIdOf(li, lr - 1, j)); if (!wm) return ''; const W = watchOf(wm); return `<span class="pill ${W?.mode === 'prem' ? 'info' : ''}" style="white-space:normal">${esc(watchTxt(W))}</span>${admBtn('yt-set', `${li}|${lr - 1}|${j}`, ytGet(wm.id) ? '▶️ Modifica link' : '▶️ Link YouTube')}`; })()}${x[2] == null ? admBtn('lv-new', `${li}|${lr - 1}|${j}`, lvHas(x) ? '🔴 Modifica diretta' : '🔴 Diretta', 'primary') : ''}${lvHas(x) && x[2] == null ? admBtn('lv-del', `${li}|${lr - 1}|${j}`, 'Annulla diretta', 'bad') : admBtn('lg-res', `${li}|${lr - 1}|${j}`, lgPlayed(x) ? 'Correggi' : 'Risultato', '')}${!lgPlayed(x) ? admBtn('lg-medit', `${li}|${lr - 1}|${j}`, 'Cambia') : ''}${admBtn('lg-mdel', `${li}|${lr - 1}|${j}`, 'Elimina', 'bad')}</div>`).join('') : '';
     world = ls.length ? `<div class="f full"><label for="admLg">Campionato</label><select id="admLg" data-wf="admLg">${ls.map(l => `<option value="${l.li}"${l.li === li ? ' selected' : ''}>${esc(l.name)} · ${esc(lgModeLabel(l.li))}</option>`).join('')}</select></div>
       ${lgModeCtl(li)}<div class="row" style="margin:6px 0"><span class="sub">Tutti i campionati:</span>${admBtn('lg-mode-all', 'sim', 'Partita per partita')}${admBtn('lg-mode-all', 'hand', 'A mano')}${admBtn('lg-mode-all', 'auto', 'Automatico', 'ghost')}</div>
       <div class="row" style="margin:8px 0">${admBtn('lg-add', li, '+ Partita', 'primary')}${admBtn('lg-round', li, 'Inserisci giornata a mano')}${admBtn('lg-cal', li, 'Incolla calendario')}${admBtn('lg-gen', li, 'Genera automatico')}${doc ? admBtn('lg-bulk', li, 'Correggi risultati') : ''}${doc ? admBtn('adm-delcal', li, 'Elimina calendario', 'bad') : ''}</div>
