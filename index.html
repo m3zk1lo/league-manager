@@ -1327,16 +1327,27 @@ function viewMarket(){
     </aside></section>`;
 }
 
+/* statistiche dei campionati del Mondo (dove giocano i manager): gol, assist e cartellini dai risultati */
+function wstats(scope, lf){
+  const st = {}, s = season(), get = (fc, ci) => { const k = String(fc); if (!st[k]){ const nm = fcName(fc)?.name || '?'; st[k] = {id: k, n: nm, c: 'w' + ci, cn: lgCN(ci), g: 0, a: 0, y: 0, r: 0}; } return st[k]; };
+  (S.world || []).filter(d => d.li != null && d.rounds && (scope === 'all' || d.season === s) && (lf == null || lf === '' || String(d.li) === String(lf))).forEach(d => d.rounds.forEach(r => r.m.forEach(m => {
+    if (m[2] == null) return; const ev = m[6] || {};
+    [[m[0], m[4], ev.a1], [m[1], m[5], ev.a2]].forEach(([ci, sc, as]) => (sc || []).forEach((fc, i) => { if (fc == null || fc === 'og') return; get(fc, ci).g++; const a = (as || [])[i]; if (a != null && a !== '') get(a, ci).a++; }));
+    (ev.y || []).forEach(([sd, fc]) => get(fc, m[sd]).y++); (ev.r || []).forEach(([sd, fc]) => get(fc, m[sd]).r++);
+  })));
+  return st;
+}
 function viewStats(){
-  const st = Object.values(pstats(S.statScope));
+  const lf = S.statLg ?? '', lgs = lgList().filter(L => (S.world || []).some(d => d.li === L.li && d.rounds?.some(r => r.m.some(m => m[2] != null))));
+  const st = [...Object.values(lf === '' ? pstats(S.statScope) : {}), ...Object.values(wstats(S.statScope, lf))];
   const tbl = (title, key, label) => { const rows = st.filter(o => o[key] > 0).sort((a, b) => b[key] - a[key] || a.n.localeCompare(b.n)).slice(0, 15);
     return `<div class="panel"><div class="ph"><h3>${title}</h3></div>${rows.length ? `<div class="tscroll"><table><thead><tr><th>#</th><th>Giocatore</th><th>Società</th><th class="r">${label}</th></tr></thead><tbody>
-      ${rows.map((o, i) => `<tr><td class="pos">${i+1}</td><td><b>${esc(o.n)}</b></td><td>${clubLink(club(o.c))}</td><td class="r pts">${o[key]}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun dato ancora.</p>'}</div>`; };
+      ${rows.map((o, i) => `<tr><td class="pos">${i+1}</td><td><b>${esc(o.n)}</b></td><td>${club(o.c) ? clubLink(club(o.c)) : esc(o.cn || '')}</td><td class="r pts">${o[key]}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun dato ancora.</p>'}</div>`; };
   const cards = st.filter(o => o.y || o.r).sort((a, b) => (b.r*3 + b.y) - (a.r*3 + a.y)).slice(0, 15);
-  return `<div class="row"><span class="lbl">Periodo</span><select class="inl" id="statscope" data-act="statscope" aria-label="Periodo statistiche"><option value="season"${S.statScope === 'season' ? ' selected' : ''}>Stagione ${season()}</option><option value="all"${S.statScope === 'all' ? ' selected' : ''}>Tutte le stagioni</option></select></div>
+  return `<div class="row"><span class="lbl">Periodo</span><select class="inl" id="statscope" data-act="statscope" aria-label="Periodo statistiche"><option value="season"${S.statScope === 'season' ? ' selected' : ''}>Stagione ${season()}</option><option value="all"${S.statScope === 'all' ? ' selected' : ''}>Tutte le stagioni</option></select><span class="lbl" style="margin-left:10px">Campionato</span><select class="inl" id="statlg" aria-label="Campionato"><option value="">Tutti</option>${lgs.map(L => `<option value="${L.li}"${String(lf) === String(L.li) ? ' selected' : ''}>${esc(L.name)}</option>`).join('')}</select></div>
   <section class="grid2"><div class="stack">${tbl('Classifica marcatori', 'g', 'Gol')}${tbl('Classifica assist', 'a', 'Assist')}</div>
   <aside class="stack"><div class="panel"><div class="ph"><h3>Disciplina</h3></div>${cards.length ? `<div class="tscroll"><table><thead><tr><th>Giocatore</th><th>Società</th><th class="r"><span class="card-y"></span></th><th class="r"><span class="card-r"></span></th></tr></thead><tbody>
-    ${cards.map(o => `<tr><td><b>${esc(o.n)}</b></td><td>${clubLink(club(o.c))}</td><td class="r">${o.y}</td><td class="r">${o.r}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun cartellino.</p>'}</div></aside></section>`;
+    ${cards.map(o => `<tr><td><b>${esc(o.n)}</b></td><td>${club(o.c) ? clubLink(club(o.c)) : esc(o.cn || '')}</td><td class="r">${o.y}</td><td class="r">${o.r}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nessun cartellino.</p>'}</div></aside></section>`;
 }
 
 function viewLeague(){ return viewLeague0() + benchPanel(); }
@@ -3255,6 +3266,7 @@ const RULES_LIST = () => [
   <li>Le partite le gioca il commissario alla Play; poi inserisce sul sito tutto quello che è successo e il sito le «trasmette» in diretta per qualche minuto. <b>Finiscono sempre esattamente come sono finite alla Play.</b></li>
   <li>Quando parte una diretta arriva una notifica a tutti. Durante la diretta il risultato non compare ancora in classifica: entra in classifica, statistiche e incassi al fischio finale.</li>
   <li>Le partite finite restano nella sezione per qualche giorno, con la cronaca completa.</li></ul>`],
+ ['📊 Statistiche', `<ul><li>In <b>Statistiche</b> trovi marcatori, assist e cartellini di tutti i campionati in cui giocano i manager, aggiornati a ogni risultato (le dirette contano al fischio finale). Puoi filtrare per stagione e per campionato.</li></ul>`],
  ['🏆 Campionati, promozioni e coppe', `<ul>
   <li>Ogni campionato ha le sue regole vere: promozioni, retrocessioni, playoff e zone europee (solo dove nel gioco esiste la serie superiore o inferiore).</li>
   <li><b>Coppe europee</b> (Champions, Europa e Conference League) con il formato vero, <b>dalla seconda stagione</b>: ci si qualifica con le classifiche della stagione prima. Sorteggi e calendari li fa il sito; le partite dei manager le gioca il commissario, quelle tra club CPU le simula il sito. Tutto in <b>Mondo → Coppe</b>.</li></ul>`],
@@ -5570,6 +5582,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'clubsel'){ S.viewClub = t.value; render(); }
   if (t.id === 'statscope'){ S.statScope = t.value; render(); }
+  if (t.id === 'statlg'){ S.statLg = t.value; render(); }
   if (t.id === 'mktpos'){ S.mktPos = t.value; render(); }
   if (t.id === 'fapos'){ S.faPos = t.value; refreshFreeTable(); }
 });
