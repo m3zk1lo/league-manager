@@ -1382,7 +1382,7 @@ function viewLeague0(){
           <div class="li"><span>Monte ingaggi</span><b>rosa iniziale + ${wageMarginOf('A')}% (A) · + ${wageMarginOf('B')}% (B)</b></div>
           ${hasB() ? `<div class="li"><span>Bonus promozione</span><b class="num">${fmtM(promoBonus())} a chi sale in A</b></div>` : ''}
           <div class="li"><span>Rosa massima</span><b class="num">${s.maxSquad} giocatori</b></div>
-          <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · max ${maxSubs()} cambi</b></div>
+          <div class="li"><span>Distinta di gara</span><b>${luRequired() ? 'obbligatoria' : 'facoltativa'} · panchina ${maxBench()} · max ${maxSubs()} cambi</b></div>
           <div class="li"><span>Squalifica</span><b>rosso o ${s.yellowLimit}° giallo</b></div>
           <div class="li"><span>Aste svincolati</span><b class="num">${AUC().mins} min · rilancio ${fmtM(AUC().step)}</b></div>
           <div class="li"><div class="main"><span>Premi Serie A</span><br><span class="sub num">${prizes || 'nessuno'}</span></div></div>
@@ -1443,6 +1443,7 @@ function settingsModal(){
     ${fld('maxSquad', 'Rosa massima', `type="number" min="11" max="52" value="${s.maxSquad}"`)}
     ${fld('yellowLimit', 'Gialli per la squalifica', `type="number" min="1" max="10" value="${s.yellowLimit}"`)}
     ${fld('maxSubs', 'Cambi massimi in distinta', `type="number" min="0" max="11" value="${s.maxSubs ?? 5}"`)}
+    ${fld('maxBench', 'Giocatori in panchina', `type="number" min="1" max="12" value="${s.maxBench ?? 9}"`)}
     <div class="f"><span class="lbl">Distinta di gara</span><label><input type="checkbox" name="lureq" ${s.lineupRequired !== false ? 'checked' : ''}> Obbligatoria prima di inserire il risultato</label></div>
     ${fld('auctionStep', 'Rilancio minimo alle aste (milioni €)', `type="number" min="0" step="0.1" value="${(s.auctionStep ?? 0.5 * M) / M}"`)}
     ${fld('prizesB', 'Premi piazzamento Serie B (milioni €, dal 1° in giù)', `value="${esc(prizesB().map(p => p / M).join('; '))}"`, 'Separati da punto e virgola. Vengono accreditati alla chiusura della stagione.', true)}
@@ -1452,7 +1453,7 @@ function settingsModal(){
       const name = String(fd.get('name')).trim() || fail('Dai un nome al torneo.');
       const data = {name, startBudget: num(fd, 'startBudget') * M, startWage: num(fd, 'startWage') * K, maxSquad: Math.round(num(fd, 'maxSquad')) || 30,
         yellowLimit: Math.max(1, Math.round(num(fd, 'yellowLimit')) || 3),
-        maxSubs: Math.max(0, Math.min(11, Math.round(num(fd, 'maxSubs')))), lineupRequired: fd.get('lureq') === 'on',
+        maxSubs: Math.max(0, Math.min(11, Math.round(num(fd, 'maxSubs')))), maxBench: Math.max(1, Math.min(12, Math.round(num(fd, 'maxBench')) || 9)), lineupRequired: fd.get('lureq') === 'on',
         auctionStep: Math.max(0, num(fd, 'auctionStep')) * M,
         prizesB: String(fd.get('prizesB') || '').split(';').map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
         prizes: String(fd.get('prizes')).split(/[,;]/).map(x => parseFloat(x.trim().replace(',', '.'))).filter(x => !isNaN(x)).map(x => x * M),
@@ -1698,10 +1699,13 @@ function newsItems(){
 const newsWhen = ts => { const d = now() - ts; if (d < 6e4) return 'ora'; if (d < 36e5) return Math.floor(d / 6e4) + ' min fa'; if (d < 864e5) return Math.floor(d / 36e5) + ' h fa';
   return new Date(ts).toLocaleDateString('it-IT', {day: 'numeric', month: 'short'}); };
 function newsPanel(max, title){
-  const it = newsItems().slice(0, max || 12);
-  return `<div class="panel"><div class="ph"><h3>${title || 'Notizie di mercato'}</h3>${S.comm && it.length ? '<button class="btn sm" data-act="news-copy">Copia per WhatsApp</button>' : ''}</div>
+  const all = newsItems(), f = S.newsLg ?? '', lim = Math.max(max || 12, S.newsMax || 0);
+  const fl = all.filter(x => f === '' ? true : f === 'm' ? x.lg == null : String(x.lg) === String(f)), it = fl.slice(0, lim);
+  const lgs = [...new Map(all.filter(x => x.lg != null).map(x => [x.lg, lgList().find(L => L.li === x.lg)?.name || ('Campionato ' + x.lg)])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const selN = `<select class="inl" id="newslg" aria-label="Filtra notizie"><option value="">Tutte</option><option value="m"${f === 'm' ? ' selected' : ''}>Mercato e club</option>${lgs.map(([li, n]) => `<option value="${li}"${String(f) === String(li) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+  return `<div class="panel"><div class="ph"><h3>${title || 'Notizie di mercato'}</h3><span class="row">${selN}${S.comm && it.length ? '<button class="btn sm" data-act="news-copy">Copia per WhatsApp</button>' : ''}</span></div>
     ${it.length ? `<div class="list">${it.map(x => `<div class="li"><div class="main" style="display:flex;gap:10px;align-items:flex-start"><span aria-hidden="true" style="font-size:1.2rem;line-height:1.3">${x.ic}</span><span>${x.html}${x.live ? ' <span class="pill">IN CORSO</span>' : ''}</span></div><span class="sub" style="white-space:nowrap">${newsWhen(x.ts)}</span></div>`).join('')}</div>`
-      : '<p class="muted">Ancora nessuna notizia: appena parte una trattativa o un’asta compare qui.</p>'}</div>`;
+      : '<p class="muted">Ancora nessuna notizia: appena parte una trattativa o un’asta compare qui.</p>'}${fl.length > it.length ? `<div class="row" style="justify-content:center;margin-top:8px"><button class="btn sm" data-act="news-more">Mostra altre (${fl.length - it.length})</button></div>` : ''}</div>`;
 }
 async function newsCopy(){
   const strip = h => h.replace(/<b>(.*?)<\/b>/g, '*$1*').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
@@ -2838,11 +2842,12 @@ function lgView0(){
 const LG_TOP = /^(Premier League|LaLiga|Bundesliga|Ligue 1|Liga Portugal|Eredivisie)$/;
 function lgNews(){
   const out = [];
-  (S.world || []).filter(d => d.li != null && !LG_SKIP.test(d.name) && d.season === season() && d.rounds?.length && LG_TOP.test(d.name)).forEach(d => {
-    let k = 0; d.rounds.forEach((x, i) => { if (x.m.some(lgPlayed)) k = i + 1; }); if (!k) return; const r = {...d.rounds[k - 1], m: d.rounds[k - 1].m.filter(lgPlayed)};
-    const best = r.m.slice().sort((x, y) => (lgStrength(lgClub(y[0]) || {players: []}) + lgStrength(lgClub(y[1]) || {players: []})) - (lgStrength(lgClub(x[0]) || {players: []}) + lgStrength(lgClub(x[1]) || {players: []})))[0];
-    if (!best) return; const top = lgTable(d)[0];
-    out.push({ts: r.ts || 0, ic: '🌍', html: `<b>${esc(d.name)}</b> · ${k}ª giornata: ${esc(lgCN(best[0]))} ${best[2]}-${best[3]} ${esc(lgCN(best[1]))}${lgScoreLine(best) ? ` (${lgScoreLine(best).replace(/<[^>]+>/g, '')})` : ''} · in testa <b>${esc(lgCN(top.i))}</b> a ${top.pt}`});
+  (S.world || []).filter(d => d.li != null && !LG_SKIP.test(d.name || '') && d.season === season() && d.rounds?.length).forEach(d => {
+    d.rounds.forEach((x, i) => { const played = x.m.filter(lgPlayed); if (!played.length) return;
+      const res = played.map(m => `${esc(lgCN(m[0]))} <b>${m[2]}-${m[3]}</b> ${esc(lgCN(m[1]))}${lgScoreLine(m) ? ` <span class="sub">(${lgScoreLine(m).replace(/<[^>]+>/g, '')})</span>` : ''}`).join(' · ');
+      const top = i === d.rounds.reduce((k, r, j) => r.m.some(lgPlayed) ? j : k, -1) ? lgTable(d)[0] : null;
+      out.push({ts: x.ts || d.updated || 0, ic: '🌍', lg: d.li, html: `<b>${esc(d.name)}</b> · ${i + 1}ª giornata${played.length < x.m.length ? ` (${played.length}/${x.m.length})` : ''}: ${res}${top ? ` · in testa <b>${esc(lgCN(top.i))}</b> a ${top.pt}` : ''}`});
+    });
   });
   return out;
 }
@@ -3228,7 +3233,7 @@ function moraleNews(){
 /* ---------- regolamento ufficiale: come funziona il sito ---------- */
 const RULES_LIST = () => [
  ['🧭 Il sito in breve', `<p>League Manager è una <b>lega carriera allenatore di FC 27</b> tra manager veri, dentro un Mondo con tutte le squadre e i campionati del gioco. Dal menu in alto:</p><ul>
-  <li><b>Centrale</b>: la tua squadra, la prossima partita con la <b>distinta</b> da consegnare, budget, monte ingaggi, bacheca delle trattative, notizie e classifica.</li>
+  <li><b>Centrale</b>: la tua squadra, la prossima partita con la <b>distinta</b> da consegnare, budget, monte ingaggi, bacheca delle trattative, classifica e le <b>Notizie dal mondo</b>: risultati di tutti i campionati, mercato, panchine. Con la tendina scegli un campionato alla volta (o solo «Mercato e club»), con «Mostra altre» vai indietro nel tempo.</li>
   <li><b>Squadra</b>: rosa divisa per ruolo (con OVR, età, contratto, morale e link <b>SoFIFA ↗</b> alla scheda esatta del giocatore), stadio, sponsor, staff medico e bilancio.</li>
   <li><b>Mercato</b>: le tue trattative con i club CPU e con gli altri manager, le aste, le notizie e il registro dei trasferimenti.</li>
   <li><b>Mondo</b>: tutti i club veri con le rose, i campionati, le coppe, la <b>Sala trattative</b> in diretta e i giocatori <b>Senza squadra</b>.</li>
@@ -3262,6 +3267,7 @@ const RULES_LIST = () => [
   <li>Per ogni giornata la distinta si consegna nella <b>finestra decisa dal commissario</b> (per esempio da domenica a mezzanotte fino alle 21:00 del giorno della partita). Dopo la chiusura non si può più modificare.</li>
   <li>La <b>Formazione tipo</b> vale per tutte le partite: se l’hai salvata non prendi penalità anche se dimentichi la distinta. Si imposta da <b>Squadra</b> (da telefono: <b>Altro → Società e rosa</b>) nel riquadro «Formazione tipo», oppure spuntando «Salva anche come formazione tipo» in fondo alla distinta. Se per una partita vuoi cambiare qualcosa, modifichi solo la distinta di quella gara.</li>
   <li>Chi non consegna (e non ha la formazione tipo) gioca con la formazione di default di FC 27 e prende una <b>distinta mancata</b>. <b>Alla 5ª distinta mancata perde la panchina.</b></li>
+  <li>Nella distinta: 11 titolari, <b>panchina fino a ${maxBench()} giocatori</b> e <b>massimo ${maxSubs()} cambi</b> programmati (i valori li decide il commissario).</li>
   <li>Le notifiche ti avvisano quando la finestra apre e prima che chiuda.</li>
   <li>Quando consegni la distinta (o salvi la formazione tipo) <b>il commissario riceve una notifica</b>, così sa subito che può giocare la tua partita.</li></ul>`],
  ['🔴 La Diretta', `<ul>
@@ -3838,7 +3844,7 @@ const ROLES = {
 };
 const roleKey = pos => ({TD: 'FB', TS: 'FB', ED: 'EM', ES: 'EM', AD: 'AW', AS: 'AW'})[pos] || pos;
 const rolesFor = pos => ROLES[roleKey(pos)] || ROLES.CC;
-const maxBench = () => S.settings?.maxBench ?? 5;
+const maxBench = () => S.settings?.maxBench ?? 9;
 const SETP = [['cap', 'Capitano'], ['pen', 'Rigori'], ['fk', 'Punizioni'], ['cl', 'Calci d’angolo sinistra'], ['cr', 'Calci d’angolo destra']];
 
 /* formazione tipo: si imposta una volta e vale per tutte le partite finché non la cambi */
@@ -5231,7 +5237,7 @@ function viewHome(){
           <button class="btn primary hbtn" data-act="lineup" data-id="${myNext.id}">${lu ? 'Modifica la distinta' : 'Consegna la distinta'}</button></div>` : ''}
     </section>
     ${homeKpis(mc, open, nA)}
-    ${boardPanel(true)}${newsItems().length ? newsPanel(4, 'Notizie') : ''}${homeTable(mc)}`;
+    ${boardPanel(true)}${newsItems().length ? newsPanel(6, 'Notizie dal mondo') : ''}${homeTable(mc)}`;
 }
 function bnavSync(){
   const nav = $('#bnav'); if (!nav) return;
@@ -5659,6 +5665,7 @@ document.addEventListener('click', async e => {
       case 'coach-edit': coachModal(id); break;
       case 'lg-bulk': lgBulk(+id); break;
       case 'lg-r': S.lgr = +id; schedule(); break;
+      case 'news-more': S.newsMax = Math.max(S.newsMax || 0, 6) + 10; render(); break;
       case 'yt-set': { const [a, b, c] = id.split('|').map(Number); ytModal(a, b, c); break; }
       case 'lv-open': S.lvSel = id; if (location.hash !== '#diretta') location.hash = 'diretta'; else render(); setTimeout(() => document.getElementById('lvdet')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 120); break;
       case 'lv-new': { const [a, b, c] = id.split('|').map(Number); lvModal(a, b, c); break; }
@@ -5682,6 +5689,7 @@ document.addEventListener('change', e => {
   if (t.id === 'clubsel'){ S.viewClub = t.value; render(); }
   if (t.id === 'statscope'){ S.statScope = t.value; render(); }
   if (t.id === 'statlg'){ S.statLg = t.value; render(); }
+  if (t.id === 'newslg'){ S.newsLg = t.value; S.newsMax = 0; render(); }
   if (t.id === 'mktpos'){ S.mktPos = t.value; render(); }
   if (t.id === 'fapos'){ S.faPos = t.value; refreshFreeTable(); }
 });
