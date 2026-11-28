@@ -3224,9 +3224,10 @@ const RULES_LIST = () => [
   <li><b>Tutti i club sono uguali</b>: Serie A, Serie B, Premier League, LaLiga o qualsiasi altro campionato. Un club è <b>libero</b> (lo gestisce la CPU) finché non arriva un manager: da quel momento <b>lo gestisce il manager</b>.</li>
   <li>Le squadre le <b>assegna il commissario</b>. Alla prima scelta non si possono prendere club da 5 stelle (massimo 4,5★).</li>
   <li><b>Un solo cambio di squadra a stagione</b>, accettando un’offerta del mercato allenatori o con il commissario.</li>
-  <li>Se un manager lascia la squadra, il club torna alla CPU con un suo allenatore.</li></ul>`],
+  <li>Se un manager lascia la squadra, il club torna alla CPU con l’allenatore vero (o uno scelto dal commissario): tiene rosa e budget e può essere assegnato a un nuovo manager in qualsiasi momento.</li></ul>`],
  ['📋 Le rose', `<ul>
-  <li>Le rose partono da <b>FC 27</b> e, per i principali campionati (Serie A, Premier League, Championship, LaLiga, Bundesliga, Ligue 1, Eredivisie, Portogallo), sono <b>le rose vere di oggi</b>, aggiornate <b>ogni lunedì</b> in automatico.</li>
+  <li><b>Le squadre dei manager partono identiche a quelle che il commissario ha su FC 27 alla Play</b>: stessi giocatori, ruoli e OVR. Da lì in poi le cambia solo il mercato della lega.</li>
+  <li>Le rose dei club CPU partono da <b>FC 27</b> e, per i principali campionati (Serie A, Premier League, Championship, LaLiga, Bundesliga, Ligue 1, Eredivisie, Portogallo), sono <b>le rose vere di oggi</b>, aggiornate <b>ogni lunedì</b> in automatico.</li>
   <li>L’aggiornamento settimanale vale <b>solo per i club CPU</b>. <b>Le rose dei manager sono bloccate</b>: le cambia solo il vostro mercato. Un giocatore comprato nella lega resta vostro anche se nella realtà cambia squadra.</li>
   <li>I giocatori passati alla CPU con il nostro mercato (venduti, vinti all’asta o in trattativa da un club CPU) restano in quel club anche dopo gli aggiornamenti.</li>
   <li><b>OVR</b>: quello di FC 27. Quando EA pubblicherà i voti aggiornati di FC 27, il sito li applicherà da solo. Per i dettagli di ogni giocatore c’è il link <b>SoFIFA ↗</b>.</li></ul>`],
@@ -3254,7 +3255,8 @@ const RULES_LIST = () => [
   <li><b>Stadio</b>: incasso a ogni partita in casa, in base a capienza, prezzo e prestigio. <b>Sponsor</b>: importi e obiettivi in base al club. <b>Staff medico</b>: si potenzia e ha un costo annuo.</li>
   <li>La rosa non può superare il numero massimo di giocatori.</li></ul>`],
  ['🌍 Il Mondo', `<ul>
-  <li><b>Club e rose</b>: tutti i club veri di FC 27, con allenatore e stelle. I club con un manager sono segnati e <b>non sono mai CPU</b>.</li>
+  <li><b>Club e rose</b>: tutti i club veri di FC 27, con stelle e <b>allenatore vero</b> (nei campionati principali si aggiorna da solo ogni settimana). I club con un manager sono segnati e <b>non sono mai CPU</b>.</li>
+  <li><b>Ricerca giocatori</b>: in Club e rose cerchi in tutto il Mondo (o solo nel campionato scelto) per nome, ruolo, OVR minimo e massimo, età massima e valore massimo, e ordini per OVR, potenziale, età o prezzo. Ogni risultato ha il pulsante <b>Tratta</b>.</li>
   <li><b>Campionati</b> e <b>Coppe</b>: classifiche, calendari, marcatori di tutto il Mondo.</li>
   <li><b>Sala trattative</b>: tutte le trattative in corso, in diretta.</li>
   <li><b>Senza squadra</b>: i giocatori svincolati dai manager, si trattano subito con giocatore e procuratore.</li></ul>`],
@@ -3290,7 +3292,7 @@ const RULES_LIST = () => [
   <li><b>Da 4 a 5,4</b>: nessuna offerta, si resta dove si è.</li>
   <li><b>Sotto 4</b>: <b>esonero</b>. In <b>Posta → Panchine libere</b> ti candidi ai club che vuoi: la società accetta se il tuo voto basta per il suo prestigio. Se all’inizio del campionato sei ancora senza squadra, te la assegna il commissario.</li>
   <li>Le offerte arrivano <b>solo da club senza manager</b>. Si accettano o rifiutano dalla Posta fino all’inizio del campionato; chi non è esonerato può rifiutare e restare.</li>
-  <li>Anche gli <b>allenatori CPU</b> cambiano: gli ultimi di ogni campionato vengono esonerati e al loro posto arrivano allenatori che hanno fatto bene in club più piccoli. Tutto nelle <b>Notizie</b>.</li></ul>`],
+  <li>Anche gli <b>allenatori CPU</b> cambiano: gli ultimi di ogni campionato vengono esonerati e al loro posto arrivano allenatori che hanno fatto bene in club più piccoli. Tutto nelle <b>Notizie</b>. I cambi di panchina decisi nella lega valgono più della realtà.</li></ul>`],
  ['📌 In sintesi', `<ol>
   <li>Tutti i club sono uguali: libero = CPU, con manager = suo.</li>
   <li>Un solo mercato a stagione: a mercato aperto <b>stai online</b>.</li>
