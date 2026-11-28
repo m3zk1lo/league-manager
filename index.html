@@ -1329,15 +1329,18 @@ function viewMarket(){
 
 /* statistiche dei campionati del Mondo (dove giocano i manager): gol, assist e cartellini dai risultati */
 function wstats(scope, lf){
-  const st = {}, s = season(), get = (fc, ci) => { const k = String(fc); if (!st[k]){ const nm = fcName(fc)?.name || '?'; st[k] = {id: k, n: nm, c: 'w' + ci, cn: lgCN(ci), g: 0, a: 0, y: 0, r: 0}; } return st[k]; };
+  const st = {}, s = season(), TN = new Map(); let get = null;
+  get = (fc, ci) => { const k = String(fc); if (!st[k]){ const nm = fcName(fc)?.name || TN.get(k) || '?'; st[k] = {id: k, n: nm, c: 'w' + ci, cn: lgCN(ci), g: 0, a: 0, y: 0, r: 0}; } return st[k]; };
   (S.world || []).filter(d => d.li != null && d.rounds && (scope === 'all' || d.season === s) && (lf == null || lf === '' || String(d.li) === String(lf))).forEach(d => d.rounds.forEach(r => r.m.forEach(m => {
     if (m[2] == null) return; const ev = m[6] || {};
+    (m[7]?.tl || []).forEach(e => { if (e.p != null && e.n) TN.set(String(e.p), e.n); if (e.a != null && e.an) TN.set(String(e.a), e.an); if (e.o != null && e.on) TN.set(String(e.o), e.on); });
     [[m[0], m[4], ev.a1], [m[1], m[5], ev.a2]].forEach(([ci, sc, as]) => (sc || []).forEach((fc, i) => { if (fc == null || fc === 'og') return; get(fc, ci).g++; const a = (as || [])[i]; if (a != null && a !== '') get(a, ci).a++; }));
     (ev.y || []).forEach(([sd, fc]) => get(fc, m[sd]).y++); (ev.r || []).forEach(([sd, fc]) => get(fc, m[sd]).r++);
   })));
   return st;
 }
 function viewStats(){
+  try { loadWorld(); } catch {}
   const lf = S.statLg ?? '', lgs = lgList().filter(L => (S.world || []).some(d => d.li === L.li && d.rounds?.some(r => r.m.some(m => m[2] != null))));
   const st = [...Object.values(lf === '' ? pstats(S.statScope) : {}), ...Object.values(wstats(S.statScope, lf))];
   const tbl = (title, key, label) => { const rows = st.filter(o => o[key] > 0).sort((a, b) => b[key] - a[key] || a.n.localeCompare(b.n)).slice(0, 15);
@@ -2636,8 +2639,8 @@ function lgTable(doc){
     if (hg > ag){ H.v++; A.p++; H.pt += 3; } else if (hg < ag){ A.v++; H.p++; A.pt += 3; } else { H.n++; A.n++; H.pt++; A.pt++; } }));
   return [...t.values()].sort((x, y) => y.pt - x.pt || (y.gf - y.gs) - (x.gf - x.gs) || y.gf - x.gf);
 }
-let FCN = null;
-const fcName = fc => { if (typeof fc === 'string' && fc[0] === 'p'){ const q = S.players.find(x => x.id === fc.slice(1)); return q ? {name: q.name, pos: q.pos} : null; } if (!FCN){ FCN = new Map(); (WORLD?.clubs || []).forEach(c => c.players.forEach(p => FCN.set(p.fc, p))); } return FCN.get(fc); };
+let FCN = null, FCN_W = null;
+const fcName = fc => { if (typeof fc === 'string' && fc[0] === 'p'){ const q = S.players.find(x => x.id === fc.slice(1)); return q ? {name: q.name, pos: q.pos} : null; } if (!FCN || FCN_W !== WORLD || (!FCN.size && WORLD?.clubs?.length)){ FCN = new Map(); FCN_W = WORLD; (WORLD?.clubs || []).forEach(c => (c.players || []).forEach(p => FCN.set(p.fc, p))); } return FCN.get(fc) || FCN.get(+fc) || null; };
 function lgScorerTable(doc){
   const m = new Map(); doc.rounds.forEach(r => r.m.forEach(x => [[x[0], x[4]], [x[1], x[5]]].forEach(([ci, sc]) => (sc || []).forEach(fc => { const e = m.get(fc) || {fc, ci, g: 0}; e.g++; m.set(fc, e); }))));
   return [...m.values()].sort((a, b) => b.g - a.g).slice(0, 15);
