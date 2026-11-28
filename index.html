@@ -850,7 +850,7 @@ function notifText(o, me){
 const isMyNotif = (o, mid) => (o.buyerId === mid || o.sellerId === mid) && actorOf(o) !== mid;
 function notifs(){
   const mc = myClub(); if (!mc) return [];
-  const items = [], cn = id => club(id)?.name || 'un club';
+  const items = [], cn = id => aucName(id) || 'un club';
   S.offers.filter(o => isMyNotif(o, mc.id)).forEach(o => items.push({key: `o:${o.id}:${o.ts}:${o.status}`, ts: o.ts || 0, text: notifText(o, mc.id)}));
   (mailDoc(S.me).list || []).forEach(m => items.push({key: `m:${m.id}`, ts: m.ts || 0, text: m.kind ? `✉️ ${m.subject}` : `✉️ ${m.from}: ${m.subject}`}));
   /* offerte dei club CPU per i giocatori della mia rosa */
@@ -1006,7 +1006,7 @@ function viewFree(){
   <aside class="stack">
     <div class="panel"><h3>Come funziona l’asta</h3><p class="sub" style="max-width:60ch">Un allenatore avvia l’asta su uno svincolato con la sua offerta di partenza. Gli altri rilanciano di almeno ${fmtM(step)}. Come su Ultimate Team, un rilancio negli ultimi 30 secondi riporta il timer a 30 secondi, così chi viene superato ha sempre il tempo di rispondere. Ogni asta dura ${mins} minuti, uguale per tutti. Il commissario può mettere un giocatore all’asta senza offrire. Alla scadenza chi è in testa paga l’offerta e il giocatore entra in rosa con l’ingaggio indicato. Mentre sei in testa, quella cifra resta bloccata sul tuo budget.</p></div>
     <div class="panel"><div class="ph"><h3>Aste concluse</h3></div>
-      ${done.length ? `<div class="list">${done.map(a => `<div class="li"><div class="main"><b>${esc(a.playerName)}</b><br><span class="sub">${a.status === 'closed' ? `al ${esc(club(a.highClubId)?.name || '—')} · ${(a.bids || []).length} offerte` : esc(a.reason || 'Annullata')}</span></div>
+      ${done.length ? `<div class="list">${done.map(a => `<div class="li"><div class="main"><b>${esc(a.playerName)}</b><br><span class="sub">${a.status === 'closed' ? `al ${esc(aucName(a.highClubId) || '—')} · ${(a.bids || []).length} offerte` : esc(a.reason || 'Annullata')}</span></div>
         ${a.status === 'closed' ? `<span class="num">${fmtM(a.highBid)}</span>` : '<span class="pill neutral">Annullata</span>'}</div>`).join('')}</div>` : '<p class="muted">Nessuna asta conclusa.</p>'}</div>
   </aside></section>`;
 }
@@ -1014,7 +1014,7 @@ function auctionRow(a, mc){
   const p = S.players.find(x => x.id === a.playerId), ms = a.endsAt - now(), me = mc && a.highClubId === mc.id, bids = a.bids || [];
   const was = mc && !me && bids.some(b => b.c === mc.id);
   return `<div class="li"><div class="main"><b>${esc(a.playerName)}</b> ${p ? `<span class="posb ${GRP[p.pos] || 'mid'}">${esc(p.pos)}</span> <span class="sub">OVR ${p.ovr || '—'} · ${fmtW(p.wage)}</span>` : ''}<br>
-    <span class="pts num">${fmtM(a.highBid)}</span> <span class="sub">${me ? 'sei in testa' : a.highClubId ? 'in testa: ' + esc(club(a.highClubId)?.name || '—') : 'base d’asta, nessuna offerta'} · ${bids.length} ${bids.length === 1 ? 'offerta' : 'offerte'} · ${ms > 0 ? `termina tra <b class="cd num${ms < SNIPE ? ' hot' : ''}" data-end="${a.endsAt}">${timeLeft(ms)}</b>` : 'in chiusura'}</span></div>
+    <span class="pts num">${fmtM(a.highBid)}</span> <span class="sub">${me ? 'sei in testa' : a.highClubId ? 'in testa: ' + esc(aucName(a.highClubId) || '—') : 'base d’asta, nessuna offerta'} · ${bids.length} ${bids.length === 1 ? 'offerta' : 'offerte'} · ${ms > 0 ? `termina tra <b class="cd num${ms < SNIPE ? ' hot' : ''}" data-end="${a.endsAt}">${timeLeft(ms)}</b>` : 'in chiusura'}</span></div>
     <div class="row">${me ? '<span class="pill good">In testa</span>' : was ? '<span class="pill bad">Superato</span>' : ''}
     ${a.sellerClubId ? `<span class="pill info">Messo all’asta dal ${esc(club(a.sellerClubId)?.name || '—')}</span>` : ''}
     ${mc && !me && ms > 0 && window_() && a.sellerClubId !== mc.id ? `<button class="btn sm primary" data-act="bid" data-id="${a.id}">${a.highClubId ? 'Rilancia' : 'Offri'}</button>` : ''}
@@ -1528,7 +1528,7 @@ function mkStart(){
 }
 /* ---------- notizie di mercato ---------- */
 function newsItems(){
-  const n = c => club(c)?.name || 'un club', out = [], P = id => S.players.find(p => p.id === id);
+  const n = c => aucName(c) || 'un club', out = [], P = id => S.players.find(p => p.id === id);
   const ov = id => { const p = P(id); return p?.ovr ? ` (${esc(p.pos || '')} · ${p.ovr})` : ''; };
   S.offers.forEach(o => {
     const B = n(o.buyerId), Se = n(o.sellerId), pl = `<b>${esc(o.playerName || 'un giocatore')}</b>${ov(o.playerId)}`, loan = isLoan(o.type);
@@ -1795,13 +1795,26 @@ function wPlayer(fc){
   for (const c of allClubs()){ const p = c.players.find(x => x.fc === fc); if (p) return {p, c}; } return null; }
 let TK = null, LMC = null;
 const MOVED = new Set();
+/* tutti i giocatori finiti a un club CPU con il mercato della lega: un rivale CPU che vince una trattativa,
+   un manager che vende alla CPU, un'asta vinta dalla CPU. Si riapplicano ogni volta che il Mondo si ricarica,
+   quindi l'aggiornamento settimanale delle rose vere non li riporta indietro. */
+function worldMoves(){
+  const out = [];
+  cpuDeals().filter(d => d.status === 'done' && typeof d.fcId === 'number').forEach(d => {
+    if (d.rival) out.push({id: d.id, ts: d.ts || 0, fc: d.fcId, to: d.rival, name: d.playerName, pos: d.pos, age: d.age, ovr: d.ovr});
+    else if (d.dir === 'sell' && !d.loan && d.cpuClub) out.push({id: d.id, ts: d.ts || 0, fc: d.fcId, to: d.cpuClub, name: d.playerName, pos: d.pos, age: d.age, ovr: d.ovr}); });
+  (S.auctions || []).filter(a => a.status === 'closed' && a.cpuWin && typeof a.cpuFc === 'number').forEach(a => out.push({id: a.id, ts: a.closedTs || 0, fc: a.cpuFc, to: a.cpuWin, name: a.playerName, pos: a.pos, age: a.age, ovr: a.ovr}));
+  return out.sort((a, b) => a.ts - b.ts);
+}
 function applyMoves(){
-  if (!WORLD || WORLD.err) return;
-  cpuDeals().filter(d => d.rival && d.status === 'done' && typeof d.fcId === 'number' && !MOVED.has(d.id)).forEach(d => {
-    MOVED.add(d.id); let pl = null;
-    WORLD.clubs.forEach(c => { const i = c.players.findIndex(x => x.fc === d.fcId); if (i >= 0) pl = c.players.splice(i, 1)[0]; });
-    const rc = WORLD.clubs.find(c => c.name === d.rival); if (pl && rc){ pl.ci = rc.i; rc.players.push(pl); rc.players.sort((a, b) => b.ovr - a.ovr); }
-    FCN = null;
+  if (!WORLD || WORLD.err) return; const done = WORLD._mv || (WORLD._mv = new Set());
+  worldMoves().filter(m => !done.has(m.id)).forEach(m => {
+    done.add(m.id); let pl = null;
+    WORLD.clubs.forEach(c => { const i = c.players.findIndex(x => x.fc === m.fc); if (i >= 0) pl = c.players.splice(i, 1)[0]; });
+    const rc = WORLD.clubs.find(c => c.name === m.to); if (!rc) return;
+    if (!pl){ const x = FC27_CACHE?.p?.find(r => r[0] === m.fc); pl = x ? {fc: x[0], name: x[1], pos: x[2], age: x[3], ovr: x[4], ...(x[6] ? {pot: x[6]} : {})} : m.name && m.ovr ? {fc: m.fc, name: m.name, pos: m.pos || 'CC', age: m.age || 25, ovr: m.ovr} : null; }
+    if (pl){ pl.ci = rc.i; rc.players.push(pl); rc.players.sort((a, b) => b.ovr - a.ovr); }
+    FCN = null; TK = null;
   });
 }
 function lmCpuClubs(){
@@ -1813,6 +1826,7 @@ function lmCpuClubs(){
   });
   LMC = {p: S.players, c: S.clubs, v}; return v;
 }
+const cpuWorld = () => { const nm = new Set(S.clubs.map(c => normKey(c.name))); return (WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))); };
 const allClubs = () => { applyMoves(); applyOvr(); const lm = lmCpuClubs(), nm = new Set(S.clubs.map(c => normKey(c.name))); return [...(WORLD?.clubs || []).filter(c => !nm.has(normKey(c.name))), ...lm]; };
 function wAvailable(c){ if (c.lm) return c.players; if (!TK || TK.ref !== S.players){ TK = {ref: S.players, t: takenFc(), n: takenNames()}; } const t = TK.t, n = TK.n; return c.players.filter(p => !t.has(p.fc) && !n.has(normKey(p.name))); }
 /* carattere del club e del giocatore */
@@ -2149,11 +2163,32 @@ async function cpuSellDone(d, fee, byCpu){
   await db.doc('players/' + p.id).delete();
   await Promise.all([ledger(Se.id, fee, `Cessione ${p.name} a ${d.cpuClub}`),
     logTransfer({playerId: p.id, playerName: p.name, fromLabel: Se.name, toLabel: d.cpuClub, fromClubId: Se.id, toClubId: null, fee, kind: 'cpu-out', mode: 'transfer', ovr: p.ovr || 0}),
-    db.doc('offers/' + d.id).update({status: 'done', fee, waiting: null, ts: t, msg: `${p.name} ceduto a ${d.cpuClub} per ${fmtM(fee)}.`, hist: [...(d.hist || []), {who: byCpu ? 'cpu' : 'user', t: `Affare chiuso a ${fmtM(fee)}`, ts: t}]}),
+    db.doc('offers/' + d.id).update({status: 'done', fee, waiting: null, ts: t, ...(fcOf(p) != null ? {fcId: fcOf(p)} : {}), pos: p.pos || null, age: ageOf(p) || null, ovr: p.ovr || 0, msg: `${p.name} ceduto a ${d.cpuClub} per ${fmtM(fee)}.`, hist: [...(d.hist || []), {who: byCpu ? 'cpu' : 'user', t: `Affare chiuso a ${fmtM(fee)}`, ts: t}]}),
     ...S.offers.filter(o => o.playerId === p.id && ['open', 'prel'].includes(o.status)).map(o => db.doc('offers/' + o.id).update({status: 'expired', ts: t, actorClub: null}))]);
   await paySellOn(p, Se, fee);
   if (!byCpu) toast(`${p.name} ceduto a ${d.cpuClub}`);
 }
+/* aste dei manager: un club CPU interessato può rilanciare (al massimo una volta ogni 40 secondi per asta, mai oltre il suo tetto) */
+let aucBusy = false;
+async function cpuAuctionTick(){
+  if (aucBusy || !WORLD || WORLD.err) return; aucBusy = true;
+  try { const {step} = AUC(), t = now();
+    for (const a of openAuctions().filter(a => a.sellerClubId && a.endsAt > t)){
+      const p = S.players.find(x => x.id === a.playerId); if (!p || !p.ovr) continue;
+      const last = (a.bids || []).slice(-1)[0]; if (String(a.highClubId || '').startsWith('cpu:') || (last && t - last.ts < 40000)) continue;
+      const base = p.value || autoValue(p.ovr, ageOf(p)), cap = Math.round(base * (0.9 + WH('aucap' + a.id) * 0.45) / 1e5) * 1e5;
+      if (WH('auc' + a.id) > Math.max(0.25, Math.min(0.8, 0.3 + (p.ovr - 70) * 0.04))) continue; /* non tutti i giocatori interessano alla CPU */
+      const next = a.highClubId ? a.highBid + step : a.highBid; if (next > cap) continue;
+      const slot = Math.floor(t / 40000); if (WH('aucgo' + a.id + slot) > 0.45) continue; /* rilanci non immediati */
+      const CW = cpuWorld().filter(x => x.avg >= p.ovr - 4 && x.avg <= p.ovr + 8); if (!CW.length) continue;
+      const bc = CW[Math.floor(WH('aucc' + a.id) * CW.length)], ref = db.doc('auctions/' + a.id);
+      const lease = await ref.acquire({holder: 'cpu', ttlMs: 5000}); if (!lease.acquired) continue;
+      const snap = await ref.get(), cur = snap.data(); if (!snap.exists || cur.status !== 'open' || now() > cur.endsAt || cur.highBid !== a.highBid || cur.highClubId !== a.highClubId) continue;
+      const tt = now(), endsAt = cur.endsAt - tt < SNIPE ? tt + SNIPE : cur.endsAt;
+      await ref.update({highBid: next, highClubId: 'cpu:' + bc.name, bids: [...(cur.bids || []), {c: 'cpu:' + bc.name, amt: next, ts: tt}], endsAt});
+      const sc = club(a.sellerClubId); if (sc?.managerId) pushSend([sc.managerId], `🔨 ${bc.name} rilancia per ${p.name}`, `Offerta: ${fmtM(next)}.`, './#mercato', 'aucb-' + a.id + slot);
+    }
+  } finally { aucBusy = false; } }
 /* i club CPU fanno offerte per i giocatori dei manager (una volta al giorno per squadra, con probabilità) */
 async function cpuGenerate(){
   if (!WORLD || WORLD.err || !window_() || !S.loaded.offers) return;
@@ -2162,9 +2197,9 @@ async function cpuGenerate(){
     const id = `cpus-${day}-${c.id}`, rs = roster(c.id).filter(p => !p.loan && p.ovr).sort((a, b) => b.ovr - a.ovr), hot = rs.filter(p => p.listed || p.req === 'sale' || p.req === 'loan');
     if (cpuDeals().some(d => d.id === id) || WH(id) > (hot.length ? 0.75 : 0.35)) continue; if (rs.length < 12) continue;
     const p = hot.length && WH(id + 'h') < 0.7 ? hot[Math.floor(WH(id + 'q') * hot.length)] : rs[Math.floor(WH(id + 'p') * Math.min(rs.length, 14))];
-    const buyers = WORLD.clubs.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
+    const CW = cpuWorld(), buyers = CW.filter(x => x.avg >= p.ovr - 2 && x.avg <= p.ovr + 8); if (!buyers.length) continue;
     const asLoan = p.req === 'loan' || (!p.listed && p.req !== 'sale' && WH(id + 'ln') < 0.3); /* la CPU può chiedere i tuoi giocatori anche in prestito */
-    if (asLoan){ const lb = WORLD.clubs.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
+    if (asLoan){ const lb = CW.filter(x => x.avg >= p.ovr - 6 && x.avg <= p.ovr + 2); if (!lb.length) continue; const bc = lb[Math.floor(WH(id + 'c') * lb.length)], t = now();
       pushSend([c.managerId], `🔁 Richiesta di prestito per ${p.name}`, `${bc.name} lo chiede in prestito: hai 6 minuti per rispondere.`, './#mercato', id);
       await db.doc('offers/' + id).set({cpu: true, dir: 'sell', loan: true, playerId: p.id, playerName: p.name, ovr: p.ovr, cpuClub: bc.name, sellerId: c.id, buyerId: null, stage: 'club', status: 'open', fee: 0, round: 1, waiting: 'user', respondAt: t + 6 * 6e4, ts: t, season: season(), msg: `${bc.name} chiede ${p.name} in prestito per una stagione: gioca titolare e paga il 100% dell’ingaggio. Hai 6 minuti per rispondere.`, hist: [{who: 'cpu', t: 'Richiesta di prestito', ts: t}]});
       continue; }
@@ -2184,7 +2219,7 @@ async function rivalJoin(tb){
   const p = wPlayer(tb.fc)?.p; if (!p) return;
   const chance = Math.max(0.12, Math.min(0.6, 0.25 + (p.ovr - 75) * 0.03)); if (WH(seed) > chance) return;
   const when = first + (0.35 + WH(seed + 't') * 0.4) * WIN_CLUB; if (now() < when || tb.end <= now()) return;
-  const pool = (WORLD?.clubs || []).filter(c => c.name !== tb.club && c.avg >= p.ovr - 5 && c.avg <= p.ovr + 7); if (!pool.length) return;
+  const pool = cpuWorld().filter(c => c.name !== tb.club && c.avg >= p.ovr - 5 && c.avg <= p.ovr + 7); if (!pool.length) return;
   const rc = pool[Math.floor(WH(seed + 'c') * pool.length)], t = now(), id = `cpur-${String(tb.fc).replace(/[^\w]/g, '')}-${first}`;
   if (cpuDeals().some(d => d.id === id)) return;
   if (tb.end - t < WIN_SNIPE) await extendTable(tb.fc, t + WIN_SNIPE);
@@ -2210,6 +2245,7 @@ function cpuTick(){
   });
   cpuDeals().filter(d => d.dir === 'sell' && d.status === 'open' && d.waiting === 'cpu' && (d.respondAt || 0) <= now() && cpuLeader(now() - d.respondAt) && !cpuBusy.has(d.id + '|' + d.respondAt)).forEach(d => { const k = d.id + '|' + d.respondAt; cpuBusy.add(k); cpuResolve(d).catch(() => cpuBusy.delete(k)); });
   cpuDeals().filter(d => d.status === 'open' && d.dir === 'sell' && d.waiting === 'user' && (d.respondAt || 0) <= now() && !cpuBusy.has('x' + d.id)).forEach(d => { cpuBusy.add('x' + d.id); db.doc('offers/' + d.id).update({status: 'expired', waiting: null, msg: 'Offerta scaduta senza risposta.'}); });
+  if (cpuLeader(0)) cpuAuctionTick().catch(() => {});
   if (CPU_CAN_START && !cpuBusy.has('gen' + Math.floor(now() / 864e5))){ cpuBusy.add('gen' + Math.floor(now() / 864e5)); cpuGenerate().catch(() => {}); }
 }
 setInterval(() => { try { if (S.cpuDeals && S.cpuDeals.some(d => d.status === 'open' && (d.dir === 'sell' ? d.respondAt : endOf(d)) <= now())) schedule(); } catch {} }, 5000);
@@ -3192,7 +3228,9 @@ async function pushTest(){
 /* ---------- valutazioni aggiornate (dagli aggiornamenti di EA) + collegamento a SoFIFA ---------- */
 const SOFIFA_ID = true; /* true = apre la scheda esatta dall'ID; se non porta al giocatore giusto metti false (ricerca per nome) */
 const fcOf = p => p?.fcId || (/^fc\d+$/.test(String(p?.id)) ? +String(p.id).slice(2) : null);
-const sofifa = (name, id) => { const pid = SOFIFA_ID && /^\d{4,7}$/.test(String(id ?? '')) ? +id : null;
+let SFN = null;
+const sofifaId = name => { if (!FC27_CACHE) return null; if (!SFN || SFN.ref !== FC27_CACHE){ const m = new Map(); FC27_CACHE.p.forEach(r => { if (r[0] >= 9e8) return; const k = normKey(r[1]); m.set(k, m.has(k) ? null : r[0]); }); SFN = {ref: FC27_CACHE, m}; } return SFN.m.get(normKey(name)) || null; };
+const sofifa = (name, id0) => { const id = /^\d{4,7}$/.test(String(id0 ?? '')) ? id0 : sofifaId(name); const pid = SOFIFA_ID && /^\d{4,7}$/.test(String(id ?? '')) ? +id : null;
   const q = String(name || '').replace(/[ıİ]/g, 'i').replace(/[łŁ]/g, 'l').replace(/[øØ]/g, 'o').replace(/[đĐ]/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
   const href = pid ? `https://sofifa.com/player/${pid}` : `https://sofifa.com/players?keyword=${encodeURIComponent(q)}`;
   const srch = `https://sofifa.com/players?keyword=${encodeURIComponent(q)}`;
@@ -3378,9 +3416,9 @@ function bidAuction(a){
   const mc = myClub(); if (!mc) return;
   const {step, ext} = AUC(), p = S.players.find(x => x.id === a.playerId);
   const last = (a.bids || []).slice(-4).reverse(), minOf = x => x.highClubId ? x.highBid + step : x.highBid, min = minOf(a);
-  openModal(`${a.highClubId ? 'Rilancio' : 'Prima offerta'} per ${a.playerName}`, `<p>${a.highClubId ? `Offerta più alta: <b class="num">${fmtM(a.highBid)}</b> (${esc(club(a.highClubId)?.name || '—')})` : `Base d’asta: <b class="num">${fmtM(a.highBid)}</b>, ancora nessuna offerta`} · termina tra ${timeLeft(a.endsAt - now())}</p>
+  openModal(`${a.highClubId ? 'Rilancio' : 'Prima offerta'} per ${a.playerName}`, `<p>${a.highClubId ? `Offerta più alta: <b class="num">${fmtM(a.highBid)}</b> (${esc(aucName(a.highClubId) || '—')})` : `Base d’asta: <b class="num">${fmtM(a.highBid)}</b>, ancora nessuna offerta`} · termina tra ${timeLeft(a.endsAt - now())}</p>
     <div class="fgrid">${fld('amt', a.highClubId ? 'Il tuo rilancio (milioni €)' : 'La tua offerta (milioni €)', `type="number" min="${min / M}" step="0.1" value="${min / M}" required`, `Minimo ${fmtM(min)}.`, true)}</div>
-    ${last.length ? `<div class="list">${last.map(b => `<div class="li"><span>${esc(club(b.c)?.name || '—')}</span><span class="num">${fmtM(b.amt)}</span><span class="sub">${new Date(b.ts).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</span></div>`).join('')}</div>` : ''}
+    ${last.length ? `<div class="list">${last.map(b => `<div class="li"><span>${esc(aucName(b.c) || '—')}</span><span class="num">${fmtM(b.amt)}</span><span class="sub">${new Date(b.ts).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</span></div>`).join('')}</div>` : ''}
     <p class="sub">Budget libero: <b class="num">${fmtM(budget(mc) - reserved(mc.id, a.id))}</b> · ingaggio del giocatore ${fmtW(p?.wage)}</p>`,
     async fd => {
       if (!window_()) fail('Il mercato è chiuso.');
@@ -3399,11 +3437,23 @@ function bidAuction(a){
       toast(`Sei in testa per ${a.playerName}`);
     }, 'Rilancia');
 }
+const aucName = id => String(id || '').startsWith('cpu:') ? String(id).slice(4) : club(id)?.name;
 async function closeAuction(a){
   const ref = db.doc('auctions/' + a.id);
   const lease = await ref.acquire({holder: S.me || 'auto', ttlMs: 15000}); if (!lease.acquired) return;
   const snap = await ref.get(), cur = snap.data();
   if (!snap.exists || cur.status !== 'open' || now() < cur.endsAt) return;
+  if (String(cur.highClubId || '').startsWith('cpu:') && cur.sellerClubId){ /* l'asta la vince un club CPU */
+    const p = S.players.find(x => x.id === cur.playerId), sc = club(cur.sellerClubId), cn = String(cur.highClubId).slice(4);
+    if (!p || p.clubId !== cur.sellerClubId || p.loan || !sc){ await ref.update({status: 'void', closedTs: now(), reason: 'Giocatore non più disponibile'}); return; }
+    await ref.update({status: 'closed', closedTs: now(), cpuWin: cn, ...(fcOf(p) != null ? {cpuFc: fcOf(p)} : {}), pos: p.pos || null, age: ageOf(p) || null, ovr: p.ovr || 0});
+    await db.doc('players/' + p.id).delete();
+    await Promise.all([ledger(sc.id, cur.highBid, `Asta: ${p.name} venduto al ${cn}`),
+      logTransfer({playerId: p.id, playerName: p.name, fromLabel: sc.name, toLabel: cn, fromClubId: sc.id, toClubId: null, fee: cur.highBid, kind: 'cpu-out', mode: 'auction', ovr: p.ovr || 0})]);
+    await paySellOn(p, sc, cur.highBid);
+    if (sc.managerId) pushSend([sc.managerId], `🔨 Asta chiusa: ${p.name}`, `Se lo aggiudica ${cn} per ${fmtM(cur.highBid)}.`, './#mercato', 'auc-' + a.id);
+    return;
+  }
   const p = S.players.find(x => x.id === cur.playerId), w = club(cur.highClubId);
   if (cur.sellerClubId){
     const sc = club(cur.sellerClubId);
